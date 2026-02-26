@@ -21,6 +21,12 @@ type QueryAnchor<TListContextParams, TStartRow> = {
   readonly listContextParams: TListContextParams;
 };
 
+/**
+ * State object that captures the virtualizer's pagination state.
+ *
+ * @typeParam TListContextParams - The type of parameters that define the list's query context
+ * @typeParam TStartRow - The type of data needed to anchor pagination
+ */
 export type PagingState<TListContextParams, TStartRow> = {
   estimatedTotal: number;
   hasReachedStart: boolean;
@@ -30,6 +36,12 @@ export type PagingState<TListContextParams, TStartRow> = {
   pendingScrollAdjustment: number;
 };
 
+/**
+ * Reducer function for managing the pagination state of the virtualizer.
+ *
+ * @typeParam TListContextParams - The type of parameters that define the list's query context
+ * @typeParam TStartRow - The type of data needed to anchor pagination
+ */
 export function pagingReducer<TListContextParams, TStartRow>(
   state: PagingState<TListContextParams, TStartRow>,
   action: PagingAction<TListContextParams, TStartRow>,
@@ -117,6 +129,12 @@ export function pagingReducer<TListContextParams, TStartRow>(
   }
 }
 
+/**
+ * Actions that can be dispatched to the paging reducer.
+ *
+ * @typeParam TListContextParams - The type of parameters that define the list's query context
+ * @typeParam TStartRow - The type of data needed to anchor pagination
+ */
 export type PagingAction<TListContextParams, TStartRow> =
   | {type: 'UPDATE_ESTIMATED_TOTAL'; newTotal: number}
   | {type: 'REACHED_START'}

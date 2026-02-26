@@ -1,8 +1,17 @@
-import type {DefaultContext, DefaultSchema, QueryOrQueryRequest} from '@rocicorp/zero';
+import type {
+  DefaultContext,
+  DefaultSchema,
+  QueryOrQueryRequest,
+} from '@rocicorp/zero';
 import {useQuery, type UseQueryOptions} from '@rocicorp/zero/react';
 import {useCallback} from 'react';
 import {assert} from '../asserts.ts';
 
+/**
+ * Represents a position in the virtualized list used for pagination.
+ *
+ * @typeParam TStartRow - The type of data needed to anchor pagination
+ */
 export type Anchor<TStartRow> =
   | Readonly<{
       index: number;
@@ -20,14 +29,40 @@ export type Anchor<TStartRow> =
       id: string;
     }>;
 
+/**
+ * Function that returns a query for fetching a page of rows.
+ *
+ * @typeParam TRow - The type of row data returned from queries
+ * @typeParam TStartRow - The type of data needed to anchor pagination
+ *
+ * @param limit - The maximum number of rows to return
+ * @param start - The start row data to anchor the query, or null if starting from the beginning
+ * @param dir - The direction to paginate ('forward' or 'backward')
+ * @returns A Zero query or query request
+ */
 export type GetPageQuery<TRow, TStartRow> = (
   limit: number,
   start: TStartRow | null,
   dir: 'forward' | 'backward',
 ) => GetQueryReturnType<TRow>;
 
-export type GetSingleQuery<TRow> = (id: string) => GetQueryReturnType<TRow | undefined>;
+/**
+ * Function that returns a query for fetching a single row by ID.
+ *
+ * @typeParam TRow - The type of row data returned from queries
+ *
+ * @param id - The ID of the row to fetch
+ * @returns A Zero query or query request
+ */
+export type GetSingleQuery<TRow> = (
+  id: string,
+) => GetQueryReturnType<TRow | undefined>;
 
+/**
+ * Return type of a Zero query or query request.
+ *
+ * @typeParam TReturn - The type of the query return value
+ */
 export type GetQueryReturnType<TReturn> = QueryOrQueryRequest<
   keyof DefaultSchema['tables'] & string,
   // oxlint-disable-next-line no-explicit-any
@@ -41,6 +76,12 @@ export type GetQueryReturnType<TReturn> = QueryOrQueryRequest<
 
 const returnUndefined = () => undefined;
 
+/**
+ * Internal hook that manages the fetching and caching of rows for the virtualizer.
+ *
+ * @typeParam TRow - The type of row data returned from queries
+ * @typeParam TStartRow - The type of data needed to anchor pagination
+ */
 export function useRows<TRow, TStartRow>({
   pageSize,
   anchor,
@@ -146,11 +187,21 @@ export function useRows<TRow, TStartRow>({
           }
           return typedRowsBefore[i];
         },
-        [anchorIndex, typedRow, typedRowsBefore, typedRowsAfter, rowsBeforeSize, rowsAfterSize],
+        [
+          anchorIndex,
+          typedRow,
+          typedRowsBefore,
+          typedRowsAfter,
+          rowsBeforeSize,
+          rowsAfterSize,
+        ],
       ),
       rowsLength: rowsBeforeSize + rowsAfterSize + (typedRow ? 1 : 0),
-      complete: completeRow && (typedRow === undefined || (completeBefore && completeAfter)),
-      rowsEmpty: typedRow === undefined || (rowsBeforeSize === 0 && rowsAfterSize === 0),
+      complete:
+        completeRow &&
+        (typedRow === undefined || (completeBefore && completeAfter)),
+      rowsEmpty:
+        typedRow === undefined || (rowsBeforeSize === 0 && rowsAfterSize === 0),
       atStart: completeBefore && rowsBeforeLength <= halfPageSize,
       atEnd: completeAfter && rowsAfterLength <= halfPageSize - 1,
       firstRowIndex: firstRowIndex,
@@ -179,7 +230,9 @@ export function useRows<TRow, TStartRow>({
     return {
       rowAt: useCallback(
         (index: number) =>
-          index - anchorIndex < rowsLength ? typedRows[index - anchorIndex] : undefined,
+          index - anchorIndex < rowsLength
+            ? typedRows[index - anchorIndex]
+            : undefined,
         [anchorIndex, typedRows, rowsLength],
       ),
       rowsLength: rowsLength,

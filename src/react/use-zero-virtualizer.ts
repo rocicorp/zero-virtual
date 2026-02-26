@@ -585,10 +585,20 @@ function toBoundIndex(
   );
 }
 
+/**
+ * Calculates the threshold for when to trigger loading more rows based on the page size.
+ * @param pageSize - The current page size
+ * @returns The threshold number of rows
+ */
 function getNearPageEdgeThreshold(pageSize: number) {
   return Math.ceil(pageSize / 10);
 }
 
+/**
+ * Ensures a number is even by adding 1 if it is odd.
+ * @param n - The number to make even
+ * @returns The even number
+ */
 function makeEven(n: number) {
   return n % 2 === 0 ? n : n + 1;
 }
