@@ -3,6 +3,11 @@ import {zql, type Item} from './schema.ts';
 
 export type ItemStart = Pick<Item, 'created' | 'modified'>;
 
+export type ListContextParams = {
+  sortField: 'created' | 'modified';
+  sortDirection: 'asc' | 'desc';
+};
+
 export const queries = defineQueries({
   item: {
     all: defineQuery(() => zql.item.orderBy('modified', 'desc')),
@@ -13,23 +18,49 @@ export const queries = defineQueries({
 
     getPageQuery: defineQuery(
       ({
-        args: {limit, start, dir, sortField},
+        args: {limit, start, dir, listContextParams},
       }: {
         args: {
           limit: number;
           start: ItemStart | null;
           dir: 'forward' | 'backward';
-          sortField: 'created' | 'modified';
+          listContextParams: ListContextParams;
         };
       }) => {
-        let q = zql.item
-          .orderBy(sortField, dir === 'forward' ? 'desc' : 'asc')
-          .limit(limit);
+        let q = zql.item.limit(limit);
+
+        const {sortField, sortDirection} = listContextParams;
+        const orderByDir =
+          dir === 'forward'
+            ? sortDirection
+            : sortDirection === 'asc'
+              ? 'desc'
+              : 'asc';
+        q = q.orderBy(sortField, orderByDir).orderBy('id', orderByDir);
+
         if (start) {
-          q = q.start(start);
+          q = q.start(start, {inclusive: false});
         }
+        console.log('getPageQuery', {
+          start,
+          dir,
+          sortField,
+          sortDirection,
+          effectiveDirection: effectiveDirection(dir, sortDirection),
+        });
         return q;
       },
     ),
   },
 });
+
+function effectiveDirection(
+  dir: 'forward' | 'backward',
+  sortDirection: 'asc' | 'desc',
+): 'asc' | 'desc' {
+  return dir === 'forward'
+    ? sortDirection
+    : sortDirection === 'asc'
+      ? 'desc'
+      : 'asc';
+}

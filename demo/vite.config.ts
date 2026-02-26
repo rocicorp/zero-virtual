@@ -29,5 +29,13 @@ export default defineConfig(({mode}) => {
 
   return {
     plugins: [react(), apiPlugin],
+    resolve: {
+      alias: {
+        '@rocicorp/zero-virtual/react': new URL(
+          '../src/react/index.ts',
+          import.meta.url,
+        ).pathname,
+      },
+    },
   };
 });

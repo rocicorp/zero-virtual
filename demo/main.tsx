@@ -2,6 +2,7 @@ import {ZeroProvider} from '@rocicorp/zero/react';
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import {App} from './App.tsx';
+import './index.css';
 import {schema} from './schema.ts';
 
 const userID = import.meta.env.VITE_PUBLIC_USER_ID ?? 'anon';

@@ -1,14 +1,24 @@
 .page {
   font-family: system-ui, sans-serif;
-  max-width: 640px;
-  margin: 32px auto;
+  margin: 0;
   padding: 0 16px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block: 8px;
 }
 
 .heading {
   font-size: 24px;
   font-weight: 700;
-  margin: 0 0 4px;
+  margin: 0;
 }
 
 .subtitle {
@@ -18,11 +28,13 @@
 }
 
 .viewport {
-  height: 500px;
+  flex: 1;
   overflow: auto;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  border-top: 1px solid #ddd;
   background: #fff;
+  min-height: 0;
+  margin: 0 -16px;
+  padding: 0;
 }
 
 .row {

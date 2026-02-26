@@ -1,9 +1,10 @@
 import {useZeroVirtualizer} from '@rocicorp/zero-virtual/react';
 import {useQuery} from '@rocicorp/zero/react';
-import {useCallback, useMemo, useRef} from 'react';
+import {useCallback, useMemo, useRef, useState} from 'react';
 import styles from './App.module.css';
-import {queries, type ItemStart} from './queries.ts';
+import {queries, type ItemStart, type ListContextParams} from './queries.ts';
 import type {Item} from './schema.ts';
+import {SortControls} from './SortControls.tsx';
 
 const ITEM_HEIGHT = 48;
 
@@ -11,7 +12,7 @@ function getRowKey(item: Item): string {
   return item.id;
 }
 
-function getStartRow(item: Item): ItemStart {
+function toStartRow(item: Item): ItemStart {
   return {
     created: item.created,
     modified: item.modified,
@@ -26,23 +27,28 @@ function getSingleQuery(id: string) {
   return queries.item.getSingleQuery({id});
 }
 
-type ListContextParams = {
-  sortField: 'created' | 'modified';
-};
-
 export function App() {
   const [items] = useQuery(queries.item.all());
+  const [sortField, setSortField] = useState<'created' | 'modified'>(
+    'modified',
+  );
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const toggleSortField = useCallback(() => {
+    setSortField(f => (f === 'modified' ? 'created' : 'modified'));
+  }, []);
+
+  const toggleSortDirection = useCallback(() => {
+    setSortDirection(d => (d === 'asc' ? 'desc' : 'asc'));
+  }, []);
 
   const parentRef = useRef<HTMLDivElement>(null);
 
   const getScrollElement = useCallback(() => parentRef.current, []);
 
-  const listContextParams = useMemo(
-    () =>
-      ({
-        sortField: 'modified',
-      }) as const,
-    [],
+  const listContextParams = useMemo<ListContextParams>(
+    () => ({sortField, sortDirection}),
+    [sortField, sortDirection],
   );
 
   const getPageQuery = useCallback(
@@ -51,40 +57,43 @@ export function App() {
         limit,
         start,
         dir,
-        sortField: listContextParams.sortField,
+        listContextParams,
       });
     },
     [listContextParams],
   );
 
-  const {virtualizer} = useZeroVirtualizer<
-    Element,
-    Element,
-    ListContextParams,
-    Item,
-    ItemStart
-  >({
+  const {virtualizer, rowAt} = useZeroVirtualizer({
     listContextParams,
     getScrollElement,
     getRowKey,
     estimateSize,
     getPageQuery,
     getSingleQuery,
-    toStartRow: getStartRow,
+    toStartRow,
   });
 
   const virtualItems = virtualizer.getVirtualItems();
 
   return (
     <div className={styles.page}>
-      <h1 className={styles.heading}>TanStack Virtual Demo</h1>
+      <div className={styles.header}>
+        <h1 className={styles.heading}>Zero Virtual Demo</h1>
+        <SortControls
+          sortField={sortField}
+          sortDirection={sortDirection}
+          onToggleSortField={toggleSortField}
+          onToggleSortDirection={toggleSortDirection}
+        />
+      </div>
       {/* Scrollable viewport */}
       <div ref={parentRef} className={styles.viewport}>
         {/* Total height spacer */}
         <div style={{height: virtualizer.getTotalSize(), position: 'relative'}}>
           {virtualItems.map(virtualRow => {
-            const item = items[virtualRow.index];
-            if (item === undefined) {
+            const row = rowAt(virtualRow.index);
+
+            if (row === undefined) {
               // placeholder
               return (
                 <div
@@ -105,7 +114,7 @@ export function App() {
                 className={styles.row}
                 style={{transform: `translateY(${virtualRow.start}px)`}}
               >
-                <span className={styles.rowLabel}>{item.title}</span>
+                <span className={styles.rowLabel}>{row.title}</span>
               </div>
             );
           })}

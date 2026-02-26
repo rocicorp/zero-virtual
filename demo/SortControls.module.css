@@ -1,0 +1,61 @@
+.sortControls {
+  display: flex;
+  align-items: center;
+}
+
+.sortField,
+.sortDirection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  border: 1px solid #ccc;
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sortField:hover,
+.sortDirection:hover {
+  background: #f5f5f5;
+}
+
+.sortField {
+  width: 80px;
+  font-size: 13px;
+  border-radius: 6px 0 0 6px;
+}
+
+.sortDirection {
+  width: 32px;
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+}
+
+.sortLine1,
+.sortLine2,
+.sortLine3 {
+  transition: width 0.2s ease;
+}
+
+/* desc: wide → narrow */
+.desc .sortLine1 {
+  width: 14px;
+}
+.desc .sortLine2 {
+  width: 9px;
+}
+.desc .sortLine3 {
+  width: 4px;
+}
+
+/* asc: narrow → wide */
+.asc .sortLine1 {
+  width: 4px;
+}
+.asc .sortLine2 {
+  width: 9px;
+}
+.asc .sortLine3 {
+  width: 14px;
+}
