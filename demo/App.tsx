@@ -2,9 +2,11 @@ import {useZeroVirtualizer} from '@rocicorp/zero-virtual/react';
 import {useCallback, useMemo, useRef, useState} from 'react';
 import styles from './App.module.css';
 import {ItemCount} from './ItemCount.tsx';
+import {PermalinkNotFoundWarning} from './PermalinkNotFoundWarning.tsx';
 import {queries, type ItemStart, type ListContextParams} from './queries.ts';
 import type {Item} from './schema.ts';
 import {SortControls} from './SortControls.tsx';
+import {useHash} from './use-hash.ts';
 
 const ITEM_HEIGHT = 48;
 
@@ -19,6 +21,7 @@ function getRowKey(item: Item): string {
 
 function toStartRow(item: Item): ItemStart {
   return {
+    id: item.id,
     created: item.created,
     modified: item.modified,
   };
@@ -33,6 +36,9 @@ function getSingleQuery(id: string) {
 }
 
 export function App() {
+  const [hash, setHash] = useHash();
+  const permalinkID = hash || null;
+
   const [sortField, setSortField] = useState<'created' | 'modified'>(
     'modified',
   );
@@ -67,20 +73,26 @@ export function App() {
     [listContextParams],
   );
 
-  const {virtualizer, rowAt, estimatedTotal, total} = useZeroVirtualizer({
-    listContextParams,
-    getScrollElement,
-    getRowKey,
-    estimateSize,
-    getPageQuery,
-    getSingleQuery,
-    toStartRow,
-  });
+  const {virtualizer, rowAt, estimatedTotal, total, permalinkNotFound} =
+    useZeroVirtualizer({
+      listContextParams,
+      getScrollElement,
+      getRowKey,
+      estimateSize,
+      getPageQuery,
+      getSingleQuery,
+      toStartRow,
+      permalinkID,
+    });
 
   const virtualItems = virtualizer.getVirtualItems();
 
   return (
     <div className={styles.page}>
+      <PermalinkNotFoundWarning
+        show={permalinkNotFound}
+        permalinkID={permalinkID}
+      />
       <div className={styles.header}>
         <h1 className={styles.heading}>
           Zero Virtual Demo
@@ -120,6 +132,8 @@ export function App() {
                 data-index={virtualRow.index}
                 className={styles.row}
                 style={{transform: `translateY(${virtualRow.start}px)`}}
+                aria-selected={row.id === permalinkID || undefined}
+                onClick={() => setHash(row.id === permalinkID ? '' : row.id)}
               >
                 <span className={styles.rowLabel}>{row.title}</span>
                 <span className={styles.rowValue}>

@@ -74,8 +74,6 @@ export type GetQueryReturnType<TReturn> = QueryOrQueryRequest<
   DefaultContext
 >;
 
-const returnUndefined = () => undefined;
-
 /**
  * Internal hook that manages the fetching and caching of rows for the virtualizer.
  *
@@ -108,166 +106,150 @@ export function useRows<TRow, TStartRow>({
   permalinkNotFound: boolean;
 } {
   const {kind, index: anchorIndex} = anchor;
-  let permalinkNotFound = false;
+  const isPermalink = kind === 'permalink';
+  assert(!isPermalink || pageSize % 2 === 0);
+  const halfPageSize = pageSize / 2;
 
-  if (kind === 'permalink') {
-    const {id} = anchor;
-    assert(id);
-    assert(pageSize % 2 === 0);
+  // --- All hooks called unconditionally, in the same order on every render ---
 
-    const halfPageSize = pageSize / 2;
+  // Hook 1: single-item lookup (permalink only; null otherwise keeps hook count stable)
+  const permalinkId = isPermalink
+    ? (anchor as Extract<Anchor<TStartRow>, {kind: 'permalink'}>).id
+    : '';
+  const [singleRow, singleResult] = useQuery(
+    isPermalink ? getSingleQuery(permalinkId) : null,
+    options,
+  );
+  const typedSingleRow = singleRow as TRow | undefined;
+  const completeRow = singleResult.type === 'complete';
+  const permalinkNotFound =
+    isPermalink && completeRow && typedSingleRow === undefined;
 
-    const qItem = getSingleQuery(id);
+  const singleStart = typedSingleRow ? toStartRow(typedSingleRow) : null;
+  const pageStart = !isPermalink
+    ? ((anchor as Extract<Anchor<TStartRow>, {kind: 'forward' | 'backward'}>)
+        .startRow ?? null)
+    : null;
 
-    const [row, resultRow] = useQuery(qItem, options);
-    const completeRow = resultRow.type === 'complete';
+  // Hook 2: page-before rows (permalink) OR main page rows (forward/backward)
+  const q2 = isPermalink
+    ? !permalinkNotFound && singleStart
+      ? getPageQuery(halfPageSize + 1, singleStart, 'backward')
+      : null
+    : getPageQuery(pageSize + 1, pageStart, kind as 'forward' | 'backward');
+  const [rows2, result2] = useQuery(q2, options);
 
-    const typedRow = row as TRow | undefined;
+  // Hook 3: page-after rows (permalink only; null for forward/backward)
+  const q3 =
+    isPermalink && !permalinkNotFound && singleStart
+      ? getPageQuery(halfPageSize, singleStart, 'forward')
+      : null;
+  const [rows3, result3] = useQuery(q3, options);
 
-    // Early return if permalink not found to skip unnecessary queries
-    if (completeRow && typedRow === undefined) {
-      // Call dummy useQuery to maintain hooks call order
-      void useQuery(null, options);
-      void useQuery(null, options);
+  // Derive values needed in useCallback before calling it
+  const typedRows2 = rows2 as unknown as TRow[] | undefined;
+  const typedRows3 = rows3 as unknown as TRow[] | undefined;
 
-      return {
-        rowAt: returnUndefined,
-        rowsLength: 0,
-        complete: true,
-        rowsEmpty: true,
-        atStart: true,
-        atEnd: true,
-        firstRowIndex: anchorIndex,
-        permalinkNotFound: true,
-      };
-    }
+  const rowsBeforeLength = typedRows2?.length ?? 0;
+  const rowsAfterLength = typedRows3?.length ?? 0;
+  const rowsBeforeSize = Math.min(rowsBeforeLength, halfPageSize);
+  const rowsAfterSize = Math.min(rowsAfterLength, halfPageSize - 1);
 
-    const start = typedRow && toStartRow(typedRow);
+  const typedPageRows = (typedRows2 ?? []) as TRow[];
+  const hasMoreRows = !isPermalink && typedPageRows.length > pageSize;
+  const paginatedRowsLength = hasMoreRows ? pageSize : typedPageRows.length;
 
-    const qBefore = start && getPageQuery(halfPageSize + 1, start, 'backward');
-    const qAfter = start && getPageQuery(halfPageSize, start, 'forward');
+  // Hook 4: single unified rowAt — same hook, same dep-array size, every render
+  const rowAt = useCallback(
+    (index: number): TRow | undefined => {
+      if (isPermalink) {
+        if (index === anchorIndex) {
+          return typedSingleRow;
+        }
+        if (index > anchorIndex) {
+          if (typedRows3 === undefined) return undefined;
+          const i = index - anchorIndex - 1;
+          return i < rowsAfterSize ? typedRows3[i] : undefined;
+        }
+        if (typedRows2 === undefined) return undefined;
+        const i = anchorIndex - index - 1;
+        return i < rowsBeforeSize ? typedRows2[i] : undefined;
+      }
+      if (kind === 'forward') {
+        const i = index - anchorIndex;
+        return i >= 0 && i < paginatedRowsLength ? typedPageRows[i] : undefined;
+      }
+      // backward
+      const i = anchorIndex - index - 1;
+      return i >= 0 && i < paginatedRowsLength ? typedPageRows[i] : undefined;
+    },
+    [
+      isPermalink,
+      kind,
+      anchorIndex,
+      typedSingleRow,
+      typedRows2,
+      typedRows3,
+      rowsBeforeSize,
+      rowsAfterSize,
+      typedPageRows,
+      paginatedRowsLength,
+    ],
+  );
 
-    const [rowsBefore, resultBefore] = useQuery(qBefore, options);
-    const [rowsAfter, resultAfter] = useQuery(qAfter, options);
-    const completeBefore = resultBefore.type === 'complete';
-    const completeAfter = resultAfter.type === 'complete';
+  // --- Pure value branching (no hooks below this line) ---
 
-    const typedRowsBefore = rowsBefore as unknown as TRow[] | undefined;
-    const typedRowsAfter = rowsAfter as unknown as TRow[] | undefined;
-    const rowsBeforeLength = typedRowsBefore?.length ?? 0;
-    const rowsAfterLength = typedRowsAfter?.length ?? 0;
-    const rowsBeforeSize = Math.min(rowsBeforeLength, halfPageSize);
-    const rowsAfterSize = Math.min(rowsAfterLength, halfPageSize - 1);
+  const complete2 = result2.type === 'complete';
+  const complete3 = result3.type === 'complete';
 
-    const firstRowIndex = anchorIndex - rowsBeforeSize;
-
+  if (isPermalink) {
     return {
-      rowAt: useCallback(
-        (index: number) => {
-          if (index === anchorIndex) {
-            return typedRow;
-          }
-          if (index > anchorIndex) {
-            if (typedRowsAfter === undefined) {
-              return undefined;
-            }
-            const i = index - anchorIndex - 1;
-            if (i >= rowsAfterSize) {
-              return undefined;
-            }
-            return typedRowsAfter[i];
-          }
-          assert(index < anchorIndex);
-          if (typedRowsBefore === undefined) {
-            return undefined;
-          }
-          const i = anchorIndex - index - 1;
-          if (i >= rowsBeforeSize) {
-            return undefined;
-          }
-          return typedRowsBefore[i];
-        },
-        [
-          anchorIndex,
-          typedRow,
-          typedRowsBefore,
-          typedRowsAfter,
-          rowsBeforeSize,
-          rowsAfterSize,
-        ],
-      ),
-      rowsLength: rowsBeforeSize + rowsAfterSize + (typedRow ? 1 : 0),
-      complete:
-        completeRow &&
-        (typedRow === undefined || (completeBefore && completeAfter)),
+      rowAt,
+      rowsLength: permalinkNotFound
+        ? 0
+        : rowsBeforeSize + rowsAfterSize + (typedSingleRow ? 1 : 0),
+      complete: completeRow && (permalinkNotFound || (complete2 && complete3)),
       rowsEmpty:
-        typedRow === undefined || (rowsBeforeSize === 0 && rowsAfterSize === 0),
-      atStart: completeBefore && rowsBeforeLength <= halfPageSize,
-      atEnd: completeAfter && rowsAfterLength <= halfPageSize - 1,
-      firstRowIndex: firstRowIndex,
+        permalinkNotFound ||
+        typedSingleRow === undefined ||
+        (rowsBeforeSize === 0 && rowsAfterSize === 0),
+      atStart:
+        permalinkNotFound || (complete2 && rowsBeforeLength <= halfPageSize),
+      atEnd:
+        permalinkNotFound || (complete3 && rowsAfterLength <= halfPageSize - 1),
+      firstRowIndex: permalinkNotFound
+        ? anchorIndex
+        : anchorIndex - rowsBeforeSize,
       permalinkNotFound,
     };
   }
 
   kind satisfies 'forward' | 'backward';
 
-  const {startRow: start = null} = anchor;
-
-  const q = getPageQuery(pageSize + 1, start, kind);
-
-  const [rows, result] = useQuery(q, options);
-  // not used but needed to follow rules of hooks
-  void useQuery(null, options);
-  void useQuery(null, options);
-
-  const typedRows = rows as unknown as TRow[];
-  const complete = result.type === 'complete';
-  const hasMoreRows = typedRows.length > pageSize;
-  const rowsLength = hasMoreRows ? pageSize : typedRows.length;
-  const rowsEmpty = typedRows.length === 0;
-
   if (kind === 'forward') {
     return {
-      rowAt: useCallback(
-        (index: number) =>
-          index - anchorIndex < rowsLength
-            ? typedRows[index - anchorIndex]
-            : undefined,
-        [anchorIndex, typedRows, rowsLength],
-      ),
-      rowsLength: rowsLength,
-      complete,
-      rowsEmpty: rowsEmpty,
-      atStart: start === null || anchorIndex === 0,
-      atEnd: complete && !hasMoreRows,
+      rowAt,
+      rowsLength: paginatedRowsLength,
+      complete: complete2,
+      rowsEmpty: typedPageRows.length === 0,
+      atStart: pageStart === null || anchorIndex === 0,
+      atEnd: complete2 && !hasMoreRows,
       firstRowIndex: anchorIndex,
-      permalinkNotFound,
+      permalinkNotFound: false,
     };
   }
 
   kind satisfies 'backward';
-  assert(start !== null);
+  assert(pageStart !== null);
 
   return {
-    rowAt: useCallback(
-      (index: number) => {
-        if (index >= anchorIndex) {
-          return undefined;
-        }
-        const i = anchorIndex - index - 1;
-        if (i < 0 || i >= rowsLength) {
-          return undefined;
-        }
-        return typedRows[i];
-      },
-      [anchorIndex, typedRows, rowsLength],
-    ),
-    rowsLength: rowsLength,
-    complete,
-    rowsEmpty: rowsEmpty,
-    atStart: complete && !hasMoreRows,
+    rowAt,
+    rowsLength: paginatedRowsLength,
+    complete: complete2,
+    rowsEmpty: typedPageRows.length === 0,
+    atStart: complete2 && !hasMoreRows,
     atEnd: false,
-    firstRowIndex: anchorIndex - rowsLength,
-    permalinkNotFound,
+    firstRowIndex: anchorIndex - paginatedRowsLength,
+    permalinkNotFound: false,
   };
 }

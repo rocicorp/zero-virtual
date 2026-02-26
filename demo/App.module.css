@@ -6,6 +6,7 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  position: relative;
 }
 
 .header {
@@ -78,6 +79,11 @@
   font-size: 13px;
   color: #444;
   font-variant-numeric: tabular-nums;
+}
+
+.row[aria-selected='true'] {
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 #3b82f6;
 }
 
 .footer {

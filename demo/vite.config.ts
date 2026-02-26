@@ -19,7 +19,7 @@ export default defineConfig(({mode}) => {
         if (!req.url?.startsWith('/api')) {
           return next();
         }
-        getRequestListener(async request => {
+        void getRequestListener(async request => {
           const {app} = await import('./api/index.ts');
           return await app.fetch(request, process.env);
         })(req, res);
