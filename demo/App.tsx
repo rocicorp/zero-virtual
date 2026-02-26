@@ -1,16 +1,13 @@
+import {useQuery} from '@rocicorp/zero/react';
 import {useVirtualizer} from '@tanstack/react-virtual';
 import {useRef} from 'react';
+import {queries} from './queries.ts';
 
-const ITEM_COUNT = 10_000;
 const ITEM_HEIGHT = 48;
 
-const items = Array.from({length: ITEM_COUNT}, (_, i) => ({
-  id: i,
-  label: `Row #${i + 1}`,
-  value: Math.round(Math.random() * 10_000),
-}));
-
 export function App() {
+  const [items] = useQuery(queries.item.all());
+
   const parentRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -18,6 +15,7 @@ export function App() {
     getScrollElement: () => parentRef.current,
     estimateSize: () => ITEM_HEIGHT,
     overscan: 5,
+    getItemKey: index => items[index].id,
   });
 
   const virtualItems = virtualizer.getVirtualItems();
@@ -25,10 +23,6 @@ export function App() {
   return (
     <div style={styles.page}>
       <h1 style={styles.heading}>TanStack Virtual Demo</h1>
-      <p style={styles.subtitle}>
-        Rendering {ITEM_COUNT.toLocaleString()} rows — only the visible ones are in the DOM.
-      </p>
-
       {/* Scrollable viewport */}
       <div ref={parentRef} style={styles.viewport}>
         {/* Total height spacer */}
@@ -51,18 +45,12 @@ export function App() {
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <span style={styles.rowIndex}>{virtualRow.index + 1}</span>
-                <span style={styles.rowLabel}>{item.label}</span>
-                <span style={styles.rowValue}>{item.value.toLocaleString()}</span>
+                <span style={styles.rowLabel}>{item.title}</span>
               </div>
             );
           })}
         </div>
       </div>
-
-      <p style={styles.footer}>
-        DOM rows rendered: <strong>{virtualItems.length}</strong> / {ITEM_COUNT.toLocaleString()}
-      </p>
     </div>
   );
 }
