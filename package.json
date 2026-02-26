@@ -1,5 +1,5 @@
 {
-  "name": "zero-virtual",
+  "name": "@rocicorp/zero-virtual",
   "version": "0.0.1",
   "description": "Infinite Virtual Scroller for Zero",
   "keywords": [
@@ -9,13 +9,25 @@
     "zero"
   ],
   "license": "Apache-2.0",
+  "files": [
+    "dist/",
+    "src/**/*.ts",
+    "!*.tsbuildinfo"
+  ],
   "type": "module",
   "main": "index.js",
+  "exports": {
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js"
+    }
+  },
   "scripts": {
     "dev": "pnpm --filter demo dev",
     "check-types": "tsgo -p src/tsconfig.json && tsgo -p demo/tsconfig.app.json && tsgo -p demo/tsconfig.node.json",
     "lint": "oxlint --type-aware",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "build": "tsgo -p src/tsconfig.json"
   },
   "devDependencies": {
     "@rocicorp/zero": "^0.25.12",
