@@ -1,12 +1,17 @@
 import {useZeroVirtualizer} from '@rocicorp/zero-virtual/react';
-import {useQuery} from '@rocicorp/zero/react';
 import {useCallback, useMemo, useRef, useState} from 'react';
 import styles from './App.module.css';
+import {ItemCount} from './ItemCount.tsx';
 import {queries, type ItemStart, type ListContextParams} from './queries.ts';
 import type {Item} from './schema.ts';
 import {SortControls} from './SortControls.tsx';
 
 const ITEM_HEIGHT = 48;
+
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+});
 
 function getRowKey(item: Item): string {
   return item.id;
@@ -28,7 +33,6 @@ function getSingleQuery(id: string) {
 }
 
 export function App() {
-  const [items] = useQuery(queries.item.all());
   const [sortField, setSortField] = useState<'created' | 'modified'>(
     'modified',
   );
@@ -63,7 +67,7 @@ export function App() {
     [listContextParams],
   );
 
-  const {virtualizer, rowAt} = useZeroVirtualizer({
+  const {virtualizer, rowAt, estimatedTotal, total} = useZeroVirtualizer({
     listContextParams,
     getScrollElement,
     getRowKey,
@@ -78,7 +82,10 @@ export function App() {
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <h1 className={styles.heading}>Zero Virtual Demo</h1>
+        <h1 className={styles.heading}>
+          Zero Virtual Demo
+          <ItemCount total={total} estimatedTotal={estimatedTotal} />
+        </h1>
         <SortControls
           sortField={sortField}
           sortDirection={sortDirection}
@@ -115,6 +122,9 @@ export function App() {
                 style={{transform: `translateY(${virtualRow.start}px)`}}
               >
                 <span className={styles.rowLabel}>{row.title}</span>
+                <span className={styles.rowValue}>
+                  {dateFormatter.format(row[sortField])}
+                </span>
               </div>
             );
           })}
