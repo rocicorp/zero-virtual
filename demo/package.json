@@ -1,0 +1,21 @@
+{
+  "name": "demo",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "zero-virtual": "workspace:*"
+  },
+  "devDependencies": {
+    "@tanstack/react-virtual": "^3.13.19",
+    "@vitejs/plugin-react": "^5.1.4",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "vite": "^7.3.1"
+  }
+}

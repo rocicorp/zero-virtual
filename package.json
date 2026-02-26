@@ -1,0 +1,39 @@
+{
+  "name": "zero-virtual",
+  "version": "0.0.1",
+  "description": "Infinite Virtual Scroller for Zero",
+  "keywords": [
+    "infinite",
+    "scroller",
+    "virtual",
+    "zero"
+  ],
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "pnpm --filter demo dev",
+    "check-types": "tsgo",
+    "lint": "oxlint --type-aware",
+    "format": "oxfmt"
+  },
+  "devDependencies": {
+    "@rocicorp/zero": "^0.25.12",
+    "@tanstack/react-virtual": "^3.13.19",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "oxfmt": "^0.35.0",
+    "oxlint": "^1.50.0",
+    "oxlint-tsgolint": "^0.15.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "typescript-go": "0.0.1-security",
+    "vite": "^7.3.1"
+  },
+  "peerDependencies": {
+    "@tanstack/react-virtual": "^3.13.19",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "packageManager": "pnpm@10.30.2"
+}
