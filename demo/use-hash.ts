@@ -24,11 +24,9 @@ function subscribe(callback: () => void): () => void {
 }
 
 function setHash(newHash: string) {
-  if (newHash) {
-    navigation.navigate(location.pathname + location.search + '#' + newHash);
-  } else {
-    navigation.navigate(location.pathname + location.search);
-  }
+  navigation.navigate(
+    location.pathname + location.search + (newHash ? '#' + newHash : ''),
+  );
 }
 
 /**

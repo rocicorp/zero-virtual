@@ -1,6 +1,12 @@
 import type {Anchor} from './use-rows.ts';
 
-type QueryAnchor<TListContextParams, TStartRow> = {
+/**
+ * Associates an anchor with list query parameters.
+ *
+ * @typeParam TListContextParams - The type of parameters that define the list's query context
+ * @typeParam TStartRow - The type of data needed to anchor pagination
+ */
+export type QueryAnchor<TListContextParams, TStartRow> = {
   readonly anchor: Anchor<TStartRow>;
   /**
    * Associates an anchor with list query params to coordinate state during
