@@ -48,7 +48,13 @@ const TOP_ANCHOR = Object.freeze({
   startRow: undefined,
 }) satisfies Anchor<unknown>;
 
-type TanstackUseVirtualizerOptions<
+/**
+ * Options for the Tanstack React Virtualizer.
+ *
+ * @typeParam TScrollElement - The type of the scrollable container element
+ * @typeParam TItemElement - The type of the individual item elements
+ */
+export type TanstackUseVirtualizerOptions<
   TScrollElement extends Element,
   TItemElement extends Element,
 > = Parameters<typeof useVirtualizer<TScrollElement, TItemElement>>[0];

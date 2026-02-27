@@ -6,3 +6,4 @@ dist/
 *.db-wal
 *.db-wal2
 rocicorp-zero-virtual-*.tgz
+docs
