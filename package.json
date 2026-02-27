@@ -1,6 +1,6 @@
 {
   "name": "@rocicorp/zero-virtual",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Infinite Virtual Scroller for Zero",
   "keywords": [
     "infinite",
