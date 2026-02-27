@@ -6,3 +6,9 @@ export function assert(
     throw new Error(typeof msg === 'string' ? msg : msg());
   }
 }
+
+export function unreachable(): never;
+export function unreachable(v: never): never;
+export function unreachable(_?: never): never {
+  throw new Error('Unreachable');
+}

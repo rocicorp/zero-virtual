@@ -4,9 +4,20 @@ interface NavigationHistoryEntry {
   url: string | null;
 }
 
+interface NavigationNavigateOptions {
+  state?: unknown;
+  info?: unknown;
+  history?: 'auto' | 'push' | 'replace';
+}
+
+interface NavigationResult {
+  committed: Promise<NavigationHistoryEntry>;
+  finished: Promise<NavigationHistoryEntry>;
+}
+
 interface Navigation extends EventTarget {
   readonly currentEntry: NavigationHistoryEntry | null;
-  navigate(url: string): void;
+  navigate(url: string, options?: NavigationNavigateOptions): NavigationResult;
 }
 
 declare const navigation: Navigation;
@@ -24,9 +35,7 @@ function subscribe(callback: () => void): () => void {
 }
 
 function setHash(newHash: string) {
-  navigation.navigate(
-    location.pathname + location.search + (newHash ? '#' + newHash : ''),
-  );
+  navigation.navigate(location.pathname + location.search + '#' + newHash);
 }
 
 /**

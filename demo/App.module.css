@@ -1,12 +1,20 @@
 .page {
   font-family: system-ui, sans-serif;
   margin: 0;
-  padding: 0 16px;
   height: 100vh;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   box-sizing: border-box;
   position: relative;
+}
+
+.list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .header {
@@ -14,6 +22,7 @@
   align-items: center;
   justify-content: space-between;
   margin-block: 8px;
+  white-space: nowrap;
 }
 
 .heading {
@@ -23,12 +32,28 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.headingText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .itemCount {
   font-size: 14px;
   font-weight: 400;
   color: #666;
+  flex-shrink: 999;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .subtitle {
@@ -59,6 +84,7 @@
   top: 0;
   left: 0;
   width: 100%;
+  cursor: pointer;
 }
 
 .rowIndex {
@@ -73,12 +99,19 @@
   flex: 1;
   font-size: 14px;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rowValue {
   font-size: 13px;
   color: #444;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+  width: 160px;
+  text-align: right;
 }
 
 .row[aria-selected='true'] {

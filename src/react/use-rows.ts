@@ -5,7 +5,7 @@ import type {
 } from '@rocicorp/zero';
 import {useQuery, type UseQueryOptions} from '@rocicorp/zero/react';
 import {useCallback} from 'react';
-import {assert} from '../asserts.ts';
+import {assert, unreachable} from '../asserts.ts';
 
 /**
  * Represents a position in the virtualized list used for pagination.
@@ -162,26 +162,35 @@ export function useRows<TRow, TStartRow>({
   // Hook 4: single unified rowAt — same hook, same dep-array size, every render
   const rowAt = useCallback(
     (index: number): TRow | undefined => {
-      if (isPermalink) {
-        if (index === anchorIndex) {
-          return typedSingleRow;
+      switch (kind) {
+        case 'permalink': {
+          if (index === anchorIndex) {
+            return typedSingleRow;
+          }
+          if (index > anchorIndex) {
+            if (typedRows3 === undefined) return undefined;
+            const i = index - anchorIndex - 1;
+            return i < rowsAfterSize ? typedRows3[i] : undefined;
+          }
+          if (typedRows2 === undefined) return undefined;
+          const i = anchorIndex - index - 1;
+          return i < rowsBeforeSize ? typedRows2[i] : undefined;
         }
-        if (index > anchorIndex) {
-          if (typedRows3 === undefined) return undefined;
-          const i = index - anchorIndex - 1;
-          return i < rowsAfterSize ? typedRows3[i] : undefined;
+        case 'forward': {
+          const i = index - anchorIndex;
+          return i >= 0 && i < paginatedRowsLength
+            ? typedPageRows[i]
+            : undefined;
         }
-        if (typedRows2 === undefined) return undefined;
-        const i = anchorIndex - index - 1;
-        return i < rowsBeforeSize ? typedRows2[i] : undefined;
+        case 'backward': {
+          const i = anchorIndex - index - 1;
+          return i >= 0 && i < paginatedRowsLength
+            ? typedPageRows[i]
+            : undefined;
+        }
+        default:
+          unreachable(kind);
       }
-      if (kind === 'forward') {
-        const i = index - anchorIndex;
-        return i >= 0 && i < paginatedRowsLength ? typedPageRows[i] : undefined;
-      }
-      // backward
-      const i = anchorIndex - index - 1;
-      return i >= 0 && i < paginatedRowsLength ? typedPageRows[i] : undefined;
     },
     [
       isPermalink,
@@ -235,7 +244,7 @@ export function useRows<TRow, TStartRow>({
       atStart: pageStart === null || anchorIndex === 0,
       atEnd: complete2 && !hasMoreRows,
       firstRowIndex: anchorIndex,
-      permalinkNotFound: false,
+      permalinkNotFound,
     };
   }
 
@@ -250,6 +259,6 @@ export function useRows<TRow, TStartRow>({
     atStart: complete2 && !hasMoreRows,
     atEnd: false,
     firstRowIndex: anchorIndex - paginatedRowsLength,
-    permalinkNotFound: false,
+    permalinkNotFound,
   };
 }
