@@ -39,26 +39,8 @@ export const queries = defineQueries({
         if (start) {
           q = q.start(start, {inclusive: false});
         }
-        console.log('getPageQuery', {
-          start,
-          dir,
-          sortField,
-          sortDirection,
-          effectiveDirection: effectiveDirection(dir, sortDirection),
-        });
         return q;
       },
     ),
   },
 });
-
-function effectiveDirection(
-  dir: 'forward' | 'backward',
-  sortDirection: 'asc' | 'desc',
-): 'asc' | 'desc' {
-  return dir === 'forward'
-    ? sortDirection
-    : sortDirection === 'asc'
-      ? 'desc'
-      : 'asc';
-}

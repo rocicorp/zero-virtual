@@ -2,7 +2,7 @@ import {useZeroVirtualizer} from '@rocicorp/zero-virtual/react';
 import {useCallback, useMemo, useRef, useState} from 'react';
 import styles from './App.module.css';
 import {ItemCount} from './ItemCount.tsx';
-import {PermalinkNotFoundWarning} from './PermalinkNotFoundWarning.tsx';
+import {ItemDetail} from './ItemDetail.tsx';
 import {queries, type ItemStart, type ListContextParams} from './queries.ts';
 import type {Item} from './schema.ts';
 import {SortControls} from './SortControls.tsx';
@@ -73,77 +73,79 @@ export function App() {
     [listContextParams],
   );
 
-  const {virtualizer, rowAt, estimatedTotal, total, permalinkNotFound} =
-    useZeroVirtualizer({
-      listContextParams,
-      getScrollElement,
-      getRowKey,
-      estimateSize,
-      getPageQuery,
-      getSingleQuery,
-      toStartRow,
-      permalinkID,
-    });
+  const {virtualizer, rowAt, estimatedTotal, total} = useZeroVirtualizer({
+    listContextParams,
+    getScrollElement,
+    getRowKey,
+    estimateSize,
+    getPageQuery,
+    getSingleQuery,
+    toStartRow,
+    permalinkID,
+  });
 
   const virtualItems = virtualizer.getVirtualItems();
 
   return (
     <div className={styles.page}>
-      <PermalinkNotFoundWarning
-        show={permalinkNotFound}
-        permalinkID={permalinkID}
-      />
-      <div className={styles.header}>
-        <h1 className={styles.heading}>
-          Zero Virtual Demo
-          <ItemCount total={total} estimatedTotal={estimatedTotal} />
-        </h1>
-        <SortControls
-          sortField={sortField}
-          sortDirection={sortDirection}
-          onToggleSortField={toggleSortField}
-          onToggleSortDirection={toggleSortDirection}
-        />
-      </div>
-      {/* Scrollable viewport */}
-      <div ref={parentRef} className={styles.viewport}>
-        {/* Total height spacer */}
-        <div style={{height: virtualizer.getTotalSize(), position: 'relative'}}>
-          {virtualItems.map(virtualRow => {
-            const row = rowAt(virtualRow.index);
+      <div className={styles.list}>
+        <div className={styles.header}>
+          <h1 className={styles.heading}>
+            <span className={styles.headingText}>Zero Virtual Demo</span>
+            <ItemCount total={total} estimatedTotal={estimatedTotal} />
+          </h1>
+          <SortControls
+            sortField={sortField}
+            sortDirection={sortDirection}
+            onToggleSortField={toggleSortField}
+            onToggleSortDirection={toggleSortDirection}
+          />
+        </div>
+        {/* Scrollable viewport */}
+        <div ref={parentRef} className={styles.viewport}>
+          {/* Total height spacer */}
+          <div
+            style={{height: virtualizer.getTotalSize(), position: 'relative'}}
+          >
+            {virtualItems.map(virtualRow => {
+              const row = rowAt(virtualRow.index);
 
-            if (row === undefined) {
-              // placeholder
+              if (row === undefined) {
+                // placeholder
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    className={styles.row}
+                    style={{transform: `translateY(${virtualRow.start}px)`}}
+                  >
+                    <span className={styles.rowLabel}>Loading...</span>
+                  </div>
+                );
+              }
+
               return (
                 <div
                   key={virtualRow.key}
                   data-index={virtualRow.index}
                   className={styles.row}
                   style={{transform: `translateY(${virtualRow.start}px)`}}
+                  aria-selected={row.id === permalinkID || undefined}
+                  onClick={() => setHash(row.id === permalinkID ? '' : row.id)}
                 >
-                  <span className={styles.rowLabel}>Loading...</span>
+                  <span className={styles.rowLabel}>{row.title}</span>
+                  <span className={styles.rowValue}>
+                    {dateFormatter.format(row[sortField])}
+                  </span>
                 </div>
               );
-            }
-
-            return (
-              <div
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                className={styles.row}
-                style={{transform: `translateY(${virtualRow.start}px)`}}
-                aria-selected={row.id === permalinkID || undefined}
-                onClick={() => setHash(row.id === permalinkID ? '' : row.id)}
-              >
-                <span className={styles.rowLabel}>{row.title}</span>
-                <span className={styles.rowValue}>
-                  {dateFormatter.format(row[sortField])}
-                </span>
-              </div>
-            );
-          })}
+            })}
+          </div>
         </div>
       </div>
+      {permalinkID && (
+        <ItemDetail id={permalinkID} onClose={() => setHash('')} />
+      )}
     </div>
   );
 }
