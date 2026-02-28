@@ -29,7 +29,10 @@ const NUM_ROWS_FOR_LOADING_SKELETON = 1;
  *
  * @typeParam TStartRow - The type of the start row data used for pagination anchoring
  */
-export type PermalinkHistoryState<TStartRow> = Readonly<{
+export type PermalinkHistoryState<
+  TStartRow,
+  TListContextParams = unknown,
+> = Readonly<{
   /** The anchor point for pagination (includes position, direction, and start row data) */
   anchor: Anchor<TStartRow>;
   /** The scroll position in pixels from the top of the scrollable container */
@@ -40,6 +43,8 @@ export type PermalinkHistoryState<TStartRow> = Readonly<{
   hasReachedStart: boolean;
   /** Whether the virtualizer has reached the end of the list */
   hasReachedEnd: boolean;
+  /** The list context params active when this state was saved (used to invalidate stale state) */
+  listContextParams: TListContextParams;
 }>;
 
 const TOP_ANCHOR = Object.freeze({
@@ -219,6 +224,16 @@ export function useZeroVirtualizer<
   TRow,
   TStartRow
 >): ZeroVirtualizerResult<TScrollElement, TItemElement, TRow> {
+  // Only restore from permalinkState if its listContextParams matches the current context.
+  // This prevents restoring stale scroll positions when filters/sort change.
+  const effectivePermalinkState = useMemo(() => {
+    if (!permalinkState) return null;
+    if (permalinkState.listContextParams !== listContextParams) {
+      return null;
+    }
+    return permalinkState;
+  }, [permalinkState, listContextParams]);
+
   // Initialize paging state from permalinkState directly to avoid Strict Mode double-mount rows
   const [
     {
@@ -234,16 +249,17 @@ export function useZeroVirtualizer<
     pagingReducer<TListContextParams, TStartRow>,
     undefined,
     (): PagingState<TListContextParams, TStartRow> => {
-      const anchor = permalinkState
-        ? permalinkState.anchor
+      const anchor = effectivePermalinkState
+        ? effectivePermalinkState.anchor
         : permalinkID
           ? createPermalinkAnchor(permalinkID)
           : TOP_ANCHOR;
       return {
         estimatedTotal:
-          permalinkState?.estimatedTotal ?? NUM_ROWS_FOR_LOADING_SKELETON,
-        hasReachedStart: permalinkState?.hasReachedStart ?? false,
-        hasReachedEnd: permalinkState?.hasReachedEnd ?? false,
+          effectivePermalinkState?.estimatedTotal ??
+          NUM_ROWS_FOR_LOADING_SKELETON,
+        hasReachedStart: effectivePermalinkState?.hasReachedStart ?? false,
+        hasReachedEnd: effectivePermalinkState?.hasReachedEnd ?? false,
         queryAnchor: {
           anchor,
           listContextParams,
@@ -302,8 +318,8 @@ export function useZeroVirtualizer<
           }
         : getItemKey,
       initialOffset: () => {
-        if (permalinkState?.scrollTop !== undefined) {
-          return permalinkState.scrollTop;
+        if (effectivePermalinkState?.scrollTop !== undefined) {
+          return effectivePermalinkState.scrollTop;
         }
         if (anchor.kind === 'permalink') {
           // TODO: Support dynamic item sizes
@@ -346,6 +362,7 @@ export function useZeroVirtualizer<
         estimatedTotal,
         hasReachedStart,
         hasReachedEnd,
+        listContextParams,
       });
     }, 100);
 
@@ -358,6 +375,7 @@ export function useZeroVirtualizer<
     hasReachedEnd,
     isListContextCurrent,
     onPermalinkStateChange,
+    listContextParams,
   ]);
 
   useEffect(() => {
@@ -437,14 +455,14 @@ export function useZeroVirtualizer<
   // Use layoutEffect to restore scroll position synchronously to avoid visual jumps
   useLayoutEffect(() => {
     if (!isListContextCurrent) {
-      if (permalinkState) {
-        virtualizer.scrollToOffset(permalinkState.scrollTop);
+      if (effectivePermalinkState) {
+        virtualizer.scrollToOffset(effectivePermalinkState.scrollTop);
         dispatch({
           type: 'RESET_STATE',
-          estimatedTotal: permalinkState.estimatedTotal,
-          hasReachedStart: permalinkState.hasReachedStart,
-          hasReachedEnd: permalinkState.hasReachedEnd,
-          anchor: permalinkState.anchor,
+          estimatedTotal: effectivePermalinkState.estimatedTotal,
+          hasReachedStart: effectivePermalinkState.hasReachedStart,
+          hasReachedEnd: effectivePermalinkState.hasReachedEnd,
+          anchor: effectivePermalinkState.anchor,
           listContextParams,
         });
       } else if (permalinkID) {
@@ -475,7 +493,7 @@ export function useZeroVirtualizer<
     }
   }, [
     isListContextCurrent,
-    permalinkState,
+    effectivePermalinkState,
     permalinkID,
     virtualizer,
     listContextParams,
