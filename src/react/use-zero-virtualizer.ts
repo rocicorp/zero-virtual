@@ -226,9 +226,14 @@ export function useZeroVirtualizer<
 >): ZeroVirtualizerResult<TScrollElement, TItemElement, TRow> {
   // Only restore from permalinkState if its listContextParams matches the current context.
   // This prevents restoring stale scroll positions when filters/sort change.
+  // Uses JSON.stringify for comparison since permalinkState may come from serialized
+  // storage (e.g., history.state) where object identity is not preserved.
   const effectivePermalinkState = useMemo(() => {
     if (!permalinkState) return null;
-    if (permalinkState.listContextParams !== listContextParams) {
+    if (
+      JSON.stringify(permalinkState.listContextParams) !==
+      JSON.stringify(listContextParams)
+    ) {
       return null;
     }
     return permalinkState;
