@@ -32,4 +32,6 @@ jobs:
         run: pnpm run build
 
       - name: Publish to npm with trusted publishing
+        env:
+          NODE_AUTH_TOKEN: ''
         run: pnpm publish --access public --provenance --no-git-checks
