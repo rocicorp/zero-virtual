@@ -31,17 +31,17 @@
     "prepack": "rm -rf dist && pnpm run build"
   },
   "devDependencies": {
-    "@rocicorp/zero": "^0.25.12",
-    "@tanstack/react-virtual": "^3.13.19",
-    "@tanstack/virtual-core": "^3.13.19",
+    "@rocicorp/zero": "^0.25.13",
+    "@tanstack/react-virtual": "^3.13.21",
+    "@tanstack/virtual-core": "^3.13.21",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "oxfmt": "^0.35.0",
-    "oxlint": "^1.50.0",
-    "oxlint-tsgolint": "^0.15.0",
+    "@typescript/native-preview": "7.0.0-dev.20260311.1",
+    "oxfmt": "^0.38.0",
+    "oxlint": "^1.53.0",
+    "oxlint-tsgolint": "^0.16.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "typescript-go": "0.0.1-security",
     "vite": "^7.3.1"
   },
   "peerDependencies": {
