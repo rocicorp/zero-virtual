@@ -1,37 +1,9 @@
 import {useSyncExternalStore} from 'react';
-
-interface NavigationHistoryEntry {
-  url: string | null;
-}
-
-interface NavigationNavigateOptions {
-  state?: unknown;
-  info?: unknown;
-  history?: 'auto' | 'push' | 'replace';
-}
-
-interface NavigationResult {
-  committed: Promise<NavigationHistoryEntry>;
-  finished: Promise<NavigationHistoryEntry>;
-}
-
-interface Navigation extends EventTarget {
-  readonly currentEntry: NavigationHistoryEntry | null;
-  navigate(url: string, options?: NavigationNavigateOptions): NavigationResult;
-}
-
-declare const navigation: Navigation;
+import {navigation, subscribeToNavigation} from '../src/react/navigation.ts';
 
 function getHash(): string {
   const url = navigation.currentEntry?.url;
   return url ? new URL(url).hash.slice(1) : location.hash.slice(1);
-}
-
-function subscribe(callback: () => void): () => void {
-  navigation.addEventListener('currententrychange', callback);
-  return () => {
-    navigation.removeEventListener('currententrychange', callback);
-  };
 }
 
 function setHash(newHash: string) {
@@ -45,6 +17,6 @@ function setHash(newHash: string) {
  * @returns `[hash, setHash]` – the current hash value and a function to update it.
  */
 export function useHash(): [string, (hash: string) => void] {
-  const hash = useSyncExternalStore(subscribe, getHash);
+  const hash = useSyncExternalStore(subscribeToNavigation, getHash);
   return [hash, setHash];
 }
