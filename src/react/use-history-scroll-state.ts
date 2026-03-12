@@ -1,10 +1,5 @@
 import {useCallback, useSyncExternalStore} from 'react';
 import type {ScrollHistoryState} from './use-zero-virtualizer.ts';
-import {
-  getNavigationState,
-  setNavigationState,
-  subscribeToNavigation,
-} from './navigation.ts';
 
 const DEFAULT_KEY = 'scrollState';
 
@@ -40,16 +35,29 @@ export function useHistoryScrollState<TStartRow>(
   (state: ScrollHistoryState<TStartRow>) => void,
 ] {
   const state = useSyncExternalStore(
-    subscribeToNavigation,
-    () => getNavigationState<ScrollHistoryState<TStartRow>>(key),
+    subscribeToPopState,
+    () => getSnapshot<TStartRow>(key),
     () => null,
   );
 
   const setState = useCallback(
-    (newState: ScrollHistoryState<TStartRow>) =>
-      setNavigationState(key, newState),
+    (newState: ScrollHistoryState<TStartRow>) => {
+      window.history.replaceState(
+        {...window.history.state, [key]: newState},
+        '',
+      );
+    },
     [key],
   );
 
   return [state, setState];
+}
+
+function subscribeToPopState(onStoreChange: () => void) {
+  window.addEventListener('popstate', onStoreChange);
+  return () => window.removeEventListener('popstate', onStoreChange);
+}
+
+function getSnapshot<TStartRow>(key: string) {
+  return (window.history.state?.[key] as ScrollHistoryState<TStartRow>) ?? null;
 }
