@@ -1,4 +1,7 @@
-import {useZeroVirtualizer} from '@rocicorp/zero-virtual/react';
+import {
+  useZeroVirtualizer,
+  type QueryContext,
+} from '@rocicorp/zero-virtual/react';
 import {useCallback, useMemo, useRef, useState} from 'react';
 import styles from './App.module.css';
 import {ItemCount} from './ItemCount.tsx';
@@ -31,8 +34,8 @@ function estimateSize(): number {
   return ITEM_HEIGHT;
 }
 
-function getSingleQuery(id: string) {
-  return queries.item.getSingleQuery({id});
+function getSingleQuery(id: string, _context: QueryContext) {
+  return {query: queries.item.getSingleQuery({id})};
 }
 
 export function App() {
@@ -62,13 +65,20 @@ export function App() {
   );
 
   const getPageQuery = useCallback(
-    (limit: number, start: ItemStart | null, dir: 'forward' | 'backward') => {
-      return queries.item.getPageQuery({
-        limit,
-        start,
-        dir,
-        listContextParams,
-      });
+    (
+      limit: number,
+      start: ItemStart | null,
+      dir: 'forward' | 'backward',
+      _context: QueryContext,
+    ) => {
+      return {
+        query: queries.item.getPageQuery({
+          limit,
+          start,
+          dir,
+          listContextParams,
+        }),
+      };
     },
     [listContextParams],
   );
