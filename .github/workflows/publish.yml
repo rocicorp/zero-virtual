@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  # pull_request:
 
 permissions:
   contents: read
@@ -27,6 +28,11 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      - name: Print tool versions
+        run: |
+          pnpm --version
+          npm --version
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -34,4 +40,4 @@ jobs:
         run: pnpm run build
 
       - name: Publish to npm with trusted publishing
-        run: pnpm publish --access public --provenance
+        run: pnpm publish --access public --provenance --no-git-checks ${{ github.event_name == 'pull_request' && '--dry-run' || '' }}
