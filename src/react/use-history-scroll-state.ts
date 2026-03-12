@@ -1,38 +1,38 @@
 import {useCallback, useSyncExternalStore} from 'react';
-import type {PermalinkHistoryState} from './use-zero-virtualizer.ts';
+import type {ScrollHistoryState} from './use-zero-virtualizer.ts';
 
-const DEFAULT_KEY = 'permalinkState';
+const DEFAULT_KEY = 'scrollState';
 
 /**
- * Hook that persists virtualizer permalink state in `window.history.state`.
+ * Hook that persists virtualizer scroll state in `window.history.state`.
  *
- * This is the standard way to integrate permalink state with browser
+ * This is the standard way to integrate scroll state with browser
  * navigation. The state is stored under a configurable key in
  * `history.state`, so back/forward navigation restores scroll position
  * and pagination state automatically.
  *
  * @typeParam TStartRow - The type of data needed to anchor pagination
- * @param key - The key to use in `history.state`. Defaults to `"permalinkState"`.
+ * @param key - The key to use in `history.state`. Defaults to `"scrollState"`.
  *   Use different keys if you have multiple virtualizers on the same page.
  * @returns A tuple of `[state, setState]` to pass to `useZeroVirtualizer`'s
- *   `permalinkState` and `onPermalinkStateChange` props.
+ *   `scrollState` and `onScrollStateChange` props.
  *
  * @example
  * ```tsx
- * const [permalinkState, setPermalinkState] = useHistoryPermalinkState<MyStartRow>();
+ * const [scrollState, setScrollState] = useHistoryScrollState<MyStartRow>();
  *
  * const {virtualizer, rowAt} = useZeroVirtualizer({
- *   permalinkState,
- *   onPermalinkStateChange: setPermalinkState,
+ *   scrollState,
+ *   onScrollStateChange: setScrollState,
  *   // ...
  * });
  * ```
  */
-export function useHistoryPermalinkState<TStartRow>(
+export function useHistoryScrollState<TStartRow>(
   key: string = DEFAULT_KEY,
 ): [
-  PermalinkHistoryState<TStartRow> | null,
-  (state: PermalinkHistoryState<TStartRow>) => void,
+  ScrollHistoryState<TStartRow> | null,
+  (state: ScrollHistoryState<TStartRow>) => void,
 ] {
   const state = useSyncExternalStore(
     subscribeToPopState,
@@ -41,7 +41,7 @@ export function useHistoryPermalinkState<TStartRow>(
   );
 
   const setState = useCallback(
-    (newState: PermalinkHistoryState<TStartRow>) => {
+    (newState: ScrollHistoryState<TStartRow>) => {
       window.history.replaceState(
         {...window.history.state, [key]: newState},
         '',
@@ -59,7 +59,5 @@ function subscribeToPopState(onStoreChange: () => void) {
 }
 
 function getSnapshot<TStartRow>(key: string) {
-  return (
-    (window.history.state?.[key] as PermalinkHistoryState<TStartRow>) ?? null
-  );
+  return (window.history.state?.[key] as ScrollHistoryState<TStartRow>) ?? null;
 }
