@@ -6,10 +6,10 @@ export type {
   GetSingleQueryOptions,
   QueryResult,
 } from './use-rows.ts';
-export {useHistoryPermalinkState} from './use-history-permalink-state.ts';
+export {useHistoryScrollState} from './use-history-scroll-state.ts';
 export {
   useZeroVirtualizer,
-  type PermalinkHistoryState,
+  type ScrollHistoryState,
   type UseZeroVirtualizerOptions,
   type ZeroVirtualizerResult,
 } from './use-zero-virtualizer.ts';
