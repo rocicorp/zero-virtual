@@ -1,16 +1,10 @@
 import {getRequestListener} from '@hono/node-server';
 import react from '@vitejs/plugin-react';
 import {defineConfig, loadEnv, type ViteDevServer} from 'vite';
-import {assert} from '../src/asserts.ts';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, process.cwd(), '');
   Object.assign(process.env, env);
-
-  assert(
-    env.VITE_PUBLIC_ZERO_CACHE_URL,
-    'VITE_PUBLIC_ZERO_CACHE_URL environment variable is required',
-  );
 
   const apiPlugin = {
     name: 'api-server',

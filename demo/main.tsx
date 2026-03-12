@@ -6,11 +6,17 @@ import './index.css';
 import {schema} from './schema.ts';
 
 const userID = import.meta.env.VITE_PUBLIC_USER_ID ?? 'anon';
-const cacheURL = import.meta.env.VITE_PUBLIC_ZERO_CACHE_URL;
+const url = new URL(window.location.href);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ZeroProvider schema={schema} userID={userID} cacheURL={cacheURL}>
+    <ZeroProvider
+      schema={schema}
+      userID={userID}
+      cacheURL={`${url.protocol}//${url.hostname}:4848`}
+      queryURL={url.origin + '/api/zero/query'}
+      mutateURL={url.origin + '/api/zero/mutate'}
+    >
       <App />
     </ZeroProvider>
   </StrictMode>,
