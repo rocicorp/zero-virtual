@@ -22,11 +22,10 @@ jobs:
           node-version: '22.14.0'
           registry-url: https://registry.npmjs.org
 
+      - uses: pnpm/action-setup@v4
+
       - name: Enable Corepack
         run: corepack enable
-
-      - name: Upgrade npm for OIDC trusted publishing support
-        run: COREPACK_ENABLE_STRICT=0 npm install --global npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -35,4 +34,4 @@ jobs:
         run: pnpm run build
 
       - name: Publish to npm with trusted publishing
-        run: npm publish --access public --provenance
+        run: pnpm publish --access public --provenance
