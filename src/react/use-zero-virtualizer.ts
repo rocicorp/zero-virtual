@@ -198,8 +198,8 @@ export type ZeroVirtualizerResult<
  *   estimateSize: () => 50,
  *   getScrollElement: () => scrollRef.current,
  *   listContextParams: {projectId: 'abc'},
- *   getPageQuery: (limit, start, dir) => z.query.issues.where(...).limit(limit),
- *   getSingleQuery: (id) => z.query.issues.where('id', id),
+ *   getPageQuery: ({limit, start, dir}) => ({query: z.query.issues.where(...).limit(limit)}),
+ *   getSingleQuery: ({id}) => ({query: z.query.issues.where('id', id)}),
  *   toStartRow: (row) => ({id: row.id, created: row.created}),
  * });
  * ```

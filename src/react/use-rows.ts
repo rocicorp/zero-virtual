@@ -29,11 +29,6 @@ export type Anchor<TStartRow> =
       id: string;
     }>;
 
-/** Context passed to query functions. */
-export type QueryContext = {
-  settled: boolean;
-};
-
 /** Result returned by query functions: a query plus optional per-query options. */
 export type QueryResult<TReturn> = {
   query: GetQueryReturnType<TReturn>;
@@ -41,36 +36,48 @@ export type QueryResult<TReturn> = {
 };
 
 /**
+ * Options passed to {@link GetPageQuery}.
+ *
+ * @typeParam TStartRow - The type of data needed to anchor pagination
+ */
+export type GetPageQueryOptions<TStartRow> = {
+  /** The maximum number of rows to return */
+  limit: number;
+  /** The start row data to anchor the query, or null if starting from the beginning */
+  start: TStartRow | null;
+  /** The direction to paginate ('forward' or 'backward') */
+  dir: 'forward' | 'backward';
+  /** Whether the list has been idle for `settleTime` ms */
+  settled: boolean;
+};
+
+/**
  * Function that returns a query for fetching a page of rows.
  *
  * @typeParam TRow - The type of row data returned from queries
  * @typeParam TStartRow - The type of data needed to anchor pagination
- *
- * @param limit - The maximum number of rows to return
- * @param start - The start row data to anchor the query, or null if starting from the beginning
- * @param dir - The direction to paginate ('forward' or 'backward')
- * @param context - Context with settled state
- * @returns A query and optional per-query options
  */
 export type GetPageQuery<TRow, TStartRow> = (
-  limit: number,
-  start: TStartRow | null,
-  dir: 'forward' | 'backward',
-  context: QueryContext,
+  options: GetPageQueryOptions<TStartRow>,
 ) => QueryResult<TRow>;
+
+/**
+ * Options passed to {@link GetSingleQuery}.
+ */
+export type GetSingleQueryOptions = {
+  /** The ID of the row to fetch */
+  id: string;
+  /** Whether the list has been idle for `settleTime` ms */
+  settled: boolean;
+};
 
 /**
  * Function that returns a query for fetching a single row by ID.
  *
  * @typeParam TRow - The type of row data returned from queries
- *
- * @param id - The ID of the row to fetch
- * @param context - Context with settled state
- * @returns A query and optional per-query options
  */
 export type GetSingleQuery<TRow> = (
-  id: string,
-  context: QueryContext,
+  options: GetSingleQueryOptions,
 ) => QueryResult<TRow | undefined>;
 
 /**
@@ -127,13 +134,13 @@ export function useRows<TRow, TStartRow>({
 
   // --- All hooks called unconditionally, in the same order on every render ---
 
-  const ctx: QueryContext = {settled};
-
   // Hook 1: single-item lookup (permalink only; null otherwise keeps hook count stable)
   const permalinkId = isPermalink
     ? (anchor as Extract<Anchor<TStartRow>, {kind: 'permalink'}>).id
     : '';
-  const singleResult_ = isPermalink ? getSingleQuery(permalinkId, ctx) : null;
+  const singleResult_ = isPermalink
+    ? getSingleQuery({id: permalinkId, settled})
+    : null;
   const [singleRow, singleResult] = useQuery(
     singleResult_?.query ?? null,
     singleResult_?.options,
@@ -152,20 +159,30 @@ export function useRows<TRow, TStartRow>({
   // Hook 2: page-before rows (permalink) OR main page rows (forward/backward)
   const q2Result = isPermalink
     ? !permalinkNotFound && singleStart
-      ? getPageQuery(halfPageSize + 1, singleStart, 'backward', ctx)
+      ? getPageQuery({
+          limit: halfPageSize + 1,
+          start: singleStart,
+          dir: 'backward',
+          settled,
+        })
       : null
-    : getPageQuery(
-        pageSize + 1,
-        pageStart,
-        kind as 'forward' | 'backward',
-        ctx,
-      );
+    : getPageQuery({
+        limit: pageSize + 1,
+        start: pageStart,
+        dir: kind as 'forward' | 'backward',
+        settled,
+      });
   const [rows2, result2] = useQuery(q2Result?.query ?? null, q2Result?.options);
 
   // Hook 3: page-after rows (permalink only; null for forward/backward)
   const q3Result =
     isPermalink && !permalinkNotFound && singleStart
-      ? getPageQuery(halfPageSize, singleStart, 'forward', ctx)
+      ? getPageQuery({
+          limit: halfPageSize,
+          start: singleStart,
+          dir: 'forward',
+          settled,
+        })
       : null;
   const [rows3, result3] = useQuery(q3Result?.query ?? null, q3Result?.options);
 
