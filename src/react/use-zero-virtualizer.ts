@@ -1,7 +1,6 @@
 import {useVirtualizer} from '@tanstack/react-virtual';
 import {defaultKeyExtractor, type Virtualizer} from '@tanstack/virtual-core';
 import {
-  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -261,21 +260,6 @@ export function useZeroVirtualizer<
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
-  const scrollOffsetRef = useRef<number | undefined>(undefined);
-
-  const resetSettleTimer = useCallback(() => {
-    setSettled(false);
-    clearTimeout(settleTimerRef.current);
-    settleTimerRef.current = setTimeout(() => {
-      setSettled(true);
-    }, settleTime);
-  }, [settleTime]);
-
-  // Reset on listContextParams change and on initial mount.
-  useEffect(() => {
-    resetSettleTimer();
-    return () => clearTimeout(settleTimerRef.current);
-  }, [resetSettleTimer, listContextParams]);
 
   // Fire onSettled callback when settled transitions to true.
   // Use a ref so that changes to the callback identity don't re-trigger the effect.
@@ -383,17 +367,17 @@ export function useZeroVirtualizer<
     },
   );
 
-  // Reset settle timer on scroll.
+  // Start settle timer when scrolling stops
   useEffect(() => {
-    const offset = virtualizer.scrollOffset;
-    if (
-      scrollOffsetRef.current !== undefined &&
-      offset !== scrollOffsetRef.current
-    ) {
-      resetSettleTimer();
+    if (!virtualizer.isScrolling) {
+      settleTimerRef.current = setTimeout(() => {
+        setSettled(true);
+      }, settleTime);
     }
-    scrollOffsetRef.current = offset ?? undefined;
-  }, [virtualizer.scrollOffset, resetSettleTimer]);
+    setSettled(false);
+    return () => clearTimeout(settleTimerRef.current);
+    clearTimeout(settleTimerRef.current);
+  }, [virtualizer.isScrolling, settleTime]);
 
   useEffect(() => {
     // Make sure page size is enough to fill the scroll element at least
