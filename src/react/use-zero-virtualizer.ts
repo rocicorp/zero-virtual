@@ -1,4 +1,3 @@
-import type {UseQueryOptions} from '@rocicorp/zero/react';
 import {useVirtualizer} from '@tanstack/react-virtual';
 import {defaultKeyExtractor, type Virtualizer} from '@tanstack/virtual-core';
 import {
@@ -101,8 +100,6 @@ export type UseZeroVirtualizerOptions<
   getPageQuery: GetPageQuery<TRow, TStartRow>;
   /** Function that returns a query for fetching a single row by ID */
   getSingleQuery: GetSingleQuery<TRow>;
-  /** Optional query options */
-  options?: UseQueryOptions | undefined;
   /**
    * Time in ms the list must remain unscrolled before it is considered "settled".
    * When settled, query functions receive `{settled: true}` so they can return
@@ -218,7 +215,6 @@ export function useZeroVirtualizer<
   permalinkID,
   getPageQuery,
   getSingleQuery,
-  options,
   settleTime = 2000,
   toStartRow,
   getRowKey,
@@ -332,7 +328,6 @@ export function useZeroVirtualizer<
   } = useRows({
     pageSize,
     anchor,
-    options,
     settled,
     getPageQuery,
     getSingleQuery,

@@ -98,7 +98,6 @@ export type GetQueryReturnType<TReturn> = QueryOrQueryRequest<
 export function useRows<TRow, TStartRow>({
   pageSize,
   anchor,
-  options,
   settled,
   getPageQuery,
   getSingleQuery,
@@ -106,7 +105,6 @@ export function useRows<TRow, TStartRow>({
 }: {
   pageSize: number;
   anchor: Anchor<TStartRow>;
-  options?: UseQueryOptions | undefined;
   settled: boolean;
 
   getPageQuery: GetPageQuery<TRow, TStartRow>;
@@ -138,7 +136,7 @@ export function useRows<TRow, TStartRow>({
   const singleResult_ = isPermalink ? getSingleQuery(permalinkId, ctx) : null;
   const [singleRow, singleResult] = useQuery(
     singleResult_?.query ?? null,
-    singleResult_?.options ?? options,
+    singleResult_?.options,
   );
   const typedSingleRow = singleRow as TRow | undefined;
   const completeRow = singleResult.type === 'complete';
@@ -162,20 +160,14 @@ export function useRows<TRow, TStartRow>({
         kind as 'forward' | 'backward',
         ctx,
       );
-  const [rows2, result2] = useQuery(
-    q2Result?.query ?? null,
-    q2Result?.options ?? options,
-  );
+  const [rows2, result2] = useQuery(q2Result?.query ?? null, q2Result?.options);
 
   // Hook 3: page-after rows (permalink only; null for forward/backward)
   const q3Result =
     isPermalink && !permalinkNotFound && singleStart
       ? getPageQuery(halfPageSize, singleStart, 'forward', ctx)
       : null;
-  const [rows3, result3] = useQuery(
-    q3Result?.query ?? null,
-    q3Result?.options ?? options,
-  );
+  const [rows3, result3] = useQuery(q3Result?.query ?? null, q3Result?.options);
 
   // Derive values needed in useCallback before calling it
   const typedRows2 = rows2 as unknown as TRow[] | undefined;
