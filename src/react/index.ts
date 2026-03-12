@@ -2,6 +2,8 @@ export type {
   GetPageQuery,
   GetQueryReturnType,
   GetSingleQuery,
+  QueryContext,
+  QueryResult,
 } from './use-rows.ts';
 export {
   useZeroVirtualizer,

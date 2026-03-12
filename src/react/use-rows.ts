@@ -29,6 +29,17 @@ export type Anchor<TStartRow> =
       id: string;
     }>;
 
+/** Context passed to query functions. */
+export type QueryContext = {
+  settled: boolean;
+};
+
+/** Result returned by query functions: a query plus optional per-query options. */
+export type QueryResult<TReturn> = {
+  query: GetQueryReturnType<TReturn>;
+  options?: UseQueryOptions;
+};
+
 /**
  * Function that returns a query for fetching a page of rows.
  *
@@ -38,13 +49,15 @@ export type Anchor<TStartRow> =
  * @param limit - The maximum number of rows to return
  * @param start - The start row data to anchor the query, or null if starting from the beginning
  * @param dir - The direction to paginate ('forward' or 'backward')
- * @returns A Zero query or query request
+ * @param context - Context with settled state
+ * @returns A query and optional per-query options
  */
 export type GetPageQuery<TRow, TStartRow> = (
   limit: number,
   start: TStartRow | null,
   dir: 'forward' | 'backward',
-) => GetQueryReturnType<TRow>;
+  context: QueryContext,
+) => QueryResult<TRow>;
 
 /**
  * Function that returns a query for fetching a single row by ID.
@@ -52,11 +65,13 @@ export type GetPageQuery<TRow, TStartRow> = (
  * @typeParam TRow - The type of row data returned from queries
  *
  * @param id - The ID of the row to fetch
- * @returns A Zero query or query request
+ * @param context - Context with settled state
+ * @returns A query and optional per-query options
  */
 export type GetSingleQuery<TRow> = (
   id: string,
-) => GetQueryReturnType<TRow | undefined>;
+  context: QueryContext,
+) => QueryResult<TRow | undefined>;
 
 /**
  * Return type of a Zero query or query request.
@@ -84,6 +99,7 @@ export function useRows<TRow, TStartRow>({
   pageSize,
   anchor,
   options,
+  settled,
   getPageQuery,
   getSingleQuery,
   toStartRow,
@@ -91,6 +107,7 @@ export function useRows<TRow, TStartRow>({
   pageSize: number;
   anchor: Anchor<TStartRow>;
   options?: UseQueryOptions | undefined;
+  settled: boolean;
 
   getPageQuery: GetPageQuery<TRow, TStartRow>;
   getSingleQuery: GetSingleQuery<TRow>;
@@ -112,13 +129,16 @@ export function useRows<TRow, TStartRow>({
 
   // --- All hooks called unconditionally, in the same order on every render ---
 
+  const ctx: QueryContext = {settled};
+
   // Hook 1: single-item lookup (permalink only; null otherwise keeps hook count stable)
   const permalinkId = isPermalink
     ? (anchor as Extract<Anchor<TStartRow>, {kind: 'permalink'}>).id
     : '';
+  const singleResult_ = isPermalink ? getSingleQuery(permalinkId, ctx) : null;
   const [singleRow, singleResult] = useQuery(
-    isPermalink ? getSingleQuery(permalinkId) : null,
-    options,
+    singleResult_?.query ?? null,
+    singleResult_?.options ?? options,
   );
   const typedSingleRow = singleRow as TRow | undefined;
   const completeRow = singleResult.type === 'complete';
@@ -132,19 +152,30 @@ export function useRows<TRow, TStartRow>({
     : null;
 
   // Hook 2: page-before rows (permalink) OR main page rows (forward/backward)
-  const q2 = isPermalink
+  const q2Result = isPermalink
     ? !permalinkNotFound && singleStart
-      ? getPageQuery(halfPageSize + 1, singleStart, 'backward')
+      ? getPageQuery(halfPageSize + 1, singleStart, 'backward', ctx)
       : null
-    : getPageQuery(pageSize + 1, pageStart, kind as 'forward' | 'backward');
-  const [rows2, result2] = useQuery(q2, options);
+    : getPageQuery(
+        pageSize + 1,
+        pageStart,
+        kind as 'forward' | 'backward',
+        ctx,
+      );
+  const [rows2, result2] = useQuery(
+    q2Result?.query ?? null,
+    q2Result?.options ?? options,
+  );
 
   // Hook 3: page-after rows (permalink only; null for forward/backward)
-  const q3 =
+  const q3Result =
     isPermalink && !permalinkNotFound && singleStart
-      ? getPageQuery(halfPageSize, singleStart, 'forward')
+      ? getPageQuery(halfPageSize, singleStart, 'forward', ctx)
       : null;
-  const [rows3, result3] = useQuery(q3, options);
+  const [rows3, result3] = useQuery(
+    q3Result?.query ?? null,
+    q3Result?.options ?? options,
+  );
 
   // Derive values needed in useCallback before calling it
   const typedRows2 = rows2 as unknown as TRow[] | undefined;

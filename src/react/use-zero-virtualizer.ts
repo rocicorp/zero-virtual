@@ -2,10 +2,12 @@ import type {UseQueryOptions} from '@rocicorp/zero/react';
 import {useVirtualizer} from '@tanstack/react-virtual';
 import {defaultKeyExtractor, type Virtualizer} from '@tanstack/virtual-core';
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type Key,
 } from 'react';
@@ -101,6 +103,12 @@ export type UseZeroVirtualizerOptions<
   getSingleQuery: GetSingleQuery<TRow>;
   /** Optional query options */
   options?: UseQueryOptions | undefined;
+  /**
+   * Time in ms the list must remain unscrolled before it is considered "settled".
+   * When settled, query functions receive `{settled: true}` so they can return
+   * different options (e.g., longer TTL). Defaults to 2000.
+   */
+  settleTime?: number | undefined;
   /** Function to extract the start row data from a full row (for pagination anchoring) */
   toStartRow: (row: TRow) => TStartRow;
 
@@ -157,6 +165,8 @@ export type ZeroVirtualizerResult<
   estimatedTotal: number;
   /** Exact total number of rows, or undefined if not yet known (requires reaching both ends) */
   total: number | undefined;
+  /** Whether the list has been unscrolled for at least `settleTime` ms */
+  settled: boolean;
 };
 
 /**
@@ -209,6 +219,7 @@ export function useZeroVirtualizer<
   getPageQuery,
   getSingleQuery,
   options,
+  settleTime = 2000,
   toStartRow,
   getRowKey,
 
@@ -238,6 +249,28 @@ export function useZeroVirtualizer<
     }
     return permalinkState;
   }, [permalinkState, listContextParams]);
+
+  // Settled state: starts unsettled, flips to true after settleTime ms of
+  // no scroll activity. Resets on scroll or listContextParams change.
+  const [settled, setSettled] = useState(false);
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const scrollOffsetRef = useRef<number | undefined>(undefined);
+
+  const resetSettleTimer = useCallback(() => {
+    setSettled(false);
+    clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(() => {
+      setSettled(true);
+    }, settleTime);
+  }, [settleTime]);
+
+  // Reset on listContextParams change and on initial mount.
+  useEffect(() => {
+    resetSettleTimer();
+    return () => clearTimeout(settleTimerRef.current);
+  }, [resetSettleTimer, listContextParams]);
 
   // Initialize paging state from permalinkState directly to avoid Strict Mode double-mount rows
   const [
@@ -300,6 +333,7 @@ export function useZeroVirtualizer<
     pageSize,
     anchor,
     options,
+    settled,
     getPageQuery,
     getSingleQuery,
     toStartRow,
@@ -335,6 +369,18 @@ export function useZeroVirtualizer<
       horizontal: false,
     },
   );
+
+  // Reset settle timer on scroll.
+  useEffect(() => {
+    const offset = virtualizer.scrollOffset;
+    if (
+      scrollOffsetRef.current !== undefined &&
+      offset !== scrollOffsetRef.current
+    ) {
+      resetSettleTimer();
+    }
+    scrollOffsetRef.current = offset ?? undefined;
+  }, [virtualizer.scrollOffset, resetSettleTimer]);
 
   useEffect(() => {
     // Make sure page size is enough to fill the scroll element at least
@@ -590,6 +636,7 @@ export function useZeroVirtualizer<
     permalinkNotFound,
     estimatedTotal,
     total,
+    settled,
   };
 }
 
