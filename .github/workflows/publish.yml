@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  pull_request:
 
 permissions:
   contents: read
@@ -34,4 +35,5 @@ jobs:
         run: pnpm run build
 
       - name: Publish to npm with trusted publishing
-        run: pnpm publish --access public --provenance --no-git-checks
+        run: pnpm publish --access public --provenance --no-git-checks \
+          ${{ github.event_name == 'pull_request' && '--dry-run' || '' }}
