@@ -73,8 +73,11 @@ export const queries = defineQueries({
 **3. Use `useZeroVirtualizer` in your component**
 
 ```tsx
-import {useZeroVirtualizer} from '@rocicorp/zero-virtual/react';
-import {useCallback, useMemo, useRef} from 'react';
+import {
+  useZeroVirtualizer,
+  useHistoryPermalinkState,
+} from '@rocicorp/zero-virtual/react';
+import {useCallback, useRef} from 'react';
 
 function getRowKey(item: Item) {
   return item.id;
@@ -86,6 +89,8 @@ function toStartRow(item: Item): ItemStart {
 
 export function ItemList() {
   const parentRef = useRef<HTMLDivElement>(null);
+  const [permalinkState, setPermalinkState] =
+    useHistoryPermalinkState<ItemStart>();
 
   const {virtualizer, rowAt} = useZeroVirtualizer({
     listContextParams: {},
@@ -94,10 +99,19 @@ export function ItemList() {
     getRowKey,
     toStartRow,
     getPageQuery: useCallback(
-      (limit, start, dir) => queries.item.getPageQuery({limit, start, dir}),
+      ({limit, start, dir}) => ({
+        query: queries.item.getPageQuery({limit, start, dir}),
+      }),
       [],
     ),
-    getSingleQuery: useCallback(id => queries.item.getSingleQuery({id}), []),
+    getSingleQuery: useCallback(
+      ({id}) => ({
+        query: queries.item.getSingleQuery({id}),
+      }),
+      [],
+    ),
+    permalinkState,
+    onPermalinkStateChange: setPermalinkState,
   });
 
   const virtualItems = virtualizer.getVirtualItems();
@@ -124,6 +138,58 @@ export function ItemList() {
     </div>
   );
 }
+```
+
+### Query functions
+
+Query functions receive an options object and return a `QueryResult`:
+
+```ts
+type GetPageQueryOptions<TStartRow> = {
+  limit: number;
+  start: TStartRow | null;
+  dir: 'forward' | 'backward';
+  settled: boolean;
+};
+
+type GetSingleQueryOptions = {
+  id: string;
+  settled: boolean;
+};
+
+type QueryResult<TReturn> = {query: ...; options?: UseQueryOptions};
+```
+
+The `settled` flag indicates whether the list has been idle for `settleTime` ms (default 2000). Use this to vary query options based on scroll state — for example, using a shorter TTL while scrolling and a longer one when settled:
+
+```ts
+getPageQuery: ({limit, start, dir, settled}) => ({
+  query: queries.item.getPageQuery({limit, start, dir}),
+  options: {ttl: settled ? '5m' : '10s'},
+}),
+```
+
+### Scroll settling
+
+`useZeroVirtualizer` tracks whether the user has stopped scrolling:
+
+- **`settled`** (returned) — `true` when the list has been idle for `settleTime` ms
+- **`settleTime`** (option) — how long to wait before considering the list settled (default 2000ms)
+- **`onSettled`** (option) — callback fired when `settled` transitions to `true`, useful for deferred side effects like syncing search params to the URL
+
+### `useHistoryPermalinkState`
+
+A ready-made hook that persists virtualizer scroll/pagination state in `window.history.state`, so back/forward navigation restores position automatically:
+
+```ts
+const [permalinkState, setPermalinkState] =
+  useHistoryPermalinkState<MyStartRow>();
+```
+
+Pass a custom `key` if you have multiple virtualizers on the same page:
+
+```ts
+const [state, setState] = useHistoryPermalinkState<MyStartRow>('myList');
 ```
 
 For a complete working example including sorting, permalinks, and scroll-position persistence, see [demo/App.tsx](demo/App.tsx).

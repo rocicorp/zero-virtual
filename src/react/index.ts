@@ -1,8 +1,9 @@
 export type {
   GetPageQuery,
+  GetPageQueryOptions,
   GetQueryReturnType,
   GetSingleQuery,
-  QueryContext,
+  GetSingleQueryOptions,
   QueryResult,
 } from './use-rows.ts';
 export {useHistoryPermalinkState} from './use-history-permalink-state.ts';
