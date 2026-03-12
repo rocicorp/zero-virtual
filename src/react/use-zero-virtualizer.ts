@@ -127,6 +127,13 @@ export type UseZeroVirtualizerOptions<
    * Called with the new state approximately 100ms after scroll/pagination changes.
    */
   onPermalinkStateChange?: (state: PermalinkHistoryState<TStartRow>) => void;
+
+  /**
+   * Optional callback invoked when the list becomes settled (no scroll
+   * activity for `settleTime` ms). Useful for syncing deferred state
+   * like URL query parameters.
+   */
+  onSettled?: (() => void) | undefined;
 };
 
 const createPermalinkAnchor = (id: string) =>
@@ -223,6 +230,8 @@ export function useZeroVirtualizer<
   permalinkState,
   onPermalinkStateChange,
 
+  onSettled,
+
   ...restVirtualizerOptions
 }: UseZeroVirtualizerOptions<
   TScrollElement,
@@ -267,6 +276,16 @@ export function useZeroVirtualizer<
     resetSettleTimer();
     return () => clearTimeout(settleTimerRef.current);
   }, [resetSettleTimer, listContextParams]);
+
+  // Fire onSettled callback when settled transitions to true.
+  // Use a ref so that changes to the callback identity don't re-trigger the effect.
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
+  useEffect(() => {
+    if (settled) {
+      onSettledRef.current?.();
+    }
+  }, [settled]);
 
   // Initialize paging state from permalinkState directly to avoid Strict Mode double-mount rows
   const [
