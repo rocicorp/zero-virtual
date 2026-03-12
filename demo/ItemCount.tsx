@@ -1,3 +1,4 @@
+import React from 'react';
 import styles from './App.module.css';
 
 type Props = {
@@ -5,7 +6,7 @@ type Props = {
   estimatedTotal: number;
 };
 
-export function ItemCount({total, estimatedTotal}: Props) {
+export function ItemCount({total, estimatedTotal}: Props): React.ReactNode {
   if (total !== undefined) {
     return <span className={styles.itemCount}>({total})</span>;
   }

@@ -1,3 +1,4 @@
+import React from 'react';
 import styles from './SortControls.module.css';
 
 type Props = {
@@ -12,7 +13,7 @@ export function SortControls({
   sortDirection,
   onToggleSortField,
   onToggleSortDirection,
-}: Props) {
+}: Props): React.ReactNode {
   return (
     <div className={styles.sortControls}>
       <button className={styles.sortField} onClick={onToggleSortField}>

@@ -13,7 +13,7 @@ type Props = {
   onClose: () => void;
 };
 
-export function ItemDetail({id, onClose}: Props) {
+export function ItemDetail({id, onClose}: Props): React.ReactNode {
   const [item, {type}] = useQuery(queries.item.getSingleQuery({id}));
 
   let content: React.ReactNode;

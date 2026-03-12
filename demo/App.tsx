@@ -3,7 +3,7 @@ import {
   type GetPageQueryOptions,
   type GetSingleQueryOptions,
 } from '@rocicorp/zero-virtual/react';
-import {useCallback, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useMemo, useRef, useState} from 'react';
 import styles from './App.module.css';
 import {ItemCount} from './ItemCount.tsx';
 import {ItemDetail} from './ItemDetail.tsx';
@@ -39,7 +39,7 @@ function getSingleQuery({id}: GetSingleQueryOptions) {
   return {query: queries.item.getSingleQuery({id})};
 }
 
-export function App() {
+export function App(): React.ReactNode {
   const [hash, setHash] = useHash();
   const permalinkID = hash || null;
 
