@@ -46,7 +46,8 @@ export function useHistoryScrollState<TStartRow>(
   );
 
   const setState = useCallback(
-    (newState: ScrollHistoryState<TStartRow>) => setNavigationState(key, newState),
+    (newState: ScrollHistoryState<TStartRow>) =>
+      setNavigationState(key, newState),
     [key],
   );
 
