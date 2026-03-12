@@ -28,6 +28,11 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      - name: Print tool versions
+        run: |
+          pnpm --version
+          npm --version
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
