@@ -1,5 +1,6 @@
 import {
   useZeroVirtualizer,
+  useHistoryScrollState,
   type GetPageQueryOptions,
   type GetSingleQueryOptions,
 } from '@rocicorp/zero-virtual/react';
@@ -35,8 +36,15 @@ function estimateSize(): number {
   return ITEM_HEIGHT;
 }
 
-function getSingleQuery({id}: GetSingleQueryOptions) {
-  return {query: queries.item.getSingleQuery({id})};
+function getQueryOptions(settled: boolean) {
+  return {ttl: settled ? '5m' : 'none'} as const;
+}
+
+function getSingleQuery({id, settled}: GetSingleQueryOptions) {
+  return {
+    query: queries.item.getSingleQuery({id}),
+    options: getQueryOptions(settled),
+  } as const;
 }
 
 export function App(): React.ReactNode {
@@ -66,7 +74,7 @@ export function App(): React.ReactNode {
   );
 
   const getPageQuery = useCallback(
-    ({limit, start, dir}: GetPageQueryOptions<ItemStart>) => {
+    ({limit, start, dir, settled}: GetPageQueryOptions<ItemStart>) => {
       return {
         query: queries.item.getPageQuery({
           limit,
@@ -74,10 +82,13 @@ export function App(): React.ReactNode {
           dir,
           listContextParams,
         }),
+        options: getQueryOptions(settled),
       };
     },
     [listContextParams],
   );
+
+  const [scrollState, onScrollStateChange] = useHistoryScrollState<ItemStart>();
 
   const {virtualizer, rowAt, estimatedTotal, total} = useZeroVirtualizer({
     listContextParams,
@@ -88,6 +99,11 @@ export function App(): React.ReactNode {
     getSingleQuery,
     toStartRow,
     permalinkID,
+    scrollState,
+    onScrollStateChange,
+    onSettled: useCallback(() => {
+      console.log('onSettled');
+    }, []),
   });
 
   const virtualItems = virtualizer.getVirtualItems();

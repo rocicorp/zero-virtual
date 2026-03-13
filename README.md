@@ -227,17 +227,3 @@ pnpm dev:zero-cache
 cd demo
 pnpm dev:ui
 ```
-
-## Releasing
-
-Releases are published to npm automatically via CI when a version tag is pushed. To cut a new patch release:
-
-```sh
-git checkout main
-git reset --hard origin/main
-pnpm version patch
-git push
-git push --tags
-```
-
-Use `pnpm version minor` or `pnpm version major` for larger releases.
