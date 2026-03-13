@@ -14,8 +14,6 @@ createRoot(document.getElementById('root')!).render(
       schema={schema}
       userID={userID}
       cacheURL={`${url.protocol}//${url.hostname}:4848`}
-      queryURL={url.origin + '/api/zero/query'}
-      mutateURL={url.origin + '/api/zero/mutate'}
     >
       <App />
     </ZeroProvider>
