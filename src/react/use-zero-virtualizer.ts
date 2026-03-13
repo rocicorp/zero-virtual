@@ -1,6 +1,7 @@
 import {useVirtualizer} from '@tanstack/react-virtual';
 import {defaultKeyExtractor, type Virtualizer} from '@tanstack/virtual-core';
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -257,9 +258,20 @@ export function useZeroVirtualizer<
   // Settled state: starts unsettled, flips to true after settleTime ms of
   // no scroll activity. Resets on scroll or listContextParams change.
   const [settled, setSettled] = useState(false);
-  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
+  const scrollOffsetRef = useRef<number | undefined>(undefined);
+
+  const resetSettleTimer = useCallback(() => {
+    setSettled(false);
+    const timer = setTimeout(() => {
+      setSettled(true);
+    }, settleTime);
+    return () => clearTimeout(timer);
+  }, [settleTime]);
+
+  // Reset on listContextParams change and on initial mount.
+  useEffect(() => {
+    return resetSettleTimer();
+  }, [resetSettleTimer, listContextParams]);
 
   // Fire onSettled callback when settled transitions to true.
   // Use a ref so that changes to the callback identity don't re-trigger the effect.
@@ -367,17 +379,18 @@ export function useZeroVirtualizer<
     },
   );
 
-  // Start settle timer when scrolling stops
+  // Reset settle timer on scroll.
   useEffect(() => {
-    if (!virtualizer.isScrolling) {
-      settleTimerRef.current = setTimeout(() => {
-        setSettled(true);
-      }, settleTime);
+    const offset = virtualizer.scrollOffset;
+    const didScroll =
+      scrollOffsetRef.current !== undefined &&
+      offset !== scrollOffsetRef.current;
+    scrollOffsetRef.current = offset ?? undefined;
+    if (didScroll) {
+      return resetSettleTimer();
     }
-    setSettled(false);
-    return () => clearTimeout(settleTimerRef.current);
-    clearTimeout(settleTimerRef.current);
-  }, [virtualizer.isScrolling, settleTime]);
+    return undefined;
+  }, [virtualizer.scrollOffset, resetSettleTimer]);
 
   useEffect(() => {
     // Make sure page size is enough to fill the scroll element at least
