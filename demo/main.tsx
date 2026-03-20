@@ -14,5 +14,5 @@ createRoot(document.getElementById('root')!).render(
     cacheURL={`${url.protocol}//${url.hostname}:4848`}
   >
     <App />
-  </ZeroProvider>
+  </ZeroProvider>,
 );
