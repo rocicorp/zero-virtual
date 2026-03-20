@@ -4,14 +4,13 @@ There are a number of subtle features that need to be tested manually on each re
 
 ## Settling
 
-`zero-virtual` supports the concept of *settling*. The scroller "settles" when there's been no scrolling OR change in the `listContext` (what list is being displayed) for `settleTime` ms.
+`zero-virtual` supports the concept of _settling_. The scroller "settles" when there's been no scrolling OR change in the `listContext` (what list is being displayed) for `settleTime` ms.
 
 - load the demo app and wait 2s, you should see 'settled' in the console
 - load the demo app and immediately scroll slowly for 5s, then stop. you should see 'settled' 2s after you stop.
 - load the demo app and immediately list queries with `await __zero.inspector.client.queries()`. you should see one query with `ttl:none`.
 - load the demo app and wait 2s. then list queries. you should see one query with `ttl:5m`.
 - load the demo app and wait 2s. slowly scroll down for 5s then stop. wait for 'settled' in console. list queries. you should see only two queries, both `ttl:5m`.
-
 
 ## Scroll State
 

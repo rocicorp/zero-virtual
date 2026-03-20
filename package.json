@@ -49,7 +49,7 @@
     "vite": "^7.3.1"
   },
   "peerDependencies": {
-    "@rocicorp/zero": ">=0.25.0 <0.27.0",
+    "@rocicorp/zero": ">=0.25.0 <2.0.0",
     "@tanstack/react-virtual": "^3.13.0",
     "@tanstack/virtual-core": "^3.13.0",
     "react": "^18.0.0 || ^19.0.0",
