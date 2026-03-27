@@ -147,19 +147,19 @@ export function App(): React.ReactNode {
               }
 
               return (
-                <div
+                <a
                   key={virtualRow.key}
                   data-index={virtualRow.index}
                   className={styles.row}
                   style={{transform: `translateY(${virtualRow.start}px)`}}
                   aria-selected={row.id === permalinkID || undefined}
-                  onClick={() => setHash(row.id === permalinkID ? '' : row.id)}
+                  href={`#${row.id}`}
                 >
                   <span className={styles.rowLabel}>{row.title}</span>
                   <span className={styles.rowValue}>
                     {dateFormatter.format(row[sortField])}
                   </span>
-                </div>
+                </a>
               );
             })}
           </div>

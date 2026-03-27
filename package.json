@@ -36,6 +36,9 @@
     "test": "vitest run",
     "prepack": "rm -rf dist && pnpm run build"
   },
+  "dependencies": {
+    "@types/dom-navigation": "^1.0.7"
+  },
   "devDependencies": {
     "@rocicorp/zero": "^1.0.0",
     "@tanstack/react-virtual": "^3.13.23",
@@ -60,5 +63,5 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
-  "packageManager": "pnpm@10.30.2"
+  "packageManager": "pnpm@10.33.0"
 }

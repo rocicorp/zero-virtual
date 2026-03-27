@@ -85,6 +85,8 @@
   left: 0;
   width: 100%;
   cursor: pointer;
+  color: inherit;
+  text-decoration: none;
 }
 
 .rowIndex {
