@@ -12,6 +12,7 @@ import {
 } from 'react';
 import {assert} from '../asserts.ts';
 import {pagingReducer, type PagingState} from './paging-reducer.ts';
+import {supportsOverflowAnchor} from './use-overflow-anchor-polyfill.ts';
 import {
   useRows,
   type Anchor,
@@ -134,6 +135,33 @@ export type UseZeroVirtualizerOptions<
    * like URL query parameters.
    */
   onSettled?: (() => void) | undefined;
+
+  /**
+   * When `true`, enables native `overflow-anchor: auto` behavior for scroll
+   * position preservation when content is prepended.
+   *
+   * **Requires** that list items are rendered using `position: absolute` with
+   * `top: ${virtualRow.start}px` rather than `transform: translateY(...)`.
+   * CSS transforms don't affect layout, so the browser cannot use them as
+   * anchor targets. Layout-positioned elements are needed.
+   *
+   * Also requires `overflow-anchor: auto` on the scroll container element
+   * (either via CSS or inline style).
+   *
+   * On browsers with native support (Chrome 56+, Firefox 66+, Safari 18.2+),
+   * the browser adjusts the scroll offset at the layout level when content is
+   * inserted above the viewport. This does **not** interrupt momentum
+   * (inertia) scrolling.
+   *
+   * On browsers without native support (Safari < 18.2), a JavaScript polyfill
+   * is used instead: the scroll offset is corrected in a layout effect before
+   * paint. This may interrupt momentum scrolling on iOS.
+   *
+   * When `false` (default), JavaScript scroll adjustment is always used,
+   * which is compatible with both `transform` and `position:absolute` item
+   * rendering but may interrupt momentum scrolling.
+   */
+  scrollAnchor?: boolean | undefined;
 };
 
 const createPermalinkAnchor = (id: string) =>
@@ -231,6 +259,8 @@ export function useZeroVirtualizer<
   onScrollStateChange,
 
   onSettled,
+
+  scrollAnchor = false,
 
   ...restVirtualizerOptions
 }: UseZeroVirtualizerOptions<
@@ -457,19 +487,30 @@ export function useZeroVirtualizer<
     }
   }, [estimatedTotal, complete, newEstimatedTotal]);
 
-  // Apply scroll adjustments synchronously with layout to prevent visual jumps
+  // Apply scroll adjustments synchronously with layout to prevent visual jumps.
+  //
+  // When scrollAnchor:true and the browser supports overflow-anchor natively,
+  // we skip the JS adjustment entirely: the browser already corrected the
+  // scroll offset at the layout level (before JS runs) without interrupting
+  // momentum scrolling. Calling scrollToOffset here would undo that.
+  //
+  // When scrollAnchor:false, or when the browser lacks native support (Safari
+  // < 18.2), we apply the correction ourselves as a polyfill. On iOS this may
+  // interrupt momentum scrolling, but content won't visually jump.
   useLayoutEffect(() => {
     if (pendingScrollAdjustment !== 0) {
-      virtualizer.scrollToOffset(
-        (virtualizer.scrollOffset ?? 0) +
-          pendingScrollAdjustment *
-            // TODO: Support dynamic item sizes
-            estimateSize(0),
-      );
+      if (!(scrollAnchor && supportsOverflowAnchor)) {
+        virtualizer.scrollToOffset(
+          (virtualizer.scrollOffset ?? 0) +
+            pendingScrollAdjustment *
+              // TODO: Support dynamic item sizes
+              estimateSize(0),
+        );
+      }
 
       dispatch({type: 'SCROLL_ADJUSTED'});
     }
-  }, [pendingScrollAdjustment, virtualizer]);
+  }, [pendingScrollAdjustment, virtualizer, scrollAnchor]);
 
   useEffect(() => {
     if (rowsEmpty || !isListContextCurrent) {

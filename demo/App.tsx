@@ -101,6 +101,7 @@ export function App(): React.ReactNode {
     permalinkID,
     scrollState,
     onScrollStateChange,
+    scrollAnchor: true,
     onSettled: useCallback(() => {
       console.log('onSettled');
     }, []),
@@ -139,7 +140,7 @@ export function App(): React.ReactNode {
                     key={virtualRow.key}
                     data-index={virtualRow.index}
                     className={styles.row}
-                    style={{transform: `translateY(${virtualRow.start}px)`}}
+                    style={{top: `${virtualRow.start}px`}}
                   >
                     <span className={styles.rowLabel}>Loading...</span>
                   </div>
@@ -151,7 +152,7 @@ export function App(): React.ReactNode {
                   key={virtualRow.key}
                   data-index={virtualRow.index}
                   className={styles.row}
-                  style={{transform: `translateY(${virtualRow.start}px)`}}
+                  style={{top: `${virtualRow.start}px`}}
                   aria-selected={row.id === permalinkID || undefined}
                   onClick={() => setHash(row.id === permalinkID ? '' : row.id)}
                 >
