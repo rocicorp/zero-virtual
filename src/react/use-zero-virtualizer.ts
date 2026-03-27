@@ -134,13 +134,6 @@ export type UseZeroVirtualizerOptions<
    * like URL query parameters.
    */
   onSettled?: (() => void) | undefined;
-
-  // new temporary API
-
-  // Before we navigate away we will save the current scroll state
-  saveScrollState?:
-    | ((state: ScrollHistoryState<TStartRow>) => void)
-    | undefined;
 };
 
 const createPermalinkAnchor = (id: string) =>
