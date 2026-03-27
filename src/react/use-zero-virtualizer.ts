@@ -430,8 +430,6 @@ export function useZeroVirtualizer<
   }, []);
   // Current accumulated CSS translateY offset on the content wrapper (px, ≤ 0).
   const contentTransformRef = useRef(0);
-  // True while a scroll gesture (including momentum) is in progress.
-  const isScrollingRef = useRef(false);
   // Proxy cache keyed by source element to avoid recreating on every render.
   const scrollProxyRef = useRef<Element | null>(null);
   const scrollProxySourceRef = useRef<Element | null>(null);
@@ -583,7 +581,7 @@ export function useZeroVirtualizer<
       // Native overflow-anchor: the browser already corrected the scroll
       // offset at the layout level before JS ran. Do not call scrollToOffset —
       // it would double-adjust and interrupt momentum.
-    } else if (scrollAnchor && isScrollingRef.current) {
+    } else if (scrollAnchor && virtualizer.isScrolling) {
       // Old Safari polyfill while momentum is active: use the transform trick
       // so the real scrollTop is never touched and momentum continues.
       virtualScrollOffsetRef.current += delta;
@@ -610,44 +608,26 @@ export function useZeroVirtualizer<
     dispatch({type: 'SCROLL_ADJUSTED'});
   }, [pendingScrollAdjustment, virtualizer, scrollAnchor, getScrollElement]);
 
-  // Track whether a scroll gesture is active, and commit the accumulated CSS
-  // transform once it ends. Only active for the old-Safari polyfill path.
+  // Commit the accumulated CSS transform when Tanstack Virtual's own
+  // isScrolling flag goes false (same 150 ms threshold it already uses).
+  // Only active for the old-Safari polyfill path.
   useEffect(() => {
     if (!scrollAnchor || supportsOverflowAnchor) return;
+    if (virtualizer.isScrolling) return;
+    if (contentTransformRef.current === 0) return;
 
+    const delta = -contentTransformRef.current;
+    virtualScrollOffsetRef.current = 0;
+    contentTransformRef.current = 0;
+    if (contentElRef.current) {
+      contentElRef.current.style.transform = '';
+    }
+    // Now safe to adjust the real scrollTop — momentum has ended.
     const scrollEl = getScrollElement();
-    if (!scrollEl) return;
-
-    let stopScrollTimer: ReturnType<typeof setTimeout>;
-
-    const commit = () => {
-      if (contentTransformRef.current === 0) return;
-      const delta = -contentTransformRef.current;
-      virtualScrollOffsetRef.current = 0;
-      contentTransformRef.current = 0;
-      if (contentElRef.current) {
-        contentElRef.current.style.transform = '';
-      }
-      // Now safe to adjust the real scrollTop — momentum has ended.
+    if (scrollEl) {
       (scrollEl as unknown as HTMLElement).scrollTop += delta;
-    };
-
-    const onScroll = () => {
-      isScrollingRef.current = true;
-      clearTimeout(stopScrollTimer);
-      // 150 ms of silence means the momentum has finished.
-      stopScrollTimer = setTimeout(() => {
-        isScrollingRef.current = false;
-        commit();
-      }, 150);
-    };
-
-    scrollEl.addEventListener('scroll', onScroll, {passive: true});
-    return () => {
-      scrollEl.removeEventListener('scroll', onScroll);
-      clearTimeout(stopScrollTimer);
-    };
-  }, [scrollAnchor, getScrollElement]);
+    }
+  }, [scrollAnchor, virtualizer.isScrolling, getScrollElement]);
 
   useEffect(() => {
     if (rowsEmpty || !isListContextCurrent) {
