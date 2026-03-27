@@ -8,6 +8,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type RefCallback,
   type Key,
 } from 'react';
 import {assert} from '../asserts.ts';
@@ -137,8 +138,8 @@ export type UseZeroVirtualizerOptions<
   onSettled?: (() => void) | undefined;
 
   /**
-   * When `true`, enables native `overflow-anchor: auto` behavior for scroll
-   * position preservation when content is prepended.
+   * When `true`, preserves momentum (inertia) scrolling when content is
+   * prepended above the viewport.
    *
    * **Requires** that list items are rendered using `position: absolute` with
    * `top: ${virtualRow.start}px` rather than `transform: translateY(...)`.
@@ -146,20 +147,24 @@ export type UseZeroVirtualizerOptions<
    * anchor targets. Layout-positioned elements are needed.
    *
    * Also requires `overflow-anchor: auto` on the scroll container element
-   * (either via CSS or inline style).
+   * (either via CSS or inline style), and `contentRef` applied to the
+   * content wrapper div returned by this hook.
    *
-   * On browsers with native support (Chrome 56+, Firefox 66+, Safari 18.2+),
-   * the browser adjusts the scroll offset at the layout level when content is
-   * inserted above the viewport. This does **not** interrupt momentum
-   * (inertia) scrolling.
+   * **On browsers with native support** (Chrome 56+, Firefox 66+,
+   * Safari 18.2+): the browser adjusts the scroll offset at the layout level
+   * when content is inserted above the viewport. This does **not** interrupt
+   * momentum scrolling. The JS adjustment is skipped entirely.
    *
-   * On browsers without native support (Safari < 18.2), a JavaScript polyfill
-   * is used instead: the scroll offset is corrected in a layout effect before
-   * paint. This may interrupt momentum scrolling on iOS.
+   * **On browsers without native support** (Safari < 18.2): a CSS transform
+   * is applied to the content wrapper to visually compensate for the prepended
+   * content without touching `scrollTop`, so momentum scrolling continues
+   * uninterrupted. A Proxy on the scroll element lets Tanstack Virtual render
+   * the correct items despite the unchanged `scrollTop`. The transform is
+   * committed (removed + `scrollTop` adjusted) once scrolling stops.
    *
-   * When `false` (default), JavaScript scroll adjustment is always used,
-   * which is compatible with both `transform` and `position:absolute` item
-   * rendering but may interrupt momentum scrolling.
+   * When `false` (default), JavaScript scroll adjustment via `scrollToOffset`
+   * is always used. Compatible with any item positioning, but may interrupt
+   * momentum scrolling on iOS.
    */
   scrollAnchor?: boolean | undefined;
 };
@@ -199,6 +204,15 @@ export type ZeroVirtualizerResult<
   total: number | undefined;
   /** Whether the list has been unscrolled for at least `settleTime` ms */
   settled: boolean;
+  /**
+   * Ref callback to attach to the content wrapper element (the div whose
+   * `height` is set to `virtualizer.getTotalSize()`). Required when
+   * `scrollAnchor: true`. On browsers without native `overflow-anchor`
+   * support (Safari < 18.2), the polyfill uses this element to apply a
+   * temporary CSS `transform` that keeps visible content stable while
+   * momentum scrolling continues.
+   */
+  contentRef: RefCallback<HTMLElement>;
 };
 
 /**
@@ -380,6 +394,75 @@ export function useZeroVirtualizer<
 
   const newEstimatedTotal = firstRowIndex + rowsLength;
 
+  // -------------------------------------------------------------------------
+  // Overflow-anchor polyfill state (used when scrollAnchor:true and the
+  // browser does not natively support overflow-anchor, i.e. old Safari).
+  //
+  // When content is prepended we need to keep visible items in place. The
+  // native solution is CSS overflow-anchor, but old Safari lacks it. Our
+  // polyfill uses two complementary tricks so momentum scrolling is never
+  // interrupted:
+  //
+  //  1. CSS transform on the content wrapper cancels the visual shift of the
+  //     prepended items without touching scrollTop.
+  //  2. A Proxy on the scroll element adds a virtual offset to scrollTop
+  //     reads, so Tanstack Virtual renders the right items even though the
+  //     real scrollTop has not changed.
+  //
+  // A synthetic scroll event dispatched in the layout effect immediately
+  // re-triggers the virtualizer's scroll handler (which reads from the proxy)
+  // so the correct items are rendered before the next paint.
+  //
+  // Once the user stops scrolling (momentum has ended) we "commit" by
+  // removing the transform and adjusting the real scrollTop by the same
+  // amount. This is visually a no-op because the proxy offset is cleared
+  // simultaneously.
+  // -------------------------------------------------------------------------
+
+  // Extra offset added to scrollTop reads through the proxy, so Tanstack
+  // Virtual renders the correct items while the real scrollTop is unchanged.
+  const virtualScrollOffsetRef = useRef(0);
+  // Backing storage for the content wrapper element.
+  const contentElRef = useRef<HTMLElement | null>(null);
+  // Stable callback ref exposed to consumers via the return value.
+  const contentRef = useCallback((el: HTMLElement | null) => {
+    contentElRef.current = el;
+  }, []);
+  // Current accumulated CSS translateY offset on the content wrapper (px, ≤ 0).
+  const contentTransformRef = useRef(0);
+  // True while a scroll gesture (including momentum) is in progress.
+  const isScrollingRef = useRef(false);
+  // Proxy cache keyed by source element to avoid recreating on every render.
+  const scrollProxyRef = useRef<Element | null>(null);
+  const scrollProxySourceRef = useRef<Element | null>(null);
+
+  // Returns a Proxy of the scroll element that adds virtualScrollOffset to
+  // scrollTop reads. Used as getScrollElement for Tanstack Virtual.
+  // When the polyfill is inactive the real element is returned unchanged.
+  const getScrollElementForVirtualizer = useCallback(
+    (): TScrollElement | null => {
+      const el = getScrollElement();
+      if (!el || !scrollAnchor || supportsOverflowAnchor) return el;
+
+      if (el !== scrollProxySourceRef.current) {
+        scrollProxySourceRef.current = el;
+        scrollProxyRef.current = new Proxy(el, {
+          get(target, prop, receiver) {
+            if (prop === 'scrollTop') {
+              return (
+                (target as unknown as HTMLElement).scrollTop + virtualScrollOffsetRef.current
+              );
+            }
+            const value = Reflect.get(target, prop, receiver);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+        });
+      }
+      return scrollProxyRef.current as TScrollElement;
+    },
+    [getScrollElement, scrollAnchor],
+  );
+
   const virtualizer: Virtualizer<TScrollElement, TItemElement> = useVirtualizer(
     {
       ...restVirtualizerOptions,
@@ -388,7 +471,7 @@ export function useZeroVirtualizer<
         (!atEnd ? NUM_ROWS_FOR_LOADING_SKELETON : 0),
       estimateSize,
       overscan,
-      getScrollElement,
+      getScrollElement: getScrollElementForVirtualizer,
       getItemKey: getRowKey
         ? (index: number) => {
             const row = rowAt(index);
@@ -488,29 +571,83 @@ export function useZeroVirtualizer<
   }, [estimatedTotal, complete, newEstimatedTotal]);
 
   // Apply scroll adjustments synchronously with layout to prevent visual jumps.
-  //
-  // When scrollAnchor:true and the browser supports overflow-anchor natively,
-  // we skip the JS adjustment entirely: the browser already corrected the
-  // scroll offset at the layout level (before JS runs) without interrupting
-  // momentum scrolling. Calling scrollToOffset here would undo that.
-  //
-  // When scrollAnchor:false, or when the browser lacks native support (Safari
-  // < 18.2), we apply the correction ourselves as a polyfill. On iOS this may
-  // interrupt momentum scrolling, but content won't visually jump.
   useLayoutEffect(() => {
-    if (pendingScrollAdjustment !== 0) {
-      if (!(scrollAnchor && supportsOverflowAnchor)) {
-        virtualizer.scrollToOffset(
-          (virtualizer.scrollOffset ?? 0) +
-            pendingScrollAdjustment *
-              // TODO: Support dynamic item sizes
-              estimateSize(0),
-        );
-      }
+    if (pendingScrollAdjustment === 0) return;
 
-      dispatch({type: 'SCROLL_ADJUSTED'});
+    const delta =
+      pendingScrollAdjustment *
+      // TODO: Support dynamic item sizes
+      estimateSize(0);
+
+    if (scrollAnchor && supportsOverflowAnchor) {
+      // Native overflow-anchor: the browser already corrected the scroll
+      // offset at the layout level before JS ran. Do not call scrollToOffset —
+      // it would double-adjust and interrupt momentum.
+    } else if (scrollAnchor && isScrollingRef.current) {
+      // Old Safari polyfill while momentum is active: use the transform trick
+      // so the real scrollTop is never touched and momentum continues.
+      virtualScrollOffsetRef.current += delta;
+      contentTransformRef.current -= delta;
+      if (contentElRef.current) {
+        contentElRef.current.style.transform = `translateY(${contentTransformRef.current}px)`;
+      }
+      // Dispatch a synthetic scroll event so Tanstack Virtual's handler fires
+      // and re-reads the proxy scrollTop (= real + virtualScrollOffset).
+      // Because we are inside useLayoutEffect this state update is flushed
+      // synchronously before the next paint, giving the virtualizer the
+      // correct scroll offset with no visible flicker.
+      const scrollEl = getScrollElement();
+      if (scrollEl) {
+        scrollEl.dispatchEvent(new Event('scroll'));
+      }
+    } else {
+      // Default path: adjust scrollTop directly. Also used when the polyfill
+      // is not active (scrollAnchor:false) or the user is not scrolling (no
+      // momentum to preserve).
+      virtualizer.scrollToOffset((virtualizer.scrollOffset ?? 0) + delta);
     }
-  }, [pendingScrollAdjustment, virtualizer, scrollAnchor]);
+
+    dispatch({type: 'SCROLL_ADJUSTED'});
+  }, [pendingScrollAdjustment, virtualizer, scrollAnchor, getScrollElement]);
+
+  // Track whether a scroll gesture is active, and commit the accumulated CSS
+  // transform once it ends. Only active for the old-Safari polyfill path.
+  useEffect(() => {
+    if (!scrollAnchor || supportsOverflowAnchor) return;
+
+    const scrollEl = getScrollElement();
+    if (!scrollEl) return;
+
+    let stopScrollTimer: ReturnType<typeof setTimeout>;
+
+    const commit = () => {
+      if (contentTransformRef.current === 0) return;
+      const delta = -contentTransformRef.current;
+      virtualScrollOffsetRef.current = 0;
+      contentTransformRef.current = 0;
+      if (contentElRef.current) {
+        contentElRef.current.style.transform = '';
+      }
+      // Now safe to adjust the real scrollTop — momentum has ended.
+      (scrollEl as unknown as HTMLElement).scrollTop += delta;
+    };
+
+    const onScroll = () => {
+      isScrollingRef.current = true;
+      clearTimeout(stopScrollTimer);
+      // 150 ms of silence means the momentum has finished.
+      stopScrollTimer = setTimeout(() => {
+        isScrollingRef.current = false;
+        commit();
+      }, 150);
+    };
+
+    scrollEl.addEventListener('scroll', onScroll, {passive: true});
+    return () => {
+      scrollEl.removeEventListener('scroll', onScroll);
+      clearTimeout(stopScrollTimer);
+    };
+  }, [scrollAnchor, getScrollElement]);
 
   useEffect(() => {
     if (rowsEmpty || !isListContextCurrent) {
@@ -557,6 +694,21 @@ export function useZeroVirtualizer<
   // Use layoutEffect to restore scroll position synchronously to avoid visual jumps
   useLayoutEffect(() => {
     if (!isListContextCurrent) {
+      // Commit any pending polyfill transform before resetting the list context
+      // so the transform does not bleed into the new context's scroll position.
+      if (contentTransformRef.current !== 0) {
+        const delta = -contentTransformRef.current;
+        virtualScrollOffsetRef.current = 0;
+        contentTransformRef.current = 0;
+        if (contentElRef.current) {
+          contentElRef.current.style.transform = '';
+        }
+        const scrollEl = getScrollElement();
+        if (scrollEl) {
+          (scrollEl as unknown as HTMLElement).scrollTop += delta;
+        }
+      }
+
       if (effectiveScrollState) {
         virtualizer.scrollToOffset(effectiveScrollState.scrollTop);
         dispatch({
@@ -599,6 +751,7 @@ export function useZeroVirtualizer<
     permalinkID,
     virtualizer,
     listContextParams,
+    getScrollElement,
   ]);
 
   const total = hasReachedStart && hasReachedEnd ? estimatedTotal : undefined;
@@ -688,6 +841,7 @@ export function useZeroVirtualizer<
     estimatedTotal,
     total,
     settled,
+    contentRef,
   };
 }
 

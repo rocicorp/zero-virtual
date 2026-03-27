@@ -90,7 +90,7 @@ export function App(): React.ReactNode {
 
   const [scrollState, onScrollStateChange] = useHistoryScrollState<ItemStart>();
 
-  const {virtualizer, rowAt, estimatedTotal, total} = useZeroVirtualizer({
+  const {virtualizer, rowAt, estimatedTotal, total, contentRef} = useZeroVirtualizer({
     listContextParams,
     getScrollElement,
     getRowKey,
@@ -128,6 +128,7 @@ export function App(): React.ReactNode {
         <div ref={parentRef} className={styles.viewport}>
           {/* Total height spacer */}
           <div
+            ref={contentRef}
             style={{height: virtualizer.getTotalSize(), position: 'relative'}}
           >
             {virtualItems.map(virtualRow => {
