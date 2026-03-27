@@ -354,8 +354,10 @@ export function useZeroVirtualizer<
     {
       ...restVirtualizerOptions,
       count:
-        Math.max(estimatedTotal, newEstimatedTotal) +
-        (!atEnd ? NUM_ROWS_FOR_LOADING_SKELETON : 0),
+        atEnd && atStart && complete
+          ? rowsLength
+          : Math.max(estimatedTotal, newEstimatedTotal) +
+            (!atEnd && rowsLength > 0 ? NUM_ROWS_FOR_LOADING_SKELETON : 0),
       estimateSize,
       overscan,
       getScrollElement,
@@ -452,10 +454,14 @@ export function useZeroVirtualizer<
   }, [atEnd]);
 
   useEffect(() => {
-    if (complete && newEstimatedTotal > estimatedTotal) {
-      dispatch({type: 'UPDATE_ESTIMATED_TOTAL', newTotal: newEstimatedTotal});
+    if (complete) {
+      if (atStart && atEnd) {
+        dispatch({type: 'UPDATE_ESTIMATED_TOTAL', newTotal: rowsLength});
+      } else if (newEstimatedTotal > estimatedTotal) {
+        dispatch({type: 'UPDATE_ESTIMATED_TOTAL', newTotal: newEstimatedTotal});
+      }
     }
-  }, [estimatedTotal, complete, newEstimatedTotal]);
+  }, [estimatedTotal, complete, atStart, atEnd, newEstimatedTotal]);
 
   // Apply scroll adjustments synchronously with layout to prevent visual jumps
   useLayoutEffect(() => {
@@ -560,8 +566,12 @@ export function useZeroVirtualizer<
     listContextParams,
   ]);
 
-  const total = hasReachedStart && hasReachedEnd ? estimatedTotal : undefined;
-
+  const total =
+    atStart && atEnd
+      ? rowsLength
+      : hasReachedStart && hasReachedEnd
+        ? estimatedTotal
+        : undefined;
   const virtualItems = virtualizer.getVirtualItems();
 
   useEffect(() => {
