@@ -1,5 +1,4 @@
 import {getRequestListener} from '@hono/node-server';
-import react from '@vitejs/plugin-react';
 import {defineConfig, loadEnv, type ViteDevServer} from 'vite';
 
 export default defineConfig(({mode}) => {
@@ -22,7 +21,7 @@ export default defineConfig(({mode}) => {
   };
 
   return {
-    plugins: [react(), apiPlugin],
+    plugins: [apiPlugin],
     resolve: {
       alias: {
         '@rocicorp/zero-virtual/react': new URL(
