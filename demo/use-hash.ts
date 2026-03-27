@@ -1,41 +1,40 @@
 import {useSyncExternalStore} from 'react';
 
-interface NavigationHistoryEntry {
-  url: string | null;
-}
-
-interface NavigationNavigateOptions {
-  state?: unknown;
-  info?: unknown;
-  history?: 'auto' | 'push' | 'replace';
-}
-
-interface NavigationResult {
-  committed: Promise<NavigationHistoryEntry>;
-  finished: Promise<NavigationHistoryEntry>;
-}
-
-interface Navigation extends EventTarget {
-  readonly currentEntry: NavigationHistoryEntry | null;
-  navigate(url: string, options?: NavigationNavigateOptions): NavigationResult;
-}
-
-declare const navigation: Navigation;
+// Module-level cache updated immediately when a currententrychange event fires
+// so that getHash() always returns the correct value when React reads it
+// synchronously after the subscriber notifies it.
+let currentHash = location.hash.slice(1);
 
 function getHash(): string {
-  const url = navigation.currentEntry?.url;
-  return url ? new URL(url).hash.slice(1) : location.hash.slice(1);
+  return currentHash;
 }
 
 function subscribe(callback: () => void): () => void {
-  navigation.addEventListener('currententrychange', callback);
-  return () => {
-    navigation.removeEventListener('currententrychange', callback);
+  const onNavigate = (e: NavigateEvent) => {
+    if (e.canIntercept && navigation.currentEntry?.url) {
+      e.intercept();
+      const currentURL = new URL(navigation.currentEntry.url);
+      const destinationURL = new URL(e.destination.url);
+      if (currentURL.pathname === destinationURL.pathname) {
+        const newHash = destinationURL.hash.slice(1);
+        if (newHash !== currentHash) {
+          currentHash = newHash;
+          callback();
+        }
+      }
+    }
   };
+
+  navigation.addEventListener('navigate', onNavigate);
+  return () => navigation.removeEventListener('navigate', onNavigate);
 }
 
-function setHash(newHash: string) {
+function setHash(newHash: string): void {
   navigation.navigate(location.pathname + location.search + '#' + newHash);
+}
+
+function getServerSnapshot(): string {
+  return '';
 }
 
 /**
@@ -45,6 +44,6 @@ function setHash(newHash: string) {
  * @returns `[hash, setHash]` – the current hash value and a function to update it.
  */
 export function useHash(): [string, (hash: string) => void] {
-  const hash = useSyncExternalStore(subscribe, getHash);
+  const hash = useSyncExternalStore(subscribe, getHash, getServerSnapshot);
   return [hash, setHash];
 }

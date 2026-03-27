@@ -1,4 +1,5 @@
-import {useCallback, useSyncExternalStore} from 'react';
+import {useCallback, useMemo} from 'react';
+import {useHistoryState} from './use-history-state.ts';
 import type {ScrollHistoryState} from './use-zero-virtualizer.ts';
 
 const DEFAULT_KEY = 'scrollState';
@@ -32,32 +33,26 @@ export function useHistoryScrollState<TStartRow>(
   key: string = DEFAULT_KEY,
 ): [
   ScrollHistoryState<TStartRow> | null,
-  (state: ScrollHistoryState<TStartRow>) => void,
+  (state: ScrollHistoryState<TStartRow> | null) => void,
 ] {
-  const state = useSyncExternalStore(
-    subscribeToPopState,
-    () => getSnapshot<TStartRow>(key),
-    () => null,
-  );
+  const [state, setState] = useHistoryState();
 
-  const setState = useCallback(
-    (newState: ScrollHistoryState<TStartRow>) => {
-      window.history.replaceState(
-        {...window.history.state, [key]: newState},
-        '',
-      );
+  const scrollState: ScrollHistoryState<TStartRow> | null = useMemo(() => {
+    if (!state) return null;
+    return (state as Record<string, unknown>)[
+      key
+    ] as ScrollHistoryState<TStartRow> | null;
+  }, [state && JSON.stringify((state as Record<string, unknown>)[key])]);
+
+  const setScrollState = useCallback(
+    (newState: ScrollHistoryState<TStartRow> | null) => {
+      setState({
+        ...(state ?? {}),
+        [key]: newState,
+      });
     },
-    [key],
+    [state, key],
   );
 
-  return [state, setState];
-}
-
-function subscribeToPopState(onStoreChange: () => void) {
-  window.addEventListener('popstate', onStoreChange);
-  return () => window.removeEventListener('popstate', onStoreChange);
-}
-
-function getSnapshot<TStartRow>(key: string) {
-  return (window.history.state?.[key] as ScrollHistoryState<TStartRow>) ?? null;
+  return [scrollState, setScrollState];
 }

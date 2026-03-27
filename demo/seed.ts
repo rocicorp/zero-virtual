@@ -17,8 +17,10 @@ const items = Array.from({length: ITEM_COUNT}, (_, i) => {
     created + faker.number.int({min: 0, max: 7 * 24 * 60 * 60 * 1000});
   return {
     id: faker.string.nanoid(10),
-    title: faker.lorem.words({min: 2, max: 6}),
-    description: faker.lorem.sentences({min: 1, max: 4}),
+    title: faker.word.words({count: {min: 2, max: 6}}),
+    description: Array.from({length: faker.number.int({min: 1, max: 4})}, () =>
+      faker.hacker.phrase(),
+    ).join(' '),
     created,
     modified: Math.min(modified, now - i), // ensure unique ordering
   };

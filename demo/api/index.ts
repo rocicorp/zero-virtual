@@ -24,6 +24,8 @@ const pool = new Pool({
 const dbProvider = zeroNodePg(schema, pool);
 
 app.post('/zero/query', async c => {
+  console.log('handling query', {url: c.req.url, method: c.req.method});
+
   const result = await handleQueryRequest(
     (name, args) => mustGetQuery(queries, name).fn({args, ctx: {}}),
     schema,

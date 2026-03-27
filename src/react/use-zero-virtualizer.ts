@@ -134,6 +134,13 @@ export type UseZeroVirtualizerOptions<
    * like URL query parameters.
    */
   onSettled?: (() => void) | undefined;
+
+  // new temporary API
+
+  // Before we navigate away we will save the current scroll state
+  saveScrollState?:
+    | ((state: ScrollHistoryState<TStartRow>) => void)
+    | undefined;
 };
 
 const createPermalinkAnchor = (id: string) =>
@@ -519,9 +526,19 @@ export function useZeroVirtualizer<
     // virtualizer - omitted to avoid infinite render loops from scroll events
   ]);
 
-  // Use layoutEffect to restore scroll position synchronously to avoid visual jumps
+  // Track the last applied scroll state so we can detect when it changes due
+  // to a real navigation (back/forward/push) as opposed to a re-render.
+  const appliedScrollStateRef = useRef(effectiveScrollState);
+
+  // Use layoutEffect to restore scroll position synchronously to avoid visual jumps.
+  // Triggers when listContextParams changes OR when effectiveScrollState
+  // changes (e.g. browser back/forward within the same list context).
   useLayoutEffect(() => {
-    if (!isListContextCurrent) {
+    const scrollStateChanged =
+      effectiveScrollState !== appliedScrollStateRef.current;
+    appliedScrollStateRef.current = effectiveScrollState;
+
+    if (!isListContextCurrent || scrollStateChanged) {
       if (effectiveScrollState) {
         virtualizer.scrollToOffset(effectiveScrollState.scrollTop);
         dispatch({
@@ -533,19 +550,36 @@ export function useZeroVirtualizer<
           listContextParams,
         });
       } else if (permalinkID) {
-        virtualizer.scrollToOffset(
-          NUM_ROWS_FOR_LOADING_SKELETON *
-            // TODO: Support dynamic item sizes
-            estimateSize(0),
-        );
-        dispatch({
-          type: 'RESET_STATE',
-          estimatedTotal: NUM_ROWS_FOR_LOADING_SKELETON,
-          hasReachedStart: false,
-          hasReachedEnd: false,
-          anchor: createPermalinkAnchor(permalinkID),
-          listContextParams,
-        });
+        // Check if the permalink item is already in the current virtual items.
+        // If so, scroll directly to it instead of resetting to the loading skeleton.
+        const permalinkVirtualItem = getRowKey
+          ? virtualizer.getVirtualItems().find(item => {
+              const row = rowAt(item.index);
+              return row !== undefined && getRowKey(row) === permalinkID;
+            })
+          : undefined;
+
+        if (permalinkVirtualItem) {
+          virtualizer.scrollToIndex(permalinkVirtualItem.index, {
+            align: 'auto',
+          });
+        } else {
+          // TODO(arv): Figure out if we should scroll to top or bottom.
+
+          virtualizer.scrollToOffset(
+            NUM_ROWS_FOR_LOADING_SKELETON *
+              // TODO: Support dynamic item sizes
+              estimateSize(0),
+          );
+          dispatch({
+            type: 'RESET_STATE',
+            estimatedTotal: NUM_ROWS_FOR_LOADING_SKELETON,
+            hasReachedStart: false,
+            hasReachedEnd: false,
+            anchor: createPermalinkAnchor(permalinkID),
+            listContextParams,
+          });
+        }
       } else {
         virtualizer.scrollToOffset(0);
         dispatch({
