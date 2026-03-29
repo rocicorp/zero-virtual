@@ -1,9 +1,9 @@
-import {spawn} from 'child_process';
-import {existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'fs';
-import * as net from 'net';
-import {join} from 'path';
+import {spawn} from 'node:child_process';
+import {existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import * as net from 'node:net';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import pg from 'pg';
-import {fileURLToPath} from 'url';
 import {seedTestDb} from './seed-test.ts';
 
 const DEMO_DIR = fileURLToPath(new URL('..', import.meta.url));

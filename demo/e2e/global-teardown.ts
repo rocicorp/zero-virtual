@@ -1,4 +1,4 @@
-import {existsSync, readFileSync, rmSync} from 'fs';
+import {existsSync, readFileSync, rmSync} from 'node:fs';
 import {PID_FILE} from './global-setup.ts';
 
 export default async function globalTeardown(): Promise<void> {
