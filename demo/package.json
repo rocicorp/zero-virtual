@@ -10,7 +10,7 @@
     "dev:db-down": "docker compose --env-file .env -f ./docker/docker-compose.yml down",
     "dev:clean": "source .env && docker volume rm -f docker_zstart_pgdata && rm -rf \"${ZERO_REPLICA_FILE}\"*",
     "seed": "node --env-file=.env seed.ts",
-    "test:e2e": "node --env-file=.env ./node_modules/.bin/playwright test"
+    "test:e2e": "node --env-file=.env ./node_modules/@playwright/test/cli.js test"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",
