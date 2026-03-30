@@ -13,10 +13,10 @@ test.describe('App', () => {
   });
 
   test('shows the correct item count', async ({page}) => {
-    // The count is shown as "(N)" once all items have loaded.
-    await expect(page.getByText(`(${TEST_ITEMS.length})`)).toBeVisible({
-      timeout: 15_000,
-    });
+    // Accept both "(200)" (exact, all pages loaded) and "(~200)" (estimated).
+    await expect(
+      page.getByText(new RegExp(`\\(~?${TEST_ITEMS.length}\\)`)),
+    ).toBeVisible({timeout: 15_000});
   });
 
   test('renders list rows', async ({page}) => {

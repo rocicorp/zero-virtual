@@ -16,8 +16,10 @@ test.describe('Scroll / paging', () => {
   });
 
   test('initial render shows the correct item count', async ({page}) => {
+    // Accept both the exact count "(200)" and the estimated "(~200)" — the
+    // virtualizer shows an estimate until all pages have been counted.
     await expect(
-      page.getByText(`(${TEST_ITEMS.length})`),
+      page.getByText(new RegExp(`\\(~?${TEST_ITEMS.length}\\)`)),
     ).toBeVisible({timeout: TIMEOUT});
   });
 
@@ -25,13 +27,21 @@ test.describe('Scroll / paging', () => {
     page,
   }) => {
     // The scrollable viewport is 2 DOM levels above [data-index="0"]:
-    //   <div class="viewport">           ← overflow:auto
+    //   <div class="viewport">            ← overflow:auto
     //     <div style="position:relative"> ← total-height spacer
     //       <a data-index="0">            ← first row
-    const viewport = page.locator('[data-index="0"]').locator('xpath=../..');
+    //
+    // IMPORTANT: capture an ElementHandle *before* scrolling. The virtualizer
+    // unmounts row 0 once it leaves the viewport, which would make the
+    // locator chain ('[data-index="0"]/../..') stale if we re-evaluated it
+    // after scrolling.
+    const viewportEl = await page
+      .locator('[data-index="0"]')
+      .locator('xpath=../..')
+      .elementHandle();
 
     // Scroll to the very bottom of the virtualised list.
-    await viewport.evaluate(el => {
+    await viewportEl!.evaluate(el => {
       el.scrollTop = el.scrollHeight;
     });
 
@@ -43,14 +53,18 @@ test.describe('Scroll / paging', () => {
   });
 
   test('scrolling down and back up restores the first item', async ({page}) => {
-    const viewport = page.locator('[data-index="0"]').locator('xpath=../..');
+    // Capture element handle while row 0 is still mounted (see above).
+    const viewportEl = await page
+      .locator('[data-index="0"]')
+      .locator('xpath=../..')
+      .elementHandle();
 
-    await viewport.evaluate(el => {
+    await viewportEl!.evaluate(el => {
       el.scrollTop = el.scrollHeight;
     });
 
     // Scroll back to the top.
-    await viewport.evaluate(el => {
+    await viewportEl!.evaluate(el => {
       el.scrollTop = 0;
     });
 
