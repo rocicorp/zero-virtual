@@ -3,5 +3,6 @@
   "compilerOptions": {
     "jsx": "react-jsx"
   },
-  "include": ["./*.tsx", "./*.ts"]
+  "include": ["./*.tsx", "./*.ts"],
+  "exclude": ["./playwright.config.ts"]
 }

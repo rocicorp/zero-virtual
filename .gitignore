@@ -7,3 +7,4 @@ dist/
 *.db-wal2
 rocicorp-zero-virtual-*.tgz
 docs
+.last-run.json
