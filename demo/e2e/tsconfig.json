@@ -1,7 +1,9 @@
 {
   "extends": "../../tsconfig-shared.json",
   "compilerOptions": {
-    "types": ["@playwright/test"]
+    "types": ["@playwright/test"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
   },
   "include": ["./**/*.ts", "../playwright.config.ts"]
 }

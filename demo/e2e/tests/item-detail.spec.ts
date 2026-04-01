@@ -10,13 +10,13 @@ test.describe('Item detail panel', () => {
   test.beforeEach(async ({page}) => {
     await page.goto('/');
     // Wait for the list to have real rows loaded.
-    await expect(page.locator('a[data-index="0"]')).toBeVisible({
+    await expect(page.locator(`a[href="#${ALPHA.id}"]`)).toBeVisible({
       timeout: TIMEOUT,
     });
   });
 
   test('clicking a row opens the detail panel', async ({page}) => {
-    await page.locator('a[data-index="0"]').click();
+    await page.locator(`a[href="#${ALPHA.id}"]`).click();
 
     // The panel should appear and show the item title in an <h2>.
     await expect(page.getByRole('heading', {level: 2})).toContainText(
@@ -26,7 +26,7 @@ test.describe('Item detail panel', () => {
   });
 
   test('detail panel shows the item description', async ({page}) => {
-    await page.locator('a[data-index="0"]').click();
+    await page.locator(`a[href="#${ALPHA.id}"]`).click();
 
     await expect(page.getByText(ALPHA.description)).toBeVisible({
       timeout: TIMEOUT,
@@ -34,19 +34,19 @@ test.describe('Item detail panel', () => {
   });
 
   test('detail panel shows the item ID', async ({page}) => {
-    await page.locator('a[data-index="0"]').click();
+    await page.locator(`a[href="#${ALPHA.id}"]`).click();
 
     await expect(page.getByText(ALPHA.id)).toBeVisible({timeout: TIMEOUT});
   });
 
   test('clicking a row sets the URL hash to the item ID', async ({page}) => {
-    await page.locator('a[data-index="0"]').click();
+    await page.locator(`a[href="#${ALPHA.id}"]`).click();
 
     await expect(page).toHaveURL(`/#${ALPHA.id}`, {timeout: TIMEOUT});
   });
 
   test('the selected row gets aria-selected="true"', async ({page}) => {
-    await page.locator('a[data-index="0"]').click();
+    await page.locator(`a[href="#${ALPHA.id}"]`).click();
 
     // After clicking, the row should carry aria-selected.
     await expect(page.locator(`a[href="#${ALPHA.id}"]`)).toHaveAttribute(
@@ -57,7 +57,7 @@ test.describe('Item detail panel', () => {
   });
 
   test('close button hides the detail panel', async ({page}) => {
-    await page.locator('a[data-index="0"]').click();
+    await page.locator(`a[href="#${ALPHA.id}"]`).click();
 
     // Confirm panel opened.
     await expect(page.getByRole('heading', {level: 2})).toBeVisible({
@@ -72,7 +72,7 @@ test.describe('Item detail panel', () => {
   });
 
   test('closing the panel clears the URL hash', async ({page}) => {
-    await page.locator('a[data-index="0"]').click();
+    await page.locator(`a[href="#${ALPHA.id}"]`).click();
     await expect(page).toHaveURL(`/#${ALPHA.id}`, {timeout: TIMEOUT});
 
     await page.getByRole('button', {name: 'Close'}).click();
@@ -88,6 +88,25 @@ test.describe('Item detail panel', () => {
 
     await expect(page.getByRole('heading', {level: 2})).toContainText(
       'Alpha Item',
+      {timeout: TIMEOUT},
+    );
+  });
+
+  test('permalink to an item far down the list shows loading then resolves', async ({
+    page,
+  }) => {
+    // Test Item 150 is near index 149 (second page) and is not loaded
+    // initially. The detail panel should show "Loading…" while the data
+    // is fetched, then resolve to the item.
+    const farItem = TEST_ITEMS.find(i => i.title === 'Test Item 150')!;
+    await page.goto(`/#${farItem.id}`);
+
+    // Initially the detail panel shows a loading indicator.
+    await expect(page.getByText('Loading…')).toBeVisible({timeout: TIMEOUT});
+
+    // Eventually the item title appears in the panel heading.
+    await expect(page.getByRole('heading', {level: 2})).toContainText(
+      'Test Item 150',
       {timeout: TIMEOUT},
     );
   });

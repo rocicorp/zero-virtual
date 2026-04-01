@@ -124,6 +124,12 @@ export async function seedTestDb(connectionString: string): Promise<void> {
     await client.query('BEGIN');
 
     // Drop stale logical replication slots so zero-cache can start fresh.
+    // Terminate any backends using the slots first, then drop them.
+    await client.query(`
+      SELECT pg_terminate_backend(active_pid)
+      FROM pg_replication_slots
+      WHERE slot_type = 'logical' AND active
+    `);
     await client.query(`
       SELECT pg_drop_replication_slot(slot_name)
       FROM pg_replication_slots

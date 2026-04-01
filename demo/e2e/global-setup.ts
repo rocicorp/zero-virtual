@@ -1,5 +1,11 @@
 import {spawn} from 'node:child_process';
-import {existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import * as net from 'node:net';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -33,12 +39,13 @@ export default async function globalSetup(): Promise<void> {
   }
   mkdirSync(REPLICA_DIR, {recursive: true});
 
+  const port = Number(process.env['VITE_PUBLIC_CACHE_PORT'] ?? 5858);
   console.log('[setup] Starting zero-cache...');
-  const zeroCacheProc = spawnZeroCache();
+  const zeroCacheProc = spawnZeroCache(port);
   writeFileSync(PID_FILE, String(zeroCacheProc.pid));
 
-  console.log('[setup] Waiting for zero-cache on port 4848...');
-  await waitForPort(4848, 60_000);
+  console.log(`[setup] Waiting for zero-cache on port ${port}...`);
+  await waitForPort(port, 60_000);
   console.log('[setup] Ready.\n');
 }
 
@@ -117,17 +124,21 @@ function waitForPort(port: number, timeoutMs = 30_000): Promise<void> {
   });
 }
 
-function spawnZeroCache() {
+function spawnZeroCache(port: number) {
+  const binDir = join(DEMO_DIR, 'node_modules', '.bin');
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    // Ensure node_modules/.bin is on PATH so zero-cache-dev can find zero-cache.
+    PATH: `${binDir}:${process.env['PATH'] ?? ''}`,
     ZERO_REPLICA_FILE: REPLICA_FILE,
+    ZERO_LOG_LEVEL: 'error',
   };
 
   // Prefer the local bin so we use the exact version pinned in demo/package.json.
   const bin = join(DEMO_DIR, 'node_modules', '.bin', 'zero-cache-dev');
   const command = existsSync(bin) ? bin : 'zero-cache-dev';
 
-  const proc = spawn(command, [], {
+  const proc = spawn(command, ['--port', String(port)], {
     cwd: DEMO_DIR,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],

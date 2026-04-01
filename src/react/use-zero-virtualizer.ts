@@ -258,6 +258,11 @@ export function useZeroVirtualizer<
   // Settled state: starts unsettled, flips to true after settleTime ms of
   // no scroll activity. Resets on scroll or listContextParams change.
   const [settled, setSettled] = useState(false);
+  // Tracks that a programmatic scroll adjustment (scrollToOffset) has been
+  // issued but the browser scroll event has not yet been processed by the
+  // virtualizer. While true, virtual items and scrollOffset are stale and
+  // must not be used for paging decisions.
+  const awaitingScrollSettleRef = useRef(false);
   const scrollOffsetRef = useRef<number | undefined>(undefined);
 
   const resetSettleTimer = useCallback(() => {
@@ -389,10 +394,28 @@ export function useZeroVirtualizer<
       offset !== scrollOffsetRef.current;
     scrollOffsetRef.current = offset ?? undefined;
     if (didScroll) {
+      awaitingScrollSettleRef.current = false;
       return resetSettleTimer();
     }
     return undefined;
   }, [virtualizer.scrollOffset, resetSettleTimer]);
+
+  // Wrappers that mark a programmatic scroll as pending so paging effects
+  // skip stale virtual items until the browser fires the real scroll event.
+  const scrollToOffset = (targetOffset: number) => {
+    const currentOffset = virtualizer.scrollOffset ?? 0;
+    virtualizer.scrollToOffset(targetOffset);
+    if (targetOffset !== currentOffset) {
+      awaitingScrollSettleRef.current = true;
+    }
+  };
+
+  const scrollToIndex = (
+    ...args: Parameters<typeof virtualizer.scrollToIndex>
+  ) => {
+    virtualizer.scrollToIndex(...args);
+    awaitingScrollSettleRef.current = true;
+  };
 
   useEffect(() => {
     // Make sure page size is enough to fill the scroll element at least
@@ -466,12 +489,12 @@ export function useZeroVirtualizer<
   // Apply scroll adjustments synchronously with layout to prevent visual jumps
   useLayoutEffect(() => {
     if (pendingScrollAdjustment !== 0) {
-      virtualizer.scrollToOffset(
+      const targetOffset =
         (virtualizer.scrollOffset ?? 0) +
-          pendingScrollAdjustment *
-            // TODO: Support dynamic item sizes
-            estimateSize(0),
-      );
+        pendingScrollAdjustment *
+          // TODO: Support dynamic item sizes
+          estimateSize(0);
+      scrollToOffset(targetOffset);
 
       dispatch({type: 'SCROLL_ADJUSTED'});
     }
@@ -533,7 +556,7 @@ export function useZeroVirtualizer<
 
     if (!isListContextCurrent || scrollStateChanged) {
       if (effectiveScrollState) {
-        virtualizer.scrollToOffset(effectiveScrollState.scrollTop);
+        scrollToOffset(effectiveScrollState.scrollTop);
         dispatch({
           type: 'RESET_STATE',
           estimatedTotal: effectiveScrollState.estimatedTotal,
@@ -553,17 +576,17 @@ export function useZeroVirtualizer<
           : undefined;
 
         if (permalinkVirtualItem) {
-          virtualizer.scrollToIndex(permalinkVirtualItem.index, {
+          scrollToIndex(permalinkVirtualItem.index, {
             align: 'auto',
           });
         } else {
           // TODO(arv): Figure out if we should scroll to top or bottom.
 
-          virtualizer.scrollToOffset(
+          const targetOffset =
             NUM_ROWS_FOR_LOADING_SKELETON *
-              // TODO: Support dynamic item sizes
-              estimateSize(0),
-          );
+            // TODO: Support dynamic item sizes
+            estimateSize(0);
+          scrollToOffset(targetOffset);
           dispatch({
             type: 'RESET_STATE',
             estimatedTotal: NUM_ROWS_FOR_LOADING_SKELETON,
@@ -574,7 +597,7 @@ export function useZeroVirtualizer<
           });
         }
       } else {
-        virtualizer.scrollToOffset(0);
+        scrollToOffset(0);
         dispatch({
           type: 'RESET_STATE',
           estimatedTotal: 0,
@@ -609,6 +632,15 @@ export function useZeroVirtualizer<
       pagingPhase !== 'idle' ||
       pendingScrollAdjustment !== 0
     ) {
+      return;
+    }
+
+    // After a scroll adjustment (scrollToOffset), the browser fires the scroll
+    // event asynchronously. Until then the virtualizer's virtual items and
+    // scrollOffset are stale — they still reflect the *previous* scroll
+    // position. Acting on stale items would cause spurious anchor updates
+    // and cascading shifts.
+    if (awaitingScrollSettleRef.current) {
       return;
     }
 
