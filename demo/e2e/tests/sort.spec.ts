@@ -15,27 +15,25 @@ const TIMEOUT = 15_000;
  * loop because sort changes are async.
  */
 async function expectFirstVisibleRow(page: Page, text: string) {
-  await expect(
-    async () => {
-      const isFirst = await page.evaluate((txt: string) => {
-        const viewport = document.querySelector('[class*="viewport"]');
-        if (!viewport) return false;
-        const vpTop = viewport.getBoundingClientRect().top;
-        const rows = [...viewport.querySelectorAll('a[href^="#"]')];
-        if (rows.length === 0) return false;
-        // Find the row closest to the viewport top.
-        let best: {el: Element; dist: number} | null = null;
-        for (const row of rows) {
-          const dist = Math.abs(row.getBoundingClientRect().top - vpTop);
-          if (!best || dist < best.dist) {
-            best = {el: row, dist};
-          }
+  await expect(async () => {
+    const isFirst = await page.evaluate((txt: string) => {
+      const viewport = document.querySelector('[class*="viewport"]');
+      if (!viewport) return false;
+      const vpTop = viewport.getBoundingClientRect().top;
+      const rows = [...viewport.querySelectorAll('a[href^="#"]')];
+      if (rows.length === 0) return false;
+      // Find the row closest to the viewport top.
+      let best: {el: Element; dist: number} | null = null;
+      for (const row of rows) {
+        const dist = Math.abs(row.getBoundingClientRect().top - vpTop);
+        if (!best || dist < best.dist) {
+          best = {el: row, dist};
         }
-        return best?.el.textContent?.includes(txt) ?? false;
-      }, text);
-      expect(isFirst).toBe(true);
-    },
-  ).toPass({timeout: TIMEOUT});
+      }
+      return best?.el.textContent?.includes(txt) ?? false;
+    }, text);
+    expect(isFirst).toBe(true);
+  }).toPass({timeout: TIMEOUT});
 }
 
 test.describe('Sort controls', () => {

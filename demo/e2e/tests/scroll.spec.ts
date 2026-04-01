@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { TEST_ITEMS } from '../seed-test.ts';
+import {expect, test, type Page} from '@playwright/test';
+import {TEST_ITEMS} from '../seed-test.ts';
 
 const TIMEOUT = 20_000;
 
