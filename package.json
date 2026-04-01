@@ -28,7 +28,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter demo dev",
-    "check-types": "tsgo -p src/tsconfig.json && tsgo -p demo/tsconfig.app.json && tsgo -p demo/tsconfig.node.json",
+    "check-types": "tsgo -p src/tsconfig.json && tsgo -p demo/tsconfig.app.json && tsgo -p demo/tsconfig.node.json && tsgo -p demo/e2e/tsconfig.json",
     "lint": "oxlint --type-aware",
     "check": "oxlint --type-aware --type-check",
     "format": "oxfmt",
