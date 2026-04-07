@@ -127,7 +127,7 @@ export function ItemList() {
               data-index={virtualRow.index}
               style={{
                 position: 'absolute',
-                transform: `translateY(${virtualRow.start}px)`,
+                top: virtualRow.start,
               }}
             >
               {row ? row.title : 'Loading...'}

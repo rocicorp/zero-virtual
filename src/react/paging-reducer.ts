@@ -38,8 +38,6 @@ export type PagingState<TListContextParams, TStartRow> = {
   hasReachedStart: boolean;
   hasReachedEnd: boolean;
   queryAnchor: QueryAnchor<TListContextParams, TStartRow>;
-  pagingPhase: 'idle' | 'adjusting' | 'skipping';
-  pendingScrollAdjustment: number;
 };
 
 /**
@@ -79,17 +77,6 @@ export function pagingReducer<TListContextParams, TStartRow>(
         },
       };
 
-    case 'SHIFT_ANCHOR_DOWN':
-      return {
-        ...state,
-        queryAnchor: {
-          ...state.queryAnchor,
-          anchor: action.newAnchor,
-        },
-        pendingScrollAdjustment: action.offset,
-        pagingPhase: 'adjusting',
-      };
-
     case 'RESET_TO_TOP':
       return {
         ...state,
@@ -97,22 +84,6 @@ export function pagingReducer<TListContextParams, TStartRow>(
           ...state.queryAnchor,
           anchor: {index: 0, kind: 'forward', startRow: undefined},
         },
-        pendingScrollAdjustment: action.offset,
-        pagingPhase: 'adjusting',
-      };
-
-    case 'SCROLL_ADJUSTED':
-      return {
-        ...state,
-        estimatedTotal: state.estimatedTotal + state.pendingScrollAdjustment,
-        pendingScrollAdjustment: 0,
-        pagingPhase: 'skipping',
-      };
-
-    case 'PAGING_COMPLETE':
-      return {
-        ...state,
-        pagingPhase: 'idle',
       };
 
     case 'RESET_STATE':
@@ -125,7 +96,6 @@ export function pagingReducer<TListContextParams, TStartRow>(
           listContextParams: action.listContextParams,
           anchor: action.anchor,
         },
-        pagingPhase: 'skipping',
       };
 
     default: {
@@ -146,14 +116,7 @@ export type PagingAction<TListContextParams, TStartRow> =
   | {type: 'REACHED_START'}
   | {type: 'REACHED_END'}
   | {type: 'UPDATE_ANCHOR'; anchor: Anchor<TStartRow>}
-  | {
-      type: 'SHIFT_ANCHOR_DOWN';
-      offset: number;
-      newAnchor: Anchor<TStartRow>;
-    }
   | {type: 'RESET_TO_TOP'; offset: number}
-  | {type: 'SCROLL_ADJUSTED'}
-  | {type: 'PAGING_COMPLETE'}
   | {
       type: 'RESET_STATE';
       estimatedTotal: number;

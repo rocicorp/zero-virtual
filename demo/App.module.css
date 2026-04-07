@@ -73,16 +73,15 @@
 }
 
 .row {
+  overflow-anchor: auto;
   display: flex;
   align-items: center;
-  height: 48px;
+  min-height: 48px;
   padding: 0 16px;
   gap: 16px;
   border-bottom: 1px solid #eee;
   box-sizing: border-box;
-  position: absolute;
-  top: 0;
-  left: 0;
+
   width: 100%;
   cursor: pointer;
   color: inherit;
@@ -101,9 +100,7 @@
   flex: 1;
   font-size: 14px;
   font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 1rem;
 }
 
 .rowValue {
@@ -119,6 +116,17 @@
 .row[aria-selected='true'] {
   background: #eff6ff;
   box-shadow: inset 3px 0 0 #3b82f6;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 0;
+  padding: 0 16px;
+  color: #666;
+  overflow: hidden;
 }
 
 .footer {

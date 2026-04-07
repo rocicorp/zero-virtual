@@ -1,16 +1,13 @@
-import {useVirtualizer} from '@tanstack/react-virtual';
-import {defaultKeyExtractor, type Virtualizer} from '@tanstack/virtual-core';
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
   useState,
+  useSyncExternalStore,
   type Key,
 } from 'react';
-import {assert} from '../asserts.ts';
 import {pagingReducer, type PagingState} from './paging-reducer.ts';
 import {
   useRows,
@@ -23,6 +20,16 @@ import {
 const MIN_PAGE_SIZE = 100;
 
 const NUM_ROWS_FOR_LOADING_SKELETON = 1;
+
+const DEBUG_LOG_PREFIX = '[useZeroVirtualizer]';
+
+function debugLog(message: string, payload?: unknown) {
+  if (payload === undefined) {
+    console.log(DEBUG_LOG_PREFIX, message);
+    return;
+  }
+  console.log(DEBUG_LOG_PREFIX, message, payload);
+}
 
 /**
  * State object that captures the virtualizer's scroll position and pagination state.
@@ -54,6 +61,12 @@ const TOP_ANCHOR = Object.freeze({
   startRow: undefined,
 }) satisfies Anchor<unknown>;
 
+// Placeholder for useRows' required getSingleQuery param.
+// Permalink anchors are not created by useZeroVirtualizer so this is never called.
+const noopGetSingleQuery: GetSingleQuery<unknown> = () => ({
+  query: null as never,
+});
+
 /**
  * Options for the Tanstack React Virtualizer.
  *
@@ -62,8 +75,15 @@ const TOP_ANCHOR = Object.freeze({
  */
 export type TanstackUseVirtualizerOptions<
   TScrollElement extends Element,
-  TItemElement extends Element,
-> = Parameters<typeof useVirtualizer<TScrollElement, TItemElement>>[0];
+  _TItemElement extends Element = Element,
+> = {
+  count?: number;
+  initialOffset?: number;
+  horizontal?: boolean;
+  estimateSize?: ((index: number) => number) | undefined;
+  overscan?: number;
+  getScrollElement: () => TScrollElement | null;
+};
 
 /**
  * Options for configuring the Zero virtualizer.
@@ -93,13 +113,8 @@ export type UseZeroVirtualizerOptions<
   /** Parameters that define the list's query context (filters, sort order, etc.) */
   listContextParams: TListContextParams;
 
-  /** Optional ID to highlight/scroll to a specific row (permalink functionality) */
-  permalinkID?: string | null | undefined;
-
   /** Function that returns a query for fetching a page of rows */
   getPageQuery: GetPageQuery<TRow, TStartRow>;
-  /** Function that returns a query for fetching a single row by ID */
-  getSingleQuery: GetSingleQuery<TRow>;
   /**
    * Time in ms the list must remain unscrolled before it is considered "settled".
    * When settled, query functions receive `{settled: true}` so they can return
@@ -111,22 +126,20 @@ export type UseZeroVirtualizerOptions<
 
   /**
    * Function to extract a unique key from a row, used for stable item identification.
-   * If provided, this will override {@linkcode TanstackUseVirtualizerOptions.getItemKey}
+   * Required for browser scroll anchoring to work correctly during paging.
    */
-  getRowKey?: ((row: TRow) => Key) | undefined;
+  getRowKey: (row: TRow) => Key;
 
   /**
-   * Optional current scroll state for restoring virtualizer position.
-   * If provided along with `onScrollStateChange`, enables state persistence.
-   * If not provided, virtualizer operates in uncontrolled mode.
+   * Optional current scroll state (accepted but currently ignored — kept for API compatibility).
    */
   scrollState?: ScrollHistoryState<TStartRow> | null | undefined;
   /**
-   * Optional callback invoked when the virtualizer state changes.
-   * Use this to persist state (e.g., to browser history, local storage, etc.).
-   * Called with the new state approximately 100ms after scroll/pagination changes.
+   * Optional callback for scroll state changes (accepted but currently ignored — kept for API compatibility).
    */
-  onScrollStateChange?: (state: ScrollHistoryState<TStartRow>) => void;
+  onScrollStateChange?:
+    | ((state: ScrollHistoryState<TStartRow>) => void)
+    | undefined;
 
   /**
    * Optional callback invoked when the list becomes settled (no scroll
@@ -136,13 +149,6 @@ export type UseZeroVirtualizerOptions<
   onSettled?: (() => void) | undefined;
 };
 
-const createPermalinkAnchor = (id: string) =>
-  ({
-    id,
-    index: NUM_ROWS_FOR_LOADING_SKELETON,
-    kind: 'permalink',
-  }) as const;
-
 /**
  * Result object returned by the useZeroVirtualizer hook.
  *
@@ -151,37 +157,46 @@ const createPermalinkAnchor = (id: string) =>
  * @typeParam TRow - The type of row data returned from queries
  */
 export type ZeroVirtualizerResult<
-  TScrollElement extends Element,
-  TItemElement extends Element,
+  // TScrollElement extends Element,
+  // TItemElement extends Element,
   TRow,
 > = {
-  /** The Tanstack Virtual virtualizer instance for rendering virtual items */
-  virtualizer: Virtualizer<TScrollElement, TItemElement>;
-  /** Function to get the row data at a specific index, or undefined if not loaded */
-  rowAt: (index: number) => TRow | undefined;
+  // /** The Tanstack Virtual virtualizer instance for rendering virtual items */
+  // virtualizer: Virtualizer<TScrollElement, TItemElement>;
+  // /** Function to get the row data at a specific index, or undefined if not loaded */
+  // rowAt: (index: number) => TRow | undefined;
   /** Whether all initially requested data has finished loading */
   complete: boolean;
   /** Whether the list is empty (no rows exist matching the query) */
   rowsEmpty: boolean;
-  /** Whether the specified permalinkID was not found in the query results */
-  permalinkNotFound: boolean;
   /** Estimated total number of rows (may be inexact until both ends are reached) */
   estimatedTotal: number;
-  /** Exact total number of rows, or undefined if not yet known (requires reaching both ends) */
+  virtualRows: TRow[];
+
+  atStart: boolean;
+  atEnd: boolean;
+
   total: number | undefined;
-  /** Whether the list has been unscrolled for at least `settleTime` ms */
-  settled: boolean;
+
+  /** Spacer height before the loaded rows (in px) */
+  startPlaceholderHeight: number;
+  /** Spacer height after the loaded rows (in px) */
+  endPlaceholderHeight: number;
+
+  /** Callback ref to attach to the sentinel element at the start of the list */
+  startRef: (node: Element | null) => void;
+  /** Callback ref to attach to the sentinel element at the end of the list */
+  endRef: (node: Element | null) => void;
 };
 
 /**
- * Hook that creates a virtualized list with bidirectional pagination and state persistence.
+ * Hook that creates a virtualized list with bidirectional pagination.
  *
  * This hook combines Tanstack Virtual's efficient virtualization with Zero's reactive queries
  * to create infinitely scrolling lists that load data on demand. It supports:
  * - Bidirectional scrolling (load more items at top or bottom)
- * - Permalink functionality (jump to and highlight specific items)
- * - State persistence (restore scroll position across navigation)
  * - Dynamic page sizing based on viewport
+ * - Browser scroll anchoring (items are keyed via getRowKey so DOM nodes persist during paging)
  *
  * @typeParam TScrollElement - The type of the scrollable container element
  * @typeParam TItemElement - The type of the individual item elements
@@ -199,8 +214,8 @@ export type ZeroVirtualizerResult<
  *   getScrollElement: () => scrollRef.current,
  *   listContextParams: {projectId: 'abc'},
  *   getPageQuery: ({limit, start, dir}) => ({query: z.query.issues.where(...).limit(limit)}),
- *   getSingleQuery: ({id}) => ({query: z.query.issues.where('id', id)}),
  *   toStartRow: (row) => ({id: row.id, created: row.created}),
+ *   getRowKey: (row) => row.id,
  * });
  * ```
  */
@@ -212,25 +227,21 @@ export function useZeroVirtualizer<
   TStartRow,
 >({
   // Tanstack Virtual params
-  estimateSize,
   overscan = 5, // Virtualizer defaults to 1.
   getScrollElement,
-  getItemKey = defaultKeyExtractor,
 
   // Zero specific params
   listContextParams,
-  permalinkID,
   getPageQuery,
-  getSingleQuery,
   settleTime = 2000,
   toStartRow,
   getRowKey,
 
-  // Permalink state persistence
-  scrollState,
-  onScrollStateChange,
+  onSettled: _onSettled,
 
-  onSettled,
+  // Accepted but ignored (no-op) — kept for API compatibility
+  scrollState: _scrollState,
+  onScrollStateChange: _onScrollStateChange,
 
   ...restVirtualizerOptions
 }: UseZeroVirtualizerOptions<
@@ -239,83 +250,39 @@ export function useZeroVirtualizer<
   TListContextParams,
   TRow,
   TStartRow
->): ZeroVirtualizerResult<TScrollElement, TItemElement, TRow> {
-  // Only restore from scrollState if its listContextParams matches the current context.
-  // This prevents restoring stale scroll positions when filters/sort change.
-  // Uses JSON.stringify for comparison since scrollState may come from serialized
-  // storage (e.g., history.state) where object identity is not preserved.
-  const effectiveScrollState = useMemo(() => {
-    if (!scrollState) return null;
-    if (
-      JSON.stringify(scrollState.listContextParams) !==
-      JSON.stringify(listContextParams)
-    ) {
-      return null;
-    }
-    return scrollState;
-  }, [scrollState, listContextParams]);
+>): ZeroVirtualizerResult<// TScrollElement,
+//  TItemElement,
+TRow> {
+  void restVirtualizerOptions;
+  const startNodeRef = useRef<Element | null>(null);
+  const endNodeRef = useRef<Element | null>(null);
 
-  // Settled state: starts unsettled, flips to true after settleTime ms of
-  // no scroll activity. Resets on scroll or listContextParams change.
-  const [settled, setSettled] = useState(false);
-  const scrollOffsetRef = useRef<number | undefined>(undefined);
+  // DOM-based placeholder heights – set right before each page swap
+  // by reading the scroll container's geometry.
+  const [startPlaceholderHeight, setStartPlaceholderHeight] = useState(0);
+  const [endPlaceholderHeight, setEndPlaceholderHeight] = useState(0);
 
-  const resetSettleTimer = useCallback(() => {
-    setSettled(false);
-    const timer = setTimeout(() => {
-      setSettled(true);
-    }, settleTime);
-    return () => clearTimeout(timer);
-  }, [settleTime]);
-
-  // Reset on listContextParams change and on initial mount.
-  useEffect(() => {
-    return resetSettleTimer();
-  }, [resetSettleTimer, listContextParams]);
-
-  // Fire onSettled callback when settled transitions to true.
-  // Use a ref so that changes to the callback identity don't re-trigger the effect.
-  const onSettledRef = useRef(onSettled);
-  onSettledRef.current = onSettled;
-  useEffect(() => {
-    if (settled) {
-      onSettledRef.current?.();
-    }
-  }, [settled]);
-
-  // Initialize paging state from scrollState directly to avoid Strict Mode double-mount rows
+  // Initialize paging state
   const [
     {
       estimatedTotal,
-      hasReachedStart,
-      hasReachedEnd,
+      // hasReachedStart,
+      // hasReachedEnd,
       queryAnchor,
-      pagingPhase,
-      pendingScrollAdjustment,
     },
     dispatch,
   ] = useReducer(
     pagingReducer<TListContextParams, TStartRow>,
     undefined,
-    (): PagingState<TListContextParams, TStartRow> => {
-      const anchor = effectiveScrollState
-        ? effectiveScrollState.anchor
-        : permalinkID
-          ? createPermalinkAnchor(permalinkID)
-          : TOP_ANCHOR;
-      return {
-        estimatedTotal:
-          effectiveScrollState?.estimatedTotal ?? NUM_ROWS_FOR_LOADING_SKELETON,
-        hasReachedStart: effectiveScrollState?.hasReachedStart ?? false,
-        hasReachedEnd: effectiveScrollState?.hasReachedEnd ?? false,
-        queryAnchor: {
-          anchor,
-          listContextParams,
-        },
-        pagingPhase: 'idle',
-        pendingScrollAdjustment: 0,
-      };
-    },
+    (): PagingState<TListContextParams, TStartRow> => ({
+      estimatedTotal: NUM_ROWS_FOR_LOADING_SKELETON,
+      hasReachedStart: false,
+      hasReachedEnd: false,
+      queryAnchor: {
+        anchor: TOP_ANCHOR,
+        listContextParams,
+      },
+    }),
   );
 
   const isListContextCurrent =
@@ -325,11 +292,29 @@ export function useZeroVirtualizer<
     if (isListContextCurrent) {
       return queryAnchor.anchor;
     }
-    return permalinkID ? createPermalinkAnchor(permalinkID) : TOP_ANCHOR;
-  }, [isListContextCurrent, queryAnchor.anchor, permalinkID]);
+    return TOP_ANCHOR;
+  }, [isListContextCurrent, queryAnchor.anchor]);
 
-  const [pageSize, setPageSize] = useState(MIN_PAGE_SIZE);
+  const [pageSize, _setPageSize] = useState(MIN_PAGE_SIZE);
 
+  const rawRows = useRows({
+    pageSize,
+    anchor,
+    // TODO: add back settled
+    settled: false,
+    getPageQuery,
+    getSingleQuery: noopGetSingleQuery as GetSingleQuery<TRow>,
+    toStartRow,
+  });
+
+  // Buffer useRows results: keep serving the previous complete snapshot
+  // until the new query is complete. This prevents intermediate states
+  // (empty/partial data) from reaching the virtualizer, which would cause
+  // DOM nodes to disappear and break browser scroll anchoring.
+  const bufferedRowsRef = useRef(rawRows);
+  if (rawRows.complete) {
+    bufferedRowsRef.current = rawRows;
+  }
   const {
     rowAt,
     rowsLength,
@@ -338,120 +323,32 @@ export function useZeroVirtualizer<
     atStart,
     atEnd,
     firstRowIndex,
-    permalinkNotFound,
-  } = useRows({
-    pageSize,
-    anchor,
-    settled,
-    getPageQuery,
-    getSingleQuery,
-    toStartRow,
-  });
+  } = bufferedRowsRef.current;
 
   const newEstimatedTotal = firstRowIndex + rowsLength;
 
-  const virtualizer: Virtualizer<TScrollElement, TItemElement> = useVirtualizer(
-    {
-      ...restVirtualizerOptions,
-      count:
-        atEnd && atStart && complete
-          ? rowsLength
-          : Math.max(estimatedTotal, newEstimatedTotal) +
-            (!atEnd && rowsLength > 0 ? NUM_ROWS_FOR_LOADING_SKELETON : 0),
-      estimateSize,
-      overscan,
-      getScrollElement,
-      getItemKey: getRowKey
-        ? (index: number) => {
-            const row = rowAt(index);
-            return row ? getRowKey(row) : getItemKey(index);
-          }
-        : getItemKey,
-      initialOffset: () => {
-        if (effectiveScrollState?.scrollTop !== undefined) {
-          return effectiveScrollState.scrollTop;
-        }
-        if (anchor.kind === 'permalink') {
-          // TODO: Support dynamic item sizes
-          return anchor.index * estimateSize(0);
-        }
-        return 0;
-      },
-      horizontal: false,
-    },
-  );
-
-  // Reset settle timer on scroll.
-  useEffect(() => {
-    const offset = virtualizer.scrollOffset;
-    const didScroll =
-      scrollOffsetRef.current !== undefined &&
-      offset !== scrollOffsetRef.current;
-    scrollOffsetRef.current = offset ?? undefined;
-    if (didScroll) {
-      return resetSettleTimer();
-    }
-    return undefined;
-  }, [virtualizer.scrollOffset, resetSettleTimer]);
+  const {scrollTop, scrollHeight, clientHeight} =
+    useScrollMeasurements(getScrollElement());
 
   useEffect(() => {
-    // Make sure page size is enough to fill the scroll element at least
-    // 3 times.  Don't shrink page size.
-    const newPageSize = virtualizer.scrollRect
-      ? Math.max(
-          MIN_PAGE_SIZE,
-          makeEven(
-            Math.ceil(
-              virtualizer.scrollRect?.height /
-                // TODO: Support dynamic item sizes
-                estimateSize(0),
-            ) * 3,
-          ),
-        )
-      : MIN_PAGE_SIZE;
-    if (newPageSize > pageSize) {
-      setPageSize(newPageSize);
-    }
-  }, [pageSize, virtualizer.scrollRect]);
+    debugLog('scroll', {scrollTop, scrollHeight, clientHeight});
+  }, [scrollTop, scrollHeight, clientHeight]);
 
-  useEffect(() => {
-    if (!isListContextCurrent || !onScrollStateChange) {
-      return;
-    }
-    const timeoutId = setTimeout(() => {
-      onScrollStateChange({
-        anchor,
-        scrollTop: virtualizer.scrollOffset ?? 0,
-        estimatedTotal,
-        hasReachedStart,
-        hasReachedEnd,
-        listContextParams,
-      });
-    }, 100);
+  debugLog('render', {clientHeight, scrollHeight});
 
-    return () => clearTimeout(timeoutId);
-  }, [
-    anchor,
-    virtualizer.scrollOffset,
-    estimatedTotal,
-    hasReachedStart,
-    hasReachedEnd,
-    isListContextCurrent,
-    onScrollStateChange,
-    listContextParams,
-  ]);
-
-  useEffect(() => {
-    if (atStart) {
-      dispatch({type: 'REACHED_START'});
-    }
-  }, [atStart]);
-
-  useEffect(() => {
-    if (atEnd) {
-      dispatch({type: 'REACHED_END'});
-    }
-  }, [atEnd]);
+  // useEffect(() => {
+  //   // Make sure page size is enough to fill the scroll element at least
+  //   // 3 times.  Don't shrink page size.
+  //   const newPageSize = clientHeight
+  //     ? Math.max(
+  //         MIN_PAGE_SIZE,
+  //         makeEven(Math.ceil(clientHeight / estimateSize(0)) * 3),
+  //       )
+  //     : MIN_PAGE_SIZE;
+  //   if (newPageSize > pageSize) {
+  //     setPageSize(newPageSize);
+  //   }
+  // }, [pageSize, clientHeight]);
 
   useEffect(() => {
     if (complete) {
@@ -463,44 +360,21 @@ export function useZeroVirtualizer<
     }
   }, [estimatedTotal, complete, atStart, atEnd, newEstimatedTotal]);
 
-  // Apply scroll adjustments synchronously with layout to prevent visual jumps
-  useLayoutEffect(() => {
-    if (pendingScrollAdjustment !== 0) {
-      virtualizer.scrollToOffset(
-        (virtualizer.scrollOffset ?? 0) +
-          pendingScrollAdjustment *
-            // TODO: Support dynamic item sizes
-            estimateSize(0),
-      );
-
-      dispatch({type: 'SCROLL_ADJUSTED'});
+  // Reset placeholder heights when we've confirmed we reached an edge.
+  useEffect(() => {
+    if (complete && atStart) {
+      setStartPlaceholderHeight(0);
     }
-  }, [pendingScrollAdjustment, virtualizer]);
+  }, [complete, atStart]);
+
+  useEffect(() => {
+    if (complete && atEnd) {
+      setEndPlaceholderHeight(0);
+    }
+  }, [complete, atEnd]);
 
   useEffect(() => {
     if (rowsEmpty || !isListContextCurrent) {
-      return;
-    }
-
-    if (pagingPhase === 'skipping' && pendingScrollAdjustment === 0) {
-      dispatch({type: 'PAGING_COMPLETE'});
-      return;
-    }
-
-    // Skip if there's a pending scroll adjustment - let useLayoutEffect handle it
-    if (pendingScrollAdjustment !== 0) {
-      return;
-    }
-
-    // First row is before start of list - need to shift down
-    if (firstRowIndex < 0) {
-      const placeholderRows = !atStart ? NUM_ROWS_FOR_LOADING_SKELETON : 0;
-      const offset = -firstRowIndex + placeholderRows;
-      const newAnchor = {
-        ...anchor,
-        index: anchor.index + offset,
-      };
-      dispatch({type: 'SHIFT_ANCHOR_DOWN', offset, newAnchor});
       return;
     }
 
@@ -508,205 +382,330 @@ export function useZeroVirtualizer<
       dispatch({type: 'RESET_TO_TOP', offset: -firstRowIndex});
       return;
     }
-  }, [
-    firstRowIndex,
-    anchor,
-    atStart,
-    pendingScrollAdjustment,
-    pagingPhase,
-    rowsEmpty,
-    isListContextCurrent,
-    // virtualizer - omitted to avoid infinite render loops from scroll events
-  ]);
+  }, [firstRowIndex, anchor, atStart, rowsEmpty, isListContextCurrent]);
 
-  // Track the last applied scroll state so we can detect when it changes due
-  // to a real navigation (back/forward/push) as opposed to a re-render.
-  const appliedScrollStateRef = useRef(effectiveScrollState);
-
-  // Use layoutEffect to restore scroll position synchronously to avoid visual jumps.
-  // Triggers when listContextParams changes OR when effectiveScrollState
-  // changes (e.g. browser back/forward within the same list context).
-  useLayoutEffect(() => {
-    const scrollStateChanged =
-      effectiveScrollState !== appliedScrollStateRef.current;
-    appliedScrollStateRef.current = effectiveScrollState;
-
-    if (!isListContextCurrent || scrollStateChanged) {
-      if (effectiveScrollState) {
-        virtualizer.scrollToOffset(effectiveScrollState.scrollTop);
-        dispatch({
-          type: 'RESET_STATE',
-          estimatedTotal: effectiveScrollState.estimatedTotal,
-          hasReachedStart: effectiveScrollState.hasReachedStart,
-          hasReachedEnd: effectiveScrollState.hasReachedEnd,
-          anchor: effectiveScrollState.anchor,
-          listContextParams,
-        });
-      } else if (permalinkID) {
-        // Check if the permalink item is already in the current virtual items.
-        // If so, scroll directly to it instead of resetting to the loading skeleton.
-        const permalinkVirtualItem = getRowKey
-          ? virtualizer.getVirtualItems().find(item => {
-              const row = rowAt(item.index);
-              return row !== undefined && getRowKey(row) === permalinkID;
-            })
-          : undefined;
-
-        if (permalinkVirtualItem) {
-          virtualizer.scrollToIndex(permalinkVirtualItem.index, {
-            align: 'auto',
-          });
-        } else {
-          // TODO(arv): Figure out if we should scroll to top or bottom.
-
-          virtualizer.scrollToOffset(
-            NUM_ROWS_FOR_LOADING_SKELETON *
-              // TODO: Support dynamic item sizes
-              estimateSize(0),
-          );
-          dispatch({
-            type: 'RESET_STATE',
-            estimatedTotal: NUM_ROWS_FOR_LOADING_SKELETON,
-            hasReachedStart: false,
-            hasReachedEnd: false,
-            anchor: createPermalinkAnchor(permalinkID),
-            listContextParams,
-          });
-        }
-      } else {
-        virtualizer.scrollToOffset(0);
-        dispatch({
-          type: 'RESET_STATE',
-          estimatedTotal: 0,
-          hasReachedStart: true,
-          hasReachedEnd: false,
-          anchor: TOP_ANCHOR,
-          listContextParams,
-        });
-      }
+  // Reset state when listContextParams change.
+  useEffect(() => {
+    if (!isListContextCurrent) {
+      dispatch({
+        type: 'RESET_STATE',
+        estimatedTotal: 0,
+        hasReachedStart: true,
+        hasReachedEnd: false,
+        anchor: TOP_ANCHOR,
+        listContextParams,
+      });
     }
-  }, [
-    isListContextCurrent,
-    effectiveScrollState,
-    permalinkID,
-    virtualizer,
-    listContextParams,
-  ]);
-
-  const total =
-    atStart && atEnd
-      ? rowsLength
-      : hasReachedStart && hasReachedEnd
-        ? estimatedTotal
-        : undefined;
-  const virtualItems = virtualizer.getVirtualItems();
+  }, [isListContextCurrent, listContextParams]);
 
   useEffect(() => {
+    const scrollElement = getScrollElement();
+    const startNode = startNodeRef.current;
+    const endNode = endNodeRef.current;
+
     if (
+      !scrollElement ||
+      (!startNode && !endNode) ||
       !isListContextCurrent ||
-      virtualItems.length === 0 ||
-      !complete ||
-      pagingPhase !== 'idle' ||
-      pendingScrollAdjustment !== 0
+      rowsEmpty ||
+      rowsLength === 0 ||
+      !rawRows.complete ||
+      typeof IntersectionObserver === 'undefined'
     ) {
       return;
     }
 
-    if (atStart) {
-      if (firstRowIndex !== 0) {
-        dispatch({type: 'UPDATE_ANCHOR', anchor: TOP_ANCHOR});
+    const preloadMarginPx = Math.max(
+      0,
+      Math.floor(scrollElement.clientHeight / 2),
+    );
+    const rootMargin = `${preloadMarginPx}px 0px ${preloadMarginPx}px 0px`;
+
+    debugLog('observer setup', {
+      rootMargin,
+      pageSize,
+      firstRowIndex,
+      rowsLength,
+      atStart,
+      atEnd,
+    });
+
+    const stepSize = Math.max(1, getNearPageEdgeThreshold(pageSize));
+
+    const moveAnchorBackward = () => {
+      if (atStart) {
         return;
       }
-    }
 
-    const updateAnchorForEdge = (
-      targetIndex: number,
-      type: 'forward' | 'backward',
-      indexOffset: number,
-    ) => {
-      const index = toBoundIndex(targetIndex, firstRowIndex, rowsLength);
-      const startRow = rowAt(index);
-      assert(startRow !== undefined || type === 'forward');
-      dispatch({
-        type: 'UPDATE_ANCHOR',
-        anchor: {
-          index: index + indexOffset,
-          kind: type,
-          startRow,
-        } as Anchor<TStartRow>,
-      });
+      const shift = Math.min(stepSize, firstRowIndex);
+      const targetIndex = firstRowIndex + rowsLength - 1 - shift;
+      const startRow = rowAt(targetIndex);
+      if (startRow === undefined) {
+        return;
+      }
+
+      const nextAnchor = {
+        index: targetIndex,
+        kind: 'backward',
+        startRow: toStartRow(startRow),
+      } satisfies Anchor<TStartRow>;
+
+      if (
+        anchor.kind === nextAnchor.kind &&
+        anchor.index === nextAnchor.index
+      ) {
+        return;
+      }
+
+      // Measure the anchor row's bottom in scroll-content coordinates.
+      // Everything below it becomes the end placeholder.
+      if (startNode) {
+        const rowOffset = targetIndex - firstRowIndex;
+        const anchorEl = getRowElementAt(startNode, rowOffset);
+        if (anchorEl) {
+          const anchorBottom = getElementContentBottom(anchorEl, scrollElement);
+          const newEnd = Math.max(0, scrollElement.scrollHeight - anchorBottom);
+          setEndPlaceholderHeight(newEnd);
+          debugLog('paging backward', {
+            fromAnchor: anchor,
+            toAnchor: nextAnchor,
+            endPlaceholderHeight: newEnd,
+          });
+        }
+      }
+      dispatch({type: 'UPDATE_ANCHOR', anchor: nextAnchor});
     };
 
-    const firstItem = virtualItems[0];
-    const lastItem = virtualItems[virtualItems.length - 1];
-    const nearPageEdgeThreshold = getNearPageEdgeThreshold(pageSize);
+    const moveAnchorForward = () => {
+      if (atEnd) {
+        return;
+      }
 
-    const distanceFromStart = firstItem.index - firstRowIndex;
-    const distanceFromEnd = firstRowIndex + rowsLength - lastItem.index;
+      const shift = Math.min(stepSize, rowsLength - 1);
+      const targetIndex = firstRowIndex + shift;
+      const startRow = rowAt(targetIndex);
+      if (startRow === undefined) {
+        return;
+      }
 
-    if (!atStart && distanceFromStart <= nearPageEdgeThreshold) {
-      updateAnchorForEdge(
-        lastItem.index + 2 * nearPageEdgeThreshold,
-        'backward',
-        0,
-      );
-      return;
+      const nextAnchor = {
+        index: targetIndex + 1,
+        kind: 'forward',
+        startRow: toStartRow(startRow),
+      } satisfies Anchor<TStartRow>;
+
+      if (
+        anchor.kind === nextAnchor.kind &&
+        anchor.index === nextAnchor.index
+      ) {
+        return;
+      }
+
+      // Measure the anchor row's bottom in scroll-content coordinates.
+      // Everything above it becomes the start placeholder.
+      if (startNode) {
+        const anchorEl = getRowElementAt(startNode, shift);
+        if (anchorEl) {
+          const anchorBottom = getElementContentBottom(anchorEl, scrollElement);
+          setStartPlaceholderHeight(Math.max(0, anchorBottom));
+          debugLog('paging forward', {
+            fromAnchor: anchor,
+            toAnchor: nextAnchor,
+            startPlaceholderHeight: anchorBottom,
+          });
+        }
+      }
+      dispatch({type: 'UPDATE_ANCHOR', anchor: nextAnchor});
+    };
+
+    const observer = new IntersectionObserver(
+      entries => {
+        let startVisible = false;
+        let endVisible = false;
+
+        for (const entry of entries) {
+          if (!entry.isIntersecting) {
+            continue;
+          }
+
+          if (startNode && entry.target === startNode) {
+            startVisible = true;
+          }
+
+          if (endNode && entry.target === endNode) {
+            endVisible = true;
+          }
+        }
+
+        if (startVisible || endVisible) {
+          debugLog('sentinel intersected', {
+            startVisible,
+            endVisible,
+          });
+        }
+
+        if (startVisible) {
+          moveAnchorBackward();
+          return;
+        }
+
+        if (endVisible) {
+          moveAnchorForward();
+        }
+      },
+      {
+        root: scrollElement,
+        rootMargin,
+        threshold: 0,
+      },
+    );
+
+    if (startNode) {
+      observer.observe(startNode);
     }
 
-    if (!atEnd && distanceFromEnd <= nearPageEdgeThreshold) {
-      updateAnchorForEdge(
-        firstItem.index - 2 * nearPageEdgeThreshold,
-        'forward',
-        1,
-      );
-      return;
+    if (endNode) {
+      observer.observe(endNode);
     }
+
+    return () => {
+      debugLog('observer cleanup');
+      observer.disconnect();
+    };
   }, [
+    getScrollElement,
     isListContextCurrent,
-    virtualItems,
-    pagingPhase,
-    pendingScrollAdjustment,
-    complete,
-    pageSize,
-    firstRowIndex,
+    rowsEmpty,
     rowsLength,
+    rawRows.complete,
+    firstRowIndex,
     atStart,
     atEnd,
+    pageSize,
     rowAt,
+    toStartRow,
+    anchor,
   ]);
 
+  // const virtualItems = virtualizer.getVirtualItems();
+
+  const virtualRows: TRow[] = [];
+  for (let i = firstRowIndex; i < firstRowIndex + rowsLength; i++) {
+    virtualRows.push(rowAt(i) as TRow);
+  }
+
+  // useEffect(() => {
+  //   if (!isListContextCurrent || rowsEmpty || !complete) {
+  //     return;
+  //   }
+
+  //   if (atStart) {
+  //     if (firstRowIndex !== 0) {
+  //       dispatch({type: 'UPDATE_ANCHOR', anchor: TOP_ANCHOR});
+  //       return;
+  //     }
+  //   }
+
+  //   const updateAnchorForEdge = (
+  //     targetIndex: number,
+  //     type: 'forward' | 'backward',
+  //     indexOffset: number,
+  //   ) => {
+  //     const index = toBoundIndex(targetIndex, firstRowIndex, rowsLength);
+  //     const row = rowAt(index);
+  //     assert(row !== undefined || type === 'forward');
+  //     dispatch({
+  //       type: 'UPDATE_ANCHOR',
+  //       anchor: {
+  //         index: index + indexOffset,
+  //         kind: type,
+  //         startRow: row ? toStartRow(row) : undefined,
+  //       } as Anchor<TStartRow>,
+  //     });
+  //   };
+
+  //   const firstItem = rows[0];
+  //   const lastItem = rows[rows.length - 1];
+  //   const nearPageEdgeThreshold = getNearPageEdgeThreshold(pageSize);
+
+  //   const distanceFromStart = firstItem.index - firstRowIndex;
+  //   const distanceFromEnd = firstRowIndex + rowsLength - lastItem.index;
+
+  //   if (!atStart && distanceFromStart <= nearPageEdgeThreshold) {
+  //     updateAnchorForEdge(
+  //       lastItem.index + 2 * nearPageEdgeThreshold,
+  //       'backward',
+  //       0,
+  //     );
+  //     return;
+  //   }
+
+  //   if (!atEnd && distanceFromEnd <= nearPageEdgeThreshold) {
+  //     updateAnchorForEdge(
+  //       firstItem.index - 2 * nearPageEdgeThreshold,
+  //       'forward',
+  //       1,
+  //     );
+  //     return;
+  //   }
+  // }, [
+  //   isListContextCurrent,
+  //   rows,
+  //   complete,
+  //   pageSize,
+  //   firstRowIndex,
+  //   rowsLength,
+  //   atStart,
+  //   atEnd,
+  //   rowAt,
+  //   toStartRow,
+  // ]);
+
+  const startRef = useCallback((node: Element | null) => {
+    startNodeRef.current = node;
+    debugLog('startRef updated', {attached: node !== null});
+  }, []);
+
+  const endRef = useCallback((node: Element | null) => {
+    endNodeRef.current = node;
+    debugLog('endRef updated', {attached: node !== null});
+  }, []);
+
   return {
-    virtualizer,
-    rowAt,
+    virtualRows,
     complete,
     rowsEmpty,
-    permalinkNotFound,
     estimatedTotal,
-    total,
-    settled,
+    total: undefined,
+    atStart,
+    atEnd,
+    startPlaceholderHeight,
+    endPlaceholderHeight,
+    startRef,
+    endRef,
   };
 }
 
-/**
- * Clamps an index to be within the valid range of rows.
- * @param targetIndex - The desired index to clamp
- * @param firstRowIndex - The first valid row index
- * @param rowsLength - The number of rows available
- * @returns The clamped index within [firstRowIndex, firstRowIndex + rowsLength - 1]
- */
-function toBoundIndex(
-  targetIndex: number,
-  firstRowIndex: number,
-  rowsLength: number,
-): number {
-  if (rowsLength === 0) {
-    return firstRowIndex;
-  }
-  return Math.max(
-    firstRowIndex,
-    Math.min(firstRowIndex + rowsLength - 1, targetIndex),
-  );
-}
+// /**
+//  * Clamps an index to be within the valid range of rows.
+//  * @param targetIndex - The desired index to clamp
+//  * @param firstRowIndex - The first valid row index
+//  * @param rowsLength - The number of rows available
+//  * @returns The clamped index within [firstRowIndex, firstRowIndex + rowsLength - 1]
+//  */
+// function toBoundIndex(
+//   targetIndex: number,
+//   firstRowIndex: number,
+//   rowsLength: number,
+// ): number {
+//   if (rowsLength === 0) {
+//     return firstRowIndex;
+//   }
+//   return Math.max(
+//     firstRowIndex,
+//     Math.min(firstRowIndex + rowsLength - 1, targetIndex),
+//   );
+// }
 
 /**
  * Calculates the threshold for when to trigger loading more rows based on the page size.
@@ -717,11 +716,79 @@ function getNearPageEdgeThreshold(pageSize: number) {
   return Math.ceil(pageSize / 10);
 }
 
+// function makeEven(n: number) {
+//   return n % 2 === 0 ? n : n + 1;
+// }
+
 /**
- * Ensures a number is even by adding 1 if it is odd.
- * @param n - The number to make even
- * @returns The even number
+ * Returns the row element at the given offset (0-based) after the sentinel.
+ * Row 0 is the first `nextElementSibling` of the sentinel.
  */
-function makeEven(n: number) {
-  return n % 2 === 0 ? n : n + 1;
+function getRowElementAt(sentinel: Element, offset: number): Element | null {
+  let el: Element | null = sentinel.nextElementSibling;
+  for (let i = 0; i < offset && el; i++) {
+    el = el.nextElementSibling;
+  }
+  return el;
 }
+
+/**
+ * Returns the bottom edge of `element` in scroll-content coordinates
+ * (i.e. pixels from the top of the scroll content, not from the viewport).
+ */
+function getElementContentBottom(
+  element: Element,
+  scrollContainer: Element,
+): number {
+  const scrollRect = scrollContainer.getBoundingClientRect();
+  const elRect = element.getBoundingClientRect();
+  return elRect.bottom - scrollRect.top + scrollContainer.scrollTop;
+}
+
+function useScrollMeasurements<TScrollElement extends Element>(
+  scrollElement: TScrollElement | null,
+): {scrollTop: number; scrollHeight: number; clientHeight: number} {
+  const {scrollTop, scrollHeight, clientHeight} = useSyncExternalStore(
+    onStoreChange => {
+      if (!scrollElement) {
+        return () => {};
+      }
+      scrollElement.addEventListener('scroll', onStoreChange);
+      const resizeObserver = new ResizeObserver(onStoreChange);
+      resizeObserver.observe(scrollElement);
+      return () => {
+        scrollElement.removeEventListener('scroll', onStoreChange);
+        resizeObserver.disconnect();
+      };
+    },
+    () => scrollElement ?? emptyScrollMeasurements,
+    () => emptyScrollMeasurements,
+  );
+
+  return useMemo(
+    () =>
+      !scrollElement
+        ? emptyScrollMeasurements
+        : {
+            scrollTop,
+            scrollHeight,
+            clientHeight,
+          },
+    [scrollElement, scrollTop, scrollHeight, clientHeight],
+  );
+}
+
+const emptyScrollMeasurements = {
+  scrollTop: 0,
+  scrollHeight: 0,
+  clientHeight: 0,
+};
+
+// function useCompleteRows(...args: Parameters<typeof useRows>) {
+//   const completeRef = useRef<ReturnType<typeof useRows> | null>(null);
+//   const x = useRows(...args);
+//   if (x.complete) {
+//     completeRef.current = x;
+//   }
+//   return completeRef.current ?? x;
+// }

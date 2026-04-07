@@ -2,9 +2,14 @@ import {
   useHistoryScrollState,
   useZeroVirtualizer,
   type GetPageQueryOptions,
-  type GetSingleQueryOptions,
 } from '@rocicorp/zero-virtual/react';
-import React, {useCallback, useMemo, useRef, useState} from 'react';
+import React, {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import styles from './App.module.css';
 import {ItemCount} from './ItemCount.tsx';
 import {ItemDetail} from './ItemDetail.tsx';
@@ -13,7 +18,7 @@ import type {Item} from './schema.ts';
 import {SortControls} from './SortControls.tsx';
 import {useHash} from './use-hash.ts';
 
-const ITEM_HEIGHT = 48;
+// const ITEM_HEIGHT = 48;
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
@@ -32,19 +37,8 @@ function toStartRow(item: Item): ItemStart {
   };
 }
 
-function estimateSize(): number {
-  return ITEM_HEIGHT;
-}
-
 function getQueryOptions(settled: boolean) {
   return {ttl: settled ? '5m' : 'none'} as const;
-}
-
-function getSingleQuery({id, settled}: GetSingleQueryOptions) {
-  return {
-    query: queries.item.getSingleQuery({id}),
-    options: getQueryOptions(settled),
-  } as const;
 }
 
 export function App(): React.ReactNode {
@@ -90,15 +84,26 @@ export function App(): React.ReactNode {
 
   const [scrollState, onScrollStateChange] = useHistoryScrollState<ItemStart>();
 
-  const {virtualizer, rowAt, estimatedTotal, total} = useZeroVirtualizer({
+  const {
+    virtualRows,
+    estimatedTotal,
+    total,
+    startPlaceholderHeight,
+    endPlaceholderHeight,
+    startRef,
+    endRef,
+  } = useZeroVirtualizer<
+    HTMLDivElement,
+    HTMLElement,
+    ListContextParams,
+    Item,
+    ItemStart
+  >({
     listContextParams,
     getScrollElement,
     getRowKey,
-    estimateSize,
     getPageQuery,
-    getSingleQuery,
     toStartRow,
-    permalinkID,
     scrollState,
     onScrollStateChange,
     onSettled: useCallback(() => {
@@ -106,7 +111,11 @@ export function App(): React.ReactNode {
     }, []),
   });
 
-  const virtualItems = virtualizer.getVirtualItems();
+  // const virtualItems = virtualRows.map((row, index) => ({
+  //   key: getRowKey(row),
+  //   index,
+  //   start: index * ITEM_HEIGHT,
+  // }));
 
   return (
     <div className={styles.page}>
@@ -125,49 +134,57 @@ export function App(): React.ReactNode {
         </div>
         {/* Scrollable viewport */}
         <div ref={parentRef} className={styles.viewport}>
-          {/* Total height spacer */}
-          <div
-            style={{height: virtualizer.getTotalSize(), position: 'relative'}}
-          >
-            {virtualItems.map(virtualRow => {
-              const row = rowAt(virtualRow.index);
-
-              if (row === undefined) {
-                // placeholder
-                return (
-                  <div
-                    key={virtualRow.key}
-                    data-index={virtualRow.index}
-                    className={styles.row}
-                    style={{transform: `translateY(${virtualRow.start}px)`}}
-                  >
-                    <span className={styles.rowLabel}>Loading...</span>
-                  </div>
-                );
-              }
-
-              return (
-                <a
-                  key={virtualRow.key}
-                  data-index={virtualRow.index}
-                  className={styles.row}
-                  style={{transform: `translateY(${virtualRow.start}px)`}}
-                  aria-selected={row.id === permalinkID || undefined}
-                  href={`#${row.id}`}
-                >
-                  <span className={styles.rowLabel}>{row.title}</span>
-                  <span className={styles.rowValue}>
-                    {dateFormatter.format(row[sortField])}
-                  </span>
-                </a>
-              );
-            })}
-          </div>
+          <Placeholder
+            kind="start"
+            height={startPlaceholderHeight}
+            ref={startRef}
+          />
+          {virtualRows.map(row => (
+            <a
+              key={getRowKey(row)}
+              data-key={getRowKey(row)}
+              className={styles.row}
+              aria-selected={row.id === permalinkID || undefined}
+              href={`#${row.id}`}
+            >
+              <span className={styles.rowLabel}>{row.title}</span>
+              <span className={styles.rowValue}>
+                {dateFormatter.format(row[sortField])}
+              </span>
+            </a>
+          ))}
+          <Placeholder kind="end" height={endPlaceholderHeight} ref={endRef} />
         </div>
       </div>
       {permalinkID && (
         <ItemDetail id={permalinkID} onClose={() => setHash('')} />
       )}
+    </div>
+  );
+}
+
+function Placeholder({
+  kind,
+  height,
+  ref,
+}: {
+  kind: 'start' | 'end';
+  height: number;
+  ref?: ((node: Element | null) => void) | undefined;
+}): ReactNode {
+  const showLabel = height > 0;
+  return (
+    <div
+      ref={ref}
+      data-key={`placeholder-${kind}`}
+      className={styles.placeholder}
+      style={{height: Math.min(height, 100), overflowAnchor: 'none'}}
+    >
+      {showLabel ? (
+        <span className={styles.rowLabel}>
+          {kind === 'start' ? 'Loading... start...' : 'Loading... end...'}
+        </span>
+      ) : null}
     </div>
   );
 }

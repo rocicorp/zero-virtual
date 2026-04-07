@@ -34,9 +34,8 @@ function makeOptions() {
     listContextParams,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getPageQuery: () => ({query: null as any}),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    getSingleQuery: () => ({query: null as any}),
     toStartRow: (row: unknown) => row,
+    getRowKey: (row: unknown) => row as string,
   } as const;
 }
 
