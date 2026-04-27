@@ -2,6 +2,8 @@
 
 Infinite virtual scroller for [Zero](https://zero.rocicorp.dev/). Built on top of [Tanstack Virtual](https://tanstack.com/virtual/latest).
 
+Live demo at: https://gigabugs.rocicorp.dev/.
+
 Features:
 
 - Bidirectional infinite scrolling (load more items at top or bottom)
@@ -227,3 +229,8 @@ pnpm dev:zero-cache
 cd demo
 pnpm dev:ui
 ```
+
+## Other Examples
+
+* https://github.com/rocicorp/ztunes (live at https://ztunes.rocicorp.dev/)
+https://github.com/rocicorp/mono/tree/main/apps/zbugs (live at https://gigabugs.rocicorp.dev/)
