@@ -232,5 +232,5 @@ pnpm dev:ui
 
 ## Other Examples
 
-* https://github.com/rocicorp/ztunes (live at https://ztunes.rocicorp.dev/)
-https://github.com/rocicorp/mono/tree/main/apps/zbugs (live at https://gigabugs.rocicorp.dev/)
+- https://github.com/rocicorp/ztunes (live at https://ztunes.rocicorp.dev/)
+  https://github.com/rocicorp/mono/tree/main/apps/zbugs (live at https://gigabugs.rocicorp.dev/)
