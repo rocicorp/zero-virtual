@@ -5,3 +5,8 @@ onlyBuiltDependencies:
   - '@rocicorp/zero-sqlite3'
   - esbuild
   - protobufjs
+
+allowBuilds:
+  '@rocicorp/zero-sqlite3': true
+  esbuild: true
+  protobufjs: true
