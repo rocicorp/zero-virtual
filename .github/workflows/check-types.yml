@@ -1,6 +1,7 @@
 name: Check Types
 
 on:
+  merge_group:
   push:
     branches: [main]
   pull_request:
