@@ -93,6 +93,9 @@ export type UseZeroVirtualizerOptions<
   /** Parameters that define the list's query context (filters, sort order, etc.) */
   listContextParams: TListContextParams;
 
+  /** Optional exact row count. If provided, it replaces the internally estimated count. */
+  count?: number | undefined;
+
   /** Optional ID to highlight/scroll to a specific row (permalink functionality) */
   permalinkID?: string | null | undefined;
 
@@ -219,6 +222,7 @@ export function useZeroVirtualizer<
 
   // Zero specific params
   listContextParams,
+  count,
   permalinkID,
   getPageQuery,
   getSingleQuery,
@@ -354,15 +358,19 @@ export function useZeroVirtualizer<
   });
 
   const newEstimatedTotal = firstRowIndex + rowsLength;
+  const internalCount =
+    atEnd && atStart && complete
+      ? rowsLength
+      : Math.max(estimatedTotal, newEstimatedTotal) +
+        (!atEnd && rowsLength > 0 ? NUM_ROWS_FOR_LOADING_SKELETON : 0);
+  const effectiveCount = count ?? internalCount;
+  const effectiveEstimatedTotal = count ?? estimatedTotal;
+  const effectiveRowsEmpty = count === undefined ? rowsEmpty : count === 0;
 
   const virtualizer: Virtualizer<TScrollElement, TItemElement> = useVirtualizer(
     {
       ...restVirtualizerOptions,
-      count:
-        atEnd && atStart && complete
-          ? rowsLength
-          : Math.max(estimatedTotal, newEstimatedTotal) +
-            (!atEnd && rowsLength > 0 ? NUM_ROWS_FOR_LOADING_SKELETON : 0),
+      count: effectiveCount,
       estimateSize,
       overscan,
       getScrollElement,
@@ -445,7 +453,7 @@ export function useZeroVirtualizer<
       onScrollStateChange({
         anchor,
         scrollTop: virtualizer.scrollOffset ?? 0,
-        estimatedTotal,
+        estimatedTotal: effectiveEstimatedTotal,
         hasReachedStart,
         hasReachedEnd,
         listContextParams,
@@ -456,7 +464,7 @@ export function useZeroVirtualizer<
   }, [
     anchor,
     virtualizer.scrollOffset,
-    estimatedTotal,
+    effectiveEstimatedTotal,
     hasReachedStart,
     hasReachedEnd,
     isListContextCurrent,
@@ -617,11 +625,12 @@ export function useZeroVirtualizer<
   ]);
 
   const total =
-    atStart && atEnd
+    count ??
+    (atStart && atEnd
       ? rowsLength
       : hasReachedStart && hasReachedEnd
         ? estimatedTotal
-        : undefined;
+        : undefined);
   const virtualItems = virtualizer.getVirtualItems();
 
   useEffect(() => {
@@ -711,9 +720,9 @@ export function useZeroVirtualizer<
     virtualizer,
     rowAt,
     complete,
-    rowsEmpty,
+    rowsEmpty: effectiveRowsEmpty,
     permalinkNotFound,
-    estimatedTotal,
+    estimatedTotal: effectiveEstimatedTotal,
     total,
     settled,
   };

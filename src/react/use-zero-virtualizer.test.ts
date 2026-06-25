@@ -210,4 +210,50 @@ describe('useZeroVirtualizer - virtualizer count and total', () => {
     expect(result.current.total).toBe(expectedTotal);
     expect(result.current.virtualizer.options.count).toBe(expectedCount);
   });
+
+  test('explicit count overrides estimated row count metadata', () => {
+    mockUseRows.mockReturnValue(
+      makeUseRowsResult({
+        rowsLength: 20,
+        complete: false,
+        rowsEmpty: false,
+        atStart: true,
+        atEnd: false,
+        firstRowIndex: 0,
+      }),
+    );
+
+    const options = makeOptions();
+    const {result} = renderHook(() =>
+      useZeroVirtualizer({...options, count: 42}),
+    );
+
+    expect(result.current.virtualizer.options.count).toBe(42);
+    expect(result.current.estimatedTotal).toBe(42);
+    expect(result.current.total).toBe(42);
+    expect(result.current.rowsEmpty).toBe(false);
+  });
+
+  test('explicit zero count reports empty list', () => {
+    mockUseRows.mockReturnValue(
+      makeUseRowsResult({
+        rowsLength: 20,
+        complete: false,
+        rowsEmpty: false,
+        atStart: true,
+        atEnd: false,
+        firstRowIndex: 0,
+      }),
+    );
+
+    const options = makeOptions();
+    const {result} = renderHook(() =>
+      useZeroVirtualizer({...options, count: 0}),
+    );
+
+    expect(result.current.virtualizer.options.count).toBe(0);
+    expect(result.current.estimatedTotal).toBe(0);
+    expect(result.current.total).toBe(0);
+    expect(result.current.rowsEmpty).toBe(true);
+  });
 });
