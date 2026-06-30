@@ -40,7 +40,7 @@
     "@types/dom-navigation": "^1.0.7"
   },
   "devDependencies": {
-    "@rocicorp/zero": "^1.0.0",
+    "@rocicorp/zero": "1.7.0",
     "@tanstack/react-virtual": "^3.13.23",
     "@tanstack/virtual-core": "^3.13.23",
     "@testing-library/react": "^16.3.2",
@@ -57,7 +57,7 @@
     "vitest": "^4.1.2"
   },
   "peerDependencies": {
-    "@rocicorp/zero": "^1.0.0",
+    "@rocicorp/zero": "1.7.0",
     "@tanstack/react-virtual": "^3.13.23",
     "@tanstack/virtual-core": "^3.13.23",
     "react": "^19.2.4",
