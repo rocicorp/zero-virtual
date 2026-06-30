@@ -10,3 +10,6 @@ allowBuilds:
   '@rocicorp/zero-sqlite3': true
   esbuild: true
   protobufjs: true
+
+minimumReleaseAgeExclude:
+  - '@rocicorp/zero'

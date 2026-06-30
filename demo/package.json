@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",
-    "@rocicorp/zero": "^1.0.0",
+    "@rocicorp/zero": "1.7.0",
     "@rocicorp/zero-virtual": "workspace:*",
     "hono": "^4.12.9",
     "pg": "^8.20.0"
