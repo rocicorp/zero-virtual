@@ -7,6 +7,12 @@ export const mutators = defineMutators({
       await tx.mutate.item.insert({...args, modified: Date.now()});
     }),
 
+    // Insert with explicit created/modified so the caller can place the item at
+    // a chosen sort position (e.g. the very start or end of the list).
+    addAt: defineMutator<Item>(async ({tx, args}) => {
+      await tx.mutate.item.insert(args);
+    }),
+
     edit: defineMutator<
       Pick<Item, 'id'> & Partial<Pick<Item, 'title' | 'description'>>
     >(async ({tx, args}) => {

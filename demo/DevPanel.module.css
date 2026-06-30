@@ -1,0 +1,220 @@
+/* The floating dev panel from the design handoff: a dark IBM Plex Mono card
+   pinned bottom-right, collapsible to a pill launcher. */
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px #4ade80;
+  flex: 0 0 auto;
+}
+
+.launcher {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 42px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 11px;
+  background: #1c1c1f;
+  color: #e8e8ea;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+}
+
+.launcherChevron {
+  color: #6b7280;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.panel {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  width: 300px;
+  background: #1c1c1f;
+  border: 1px solid #2c2c31;
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: #e8e8ea;
+  overflow: hidden;
+}
+
+.titleBar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 14px;
+  border-bottom: 1px solid #2c2c31;
+}
+
+.titleLabel {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c8c8cc;
+}
+
+.titleSpacer {
+  flex: 1;
+}
+
+.collapseButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #8b8b93;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  font-family: inherit;
+}
+
+.collapseButton:hover {
+  background: #2c2c31;
+  color: #e8e8ea;
+}
+
+.section {
+  padding: 13px 14px;
+  border-bottom: 1px solid #2c2c31;
+  display: flex;
+  flex-direction: column;
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+.config {
+  gap: 10px;
+}
+
+.stats {
+  gap: 6px;
+}
+
+.options {
+  gap: 11px;
+}
+
+.fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.fieldName {
+  font-size: 11px;
+  color: #8b8b93;
+  letter-spacing: 0.03em;
+}
+
+.select {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #3a3a40;
+  border-radius: 8px;
+  background: #26262b;
+  color: #e8e8ea;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.actionButton {
+  flex: 1;
+  height: 34px;
+  border: 1px solid #3a3a40;
+  border-radius: 8px;
+  background: #26262b;
+  color: #e8e8ea;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.actionButton:hover {
+  background: #33333a;
+}
+
+.statRow {
+  display: flex;
+  justify-content: space-between;
+}
+
+.statName {
+  color: #4ade80;
+}
+
+.statValue {
+  color: #e8e8ea;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  color: #c8c8cc;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #3b82f6;
+  cursor: pointer;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.optionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.optionName {
+  color: #8b8b93;
+}
+
+.optionSelect {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #3a3a40;
+  border-radius: 8px;
+  background: #26262b;
+  color: #e8e8ea;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}

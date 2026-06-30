@@ -41,8 +41,6 @@
   },
   "devDependencies": {
     "@rocicorp/zero": "1.7.0",
-    "@tanstack/react-virtual": "^3.13.23",
-    "@tanstack/virtual-core": "^3.13.23",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -58,8 +56,6 @@
   },
   "peerDependencies": {
     "@rocicorp/zero": "1.7.0",
-    "@tanstack/react-virtual": "^3.13.23",
-    "@tanstack/virtual-core": "^3.13.23",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },

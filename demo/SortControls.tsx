@@ -19,15 +19,49 @@ export function SortControls({
       <button className={styles.sortField} onClick={onToggleSortField}>
         {sortField === 'modified' ? 'Modified' : 'Created'}
       </button>
+      <span className={styles.divider} />
       <button
-        className={`${styles.sortDirection} ${styles[sortDirection]}`}
+        className={styles.sortDirection}
         onClick={onToggleSortDirection}
         title={sortDirection === 'desc' ? 'Descending' : 'Ascending'}
       >
-        <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
-          <rect className={styles.sortLine1} x="0" y="0" height="2" rx="1" />
-          <rect className={styles.sortLine2} x="0" y="5" height="2" rx="1" />
-          <rect className={styles.sortLine3} x="0" y="10" height="2" rx="1" />
+        {/* Descending glyph (lines of decreasing length); flipped for asc. */}
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 18 18"
+          fill="none"
+          style={{
+            transform: sortDirection === 'asc' ? 'scaleY(-1)' : undefined,
+          }}
+        >
+          <line
+            x1="3"
+            y1="4.5"
+            x2="15"
+            y2="4.5"
+            stroke="#18181b"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+          <line
+            x1="3"
+            y1="9"
+            x2="11"
+            y2="9"
+            stroke="#18181b"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+          <line
+            x1="3"
+            y1="13.5"
+            x2="7"
+            y2="13.5"
+            stroke="#18181b"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
         </svg>
       </button>
     </div>

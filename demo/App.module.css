@@ -1,18 +1,18 @@
 .page {
-  font-family: system-ui, sans-serif;
+  font-family: Inter, system-ui, sans-serif;
   margin: 0;
   height: 100vh;
   display: flex;
   flex-direction: row;
-  box-sizing: border-box;
   position: relative;
+  background: #fff;
+  color: #0a0a0a;
 }
 
 .list {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 0 16px;
   min-width: 0;
   overflow: hidden;
 }
@@ -20,109 +20,132 @@
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-block: 8px;
+  gap: 14px;
+  padding: 14px 22px;
+  border-bottom: 1px solid #ececf0;
   white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .heading {
   font-size: 24px;
   font-weight: 700;
+  letter-spacing: -0.02em;
   margin: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex: 1;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.headingText {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
-  flex-shrink: 1;
 }
 
 .itemCount {
-  font-size: 14px;
-  font-weight: 400;
-  color: #666;
+  font-size: 17px;
+  font-weight: 500;
+  color: #a1a1aa;
   flex-shrink: 999;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
 }
 
-.subtitle {
-  color: #555;
-  margin: 0 0 16px;
-  font-size: 14px;
+.headerSpacer {
+  flex: 1;
 }
 
 .viewport {
   flex: 1;
-  overflow: auto;
-  border-top: 1px solid #ddd;
+  overflow-y: auto;
   background: #fff;
   min-height: 0;
-  margin: 0 -16px;
-  padding: 0;
+  position: relative;
+  /* `overflow-anchor` on the scroll container is managed by the virtualizer
+     (none in manual mode, auto in native mode) — don't set it here. */
 }
 
+/* Spacers stand in for the estimated unloaded rows above/below the window.
+   They must NOT be scroll-anchor candidates — the browser should anchor to a
+   real row, not a resizing spacer. */
+.spacer {
+  overflow-anchor: none;
+  width: 100%;
+}
+
+/* Rows. The base is the design's two-column row (title + description left,
+   date right); per height-mode variants below adjust the vertical rhythm so
+   the demo's uniform / fixed / dynamic sizing keeps exercising the engine. */
 .row {
   display: flex;
-  align-items: center;
-  height: 48px;
-  padding: 0 16px;
-  gap: 16px;
-  border-bottom: 1px solid #eee;
-  box-sizing: border-box;
-  position: absolute;
-  top: 0;
-  left: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 22px 26px;
+  border-bottom: 1px solid #f0f0f3;
   width: 100%;
   cursor: pointer;
   color: inherit;
   text-decoration: none;
 }
 
-.rowIndex {
-  color: #999;
-  font-size: 12px;
-  width: 48px;
-  flex-shrink: 0;
-  text-align: right;
+/* Uniform mode: compact fixed-height single-line rows. */
+.rowCompact {
+  align-items: center;
+  padding: 0 22px;
+  overflow: hidden;
 }
 
-.rowLabel {
-  flex: 1;
-  font-size: 14px;
+.rowCompact .rowTitle {
+  font-size: 15px;
   font-weight: 500;
+  letter-spacing: 0;
+}
+
+.rowCompact .rowDate {
+  padding-top: 0;
+}
+
+/* Fixed non-uniform mode: explicit per-row heights (some smaller than the
+   design's natural row), so tighten the vertical padding and clip. */
+.rowFixed {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  overflow: hidden;
+}
+
+/* Dynamic mode: natural content height, per the design's minimum. */
+.rowDynamic {
+  min-height: 96px;
+}
+
+.rowText {
+  min-width: 0;
+}
+
+.rowTitle {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #0a0a0a;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.rowValue {
-  font-size: 13px;
-  color: #444;
-  font-variant-numeric: tabular-nums;
+.rowDesc {
+  font-size: 15px;
+  color: #9a9aa2;
+  margin-top: 6px;
+}
+
+.rowDate {
+  font-size: 15px;
+  color: #6b7280;
   white-space: nowrap;
-  flex-shrink: 0;
-  width: 160px;
-  text-align: right;
+  flex: 0 0 auto;
+  padding-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .row[aria-selected='true'] {
   background: #eff6ff;
   box-shadow: inset 3px 0 0 #3b82f6;
-}
-
-.footer {
-  margin-top: 12px;
-  font-size: 13px;
-  color: #555;
 }

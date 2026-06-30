@@ -1,4 +1,5 @@
 import {expect, test} from '@playwright/test';
+import {waitForRows} from './helpers.ts';
 
 test.describe('App', () => {
   test.beforeEach(async ({page}) => {
@@ -20,11 +21,8 @@ test.describe('App', () => {
 
   test('renders list rows', async ({page}) => {
     // Wait for the first real row (an <a> element, not a placeholder <div>).
-    await expect(
-      page.locator('[class*="viewport"] a[href^="#"]').first(),
-    ).toBeVisible({
-      timeout: 15_000,
-    });
+    // This is the test's assertion: waitForRows asserts the row is visible.
+    await waitForRows(page);
   });
 
   test('default sort is modified descending — Alpha Item is first', async ({

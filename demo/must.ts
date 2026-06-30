@@ -1,6 +1,6 @@
-export function must<T>(val: T) {
+export function must<T>(val: T, message = 'Expected value to be defined') {
   if (!val) {
-    throw new Error('Expected value to be defined');
+    throw new Error(message);
   }
   return val;
 }

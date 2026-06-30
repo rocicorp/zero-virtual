@@ -25,12 +25,15 @@ function makeUseRowsResult(
   };
 }
 
+const EST = 48;
+
 function makeOptions() {
   const scrollEl = document.createElement('div');
   const listContextParams = {};
   return {
-    estimateSize: () => 48,
+    estimateSize: () => EST,
     getScrollElement: () => scrollEl,
+    getRowKey: (row: unknown) => (row as {id: string}).id,
     listContextParams,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getPageQuery: () => ({query: null as any}),
@@ -44,42 +47,26 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-// NUM_ROWS_FOR_LOADING_SKELETON = 1 (internal constant in use-zero-virtualizer)
-// estimatedTotal initial value = 1 (NUM_ROWS_FOR_LOADING_SKELETON)
-// newEstimatedTotal = firstRowIndex + rowsLength
-// count = (atEnd && atStart && complete)
-//   ? rowsLength
-//   : Math.max(estimatedTotal, newEstimatedTotal) + (!atEnd && rowsLength > 0 ? 1 : 0)
-// After effects settle, estimatedTotal may be updated:
-//   complete && atStart && atEnd  -> estimatedTotal = Math.max(estimatedTotal, rowsLength)
-//   complete && !(atStart&&atEnd) && newEstimatedTotal > estimatedTotal -> estimatedTotal = newEstimatedTotal
-// total = (atStart && atEnd) ? rowsLength
-//       : (hasReachedStart && hasReachedEnd) ? estimatedTotal
-//       : undefined
-// hasReachedStart is set by REACHED_START effect when atStart=true
-// hasReachedEnd   is set by REACHED_END   effect when atEnd=true
-
-describe('useZeroVirtualizer - virtualizer count and total', () => {
+// Rows are rendered in flow between a top spacer (`spaceBefore`) and a bottom
+// spacer (`spaceAfter`); there is no virtual "count". These cases pin down the
+// derived outputs: how many rows to render, the spacer sizes, and `total`.
+describe('useZeroVirtualizer - items, spacers and total', () => {
   test.for([
     {
       name: 'empty, loading (no rows yet)',
-      // Before fix: count was 2 (estimatedTotal=1 + skeleton=1).
-      // After fix: skeleton is suppressed when rowsLength=0.
       rows: {
         rowsLength: 0,
         complete: false,
-        rowsEmpty: true,
         atStart: false,
         atEnd: false,
         firstRowIndex: 0,
       },
-      expectedCount: 1, // estimatedTotal=1 + no skeleton (rowsLength=0)
+      expectedItems: 0,
+      expectedSpaceBefore: 0,
       expectedTotal: undefined,
     },
     {
       name: 'empty, complete',
-      // Before fix: count was 1 (estimatedTotal stayed at 1 due to Math.max).
-      // After fix: the atStart&&atEnd&&complete branch directly yields rowsLength=0.
       rows: {
         rowsLength: 0,
         complete: true,
@@ -88,12 +75,13 @@ describe('useZeroVirtualizer - virtualizer count and total', () => {
         atEnd: true,
         firstRowIndex: 0,
       },
-      expectedCount: 0,
+      expectedItems: 0,
+      expectedSpaceBefore: 0,
+      expectedSpaceAfter: 0,
       expectedTotal: 0,
     },
     {
       name: 'loading from top, some rows',
-      // estimatedTotal stays 1 (complete=false). newEstimatedTotal=20. +1 skeleton (more to load).
       rows: {
         rowsLength: 20,
         complete: false,
@@ -102,35 +90,9 @@ describe('useZeroVirtualizer - virtualizer count and total', () => {
         atEnd: false,
         firstRowIndex: 0,
       },
-      expectedCount: 21, // max(1,20) + 1 skeleton
+      expectedItems: 20,
+      expectedSpaceBefore: 0, // atStart
       expectedTotal: undefined,
-    },
-    {
-      name: 'complete at top, more rows below',
-      // complete fires UPDATE_ESTIMATED_TOTAL(20). estimatedTotal becomes 20. +1 skeleton.
-      rows: {
-        rowsLength: 20,
-        complete: true,
-        rowsEmpty: false,
-        atStart: true,
-        atEnd: false,
-        firstRowIndex: 0,
-      },
-      expectedCount: 21, // max(20,20) + 1 skeleton
-      expectedTotal: undefined, // hasReachedEnd=false
-    },
-    {
-      name: 'single row, complete',
-      rows: {
-        rowsLength: 1,
-        complete: true,
-        rowsEmpty: false,
-        atStart: true,
-        atEnd: true,
-        firstRowIndex: 0,
-      },
-      expectedCount: 1,
-      expectedTotal: 1,
     },
     {
       name: 'all rows loaded',
@@ -142,12 +104,13 @@ describe('useZeroVirtualizer - virtualizer count and total', () => {
         atEnd: true,
         firstRowIndex: 0,
       },
-      expectedCount: 20, // atStart&&atEnd&&complete -> rowsLength
+      expectedItems: 20,
+      expectedSpaceBefore: 0,
+      expectedSpaceAfter: 0,
       expectedTotal: 20,
     },
     {
       name: 'loading at end, rows above (firstRowIndex>0)',
-      // estimatedTotal stays 1 (complete=false). newEstimatedTotal=5+20=25. No skeleton (atEnd=true).
       rows: {
         rowsLength: 20,
         complete: false,
@@ -156,40 +119,13 @@ describe('useZeroVirtualizer - virtualizer count and total', () => {
         atEnd: true,
         firstRowIndex: 5,
       },
-      expectedCount: 25, // max(1,25) + 0 skeleton
-      expectedTotal: undefined,
-    },
-    {
-      name: 'complete at end, more rows above (firstRowIndex>0)',
-      // complete fires UPDATE_ESTIMATED_TOTAL(25). estimatedTotal=25. No skeleton (atEnd=true).
-      rows: {
-        rowsLength: 20,
-        complete: true,
-        rowsEmpty: false,
-        atStart: false,
-        atEnd: true,
-        firstRowIndex: 5,
-      },
-      expectedCount: 25, // max(25,25) + 0 skeleton
-      expectedTotal: undefined, // hasReachedStart=false
-    },
-    {
-      name: 'loading in middle (firstRowIndex>0)',
-      // estimatedTotal stays 1 (complete=false). newEstimatedTotal=30+50=80. +1 skeleton.
-      rows: {
-        rowsLength: 50,
-        complete: false,
-        rowsEmpty: false,
-        atStart: false,
-        atEnd: false,
-        firstRowIndex: 30,
-      },
-      expectedCount: 81, // max(1,80) + 1 skeleton
+      expectedItems: 20,
+      expectedSpaceBefore: 5 * EST, // 5 estimated rows above
+      expectedSpaceAfter: 0, // atEnd
       expectedTotal: undefined,
     },
     {
       name: 'complete in middle (firstRowIndex>0)',
-      // complete fires UPDATE_ESTIMATED_TOTAL(60). estimatedTotal=60. +1 skeleton.
       rows: {
         rowsLength: 50,
         complete: true,
@@ -198,20 +134,60 @@ describe('useZeroVirtualizer - virtualizer count and total', () => {
         atEnd: false,
         firstRowIndex: 10,
       },
-      expectedCount: 61, // max(60,60) + 1 skeleton
+      expectedItems: 50,
+      expectedSpaceBefore: 10 * EST,
       expectedTotal: undefined,
     },
-  ])('$name', ({rows, expectedCount, expectedTotal}) => {
-    mockUseRows.mockReturnValue(makeUseRowsResult(rows));
+  ])(
+    '$name',
+    ({
+      rows,
+      expectedItems,
+      expectedSpaceBefore,
+      expectedSpaceAfter,
+      expectedTotal,
+    }) => {
+      mockUseRows.mockReturnValue(makeUseRowsResult(rows));
+
+      // `options` must be stable across renders (a fresh `listContextParams`
+      // each render would make the hook think the context keeps changing).
+      const options = makeOptions();
+      const {result} = renderHook(() => useZeroVirtualizer(options));
+
+      expect(result.current.items).toHaveLength(expectedItems);
+      expect(result.current.total).toBe(expectedTotal);
+      if (expectedSpaceBefore !== undefined) {
+        expect(result.current.spaceBefore).toBe(expectedSpaceBefore);
+      }
+      if (expectedSpaceAfter !== undefined) {
+        expect(result.current.spaceAfter).toBe(expectedSpaceAfter);
+      }
+    },
+  );
+
+  test('items carry the correct index and row', () => {
+    const rowsData = [{id: 'a'}, {id: 'b'}, {id: 'c'}];
+    mockUseRows.mockReturnValue(
+      makeUseRowsResult({
+        rowsLength: 3,
+        complete: true,
+        rowsEmpty: false,
+        atStart: false,
+        atEnd: false,
+        firstRowIndex: 7,
+        rowAt: (i: number) => rowsData[i - 7],
+      }),
+    );
 
     const options = makeOptions();
     const {result} = renderHook(() => useZeroVirtualizer(options));
 
-    expect(result.current.total).toBe(expectedTotal);
-    expect(result.current.virtualizer.options.count).toBe(expectedCount);
+    expect(result.current.items.map(it => it.index)).toEqual([7, 8, 9]);
+    expect(result.current.items.map(it => it.key)).toEqual(['a', 'b', 'c']);
+    expect(result.current.items[0].row).toEqual({id: 'a'});
   });
 
-  test('explicit count overrides estimated row count metadata', () => {
+  test('explicit count overrides estimated total', () => {
     mockUseRows.mockReturnValue(
       makeUseRowsResult({
         rowsLength: 20,
@@ -223,12 +199,9 @@ describe('useZeroVirtualizer - virtualizer count and total', () => {
       }),
     );
 
-    const options = makeOptions();
-    const {result} = renderHook(() =>
-      useZeroVirtualizer({...options, count: 42}),
-    );
+    const options = {...makeOptions(), count: 42};
+    const {result} = renderHook(() => useZeroVirtualizer(options));
 
-    expect(result.current.virtualizer.options.count).toBe(42);
     expect(result.current.estimatedTotal).toBe(42);
     expect(result.current.total).toBe(42);
     expect(result.current.rowsEmpty).toBe(false);
@@ -246,12 +219,9 @@ describe('useZeroVirtualizer - virtualizer count and total', () => {
       }),
     );
 
-    const options = makeOptions();
-    const {result} = renderHook(() =>
-      useZeroVirtualizer({...options, count: 0}),
-    );
+    const options = {...makeOptions(), count: 0};
+    const {result} = renderHook(() => useZeroVirtualizer(options));
 
-    expect(result.current.virtualizer.options.count).toBe(0);
     expect(result.current.estimatedTotal).toBe(0);
     expect(result.current.total).toBe(0);
     expect(result.current.rowsEmpty).toBe(true);

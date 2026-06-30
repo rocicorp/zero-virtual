@@ -1,4 +1,6 @@
 import {expect, test, type Page} from '@playwright/test';
+import {TEST_ITEMS} from '../seed-test.ts';
+import {topVisibleRowHref, waitForRows} from './helpers.ts';
 
 // Seed data ordering summary (see seed-test.ts for details):
 //
@@ -10,29 +12,14 @@ import {expect, test, type Page} from '@playwright/test';
 const TIMEOUT = 15_000;
 
 /**
- * Assert that the row containing `text` is the first visible item in
- * the scrollable viewport (i.e. closest to the top edge). Uses a retry
+ * Assert that the row for the item titled `title` is the first visible item
+ * in the scrollable viewport (i.e. closest to the top edge). Uses a retry
  * loop because sort changes are async.
  */
-async function expectFirstVisibleRow(page: Page, text: string) {
+async function expectFirstVisibleRow(page: Page, title: string) {
+  const item = TEST_ITEMS.find(i => i.title === title)!;
   await expect(async () => {
-    const isFirst = await page.evaluate((txt: string) => {
-      const viewport = document.querySelector('[class*="viewport"]');
-      if (!viewport) return false;
-      const vpTop = viewport.getBoundingClientRect().top;
-      const rows = [...viewport.querySelectorAll('a[href^="#"]')];
-      if (rows.length === 0) return false;
-      // Find the row closest to the viewport top.
-      let best: {el: Element; dist: number} | null = null;
-      for (const row of rows) {
-        const dist = Math.abs(row.getBoundingClientRect().top - vpTop);
-        if (!best || dist < best.dist) {
-          best = {el: row, dist};
-        }
-      }
-      return best?.el.textContent?.includes(txt) ?? false;
-    }, text);
-    expect(isFirst).toBe(true);
+    expect(await topVisibleRowHref(page)).toBe(`#${item.id}`);
   }).toPass({timeout: TIMEOUT});
 }
 
@@ -40,11 +27,7 @@ test.describe('Sort controls', () => {
   test.beforeEach(async ({page}) => {
     await page.goto('/');
     // Wait until the list has loaded real rows.
-    await expect(
-      page.locator('[class*="viewport"] a[href^="#"]').first(),
-    ).toBeVisible({
-      timeout: TIMEOUT,
-    });
+    await waitForRows(page, TIMEOUT);
   });
 
   test('default state: sort field button reads "Modified"', async ({page}) => {

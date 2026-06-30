@@ -3,7 +3,7 @@ import {handleMutateRequest, handleQueryRequest} from '@rocicorp/zero/server';
 import {zeroNodePg} from '@rocicorp/zero/server/adapters/pg';
 import {Hono} from 'hono';
 import {Pool} from 'pg';
-import {assert} from '../../src/asserts.ts';
+import {must} from '../must.ts';
 import {mutators} from '../mutators.ts';
 import {queries} from '../queries.ts';
 import {schema} from '../schema.ts';
@@ -14,12 +14,13 @@ export const config = {
 
 export const app = new Hono().basePath('/api');
 
-const {ZERO_UPSTREAM_DB} = process.env;
-
-assert(ZERO_UPSTREAM_DB, 'ZERO_UPSTREAM_DB environment variable is required');
+const upstreamDB = must(
+  process.env['ZERO_UPSTREAM_DB'],
+  'ZERO_UPSTREAM_DB environment variable is required',
+);
 
 const pool = new Pool({
-  connectionString: ZERO_UPSTREAM_DB,
+  connectionString: upstreamDB,
 });
 const dbProvider = zeroNodePg(schema, pool);
 

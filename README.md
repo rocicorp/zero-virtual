@@ -1,19 +1,37 @@
 # zero-virtual
 
-Infinite virtual scroller for [Zero](https://zero.rocicorp.dev/). Built on top of [Tanstack Virtual](https://tanstack.com/virtual/latest).
+Infinite virtual scroller for [Zero](https://zero.rocicorp.dev/). Rows render in
+normal document flow and scroll anchoring keeps the viewport stable as rows load
+— the browser's native CSS `overflow-anchor` where it's reliable, and a built-in
+momentum-safe manual equivalent on iOS (auto-detected). Scrolling stays smooth
+and variable / dynamic row heights work out of the box. No third-party
+virtualization dependency.
 
 Live demo at: https://gigabugs.rocicorp.dev/.
 
 Features:
 
 - Bidirectional infinite scrolling (load more items at top or bottom)
+- Uniform, non-uniform, or fully dynamic (content-measured) row heights
+- Element scrolling or window scrolling (`useZeroWindowVirtualizer`)
+- Native or manual (momentum-safe) scroll anchoring, auto-detected per platform
 - Permalink support (jump to and highlight a specific item by ID)
 - State persistence (restore scroll position across navigation)
+- Exact `count` support for an accurate, stable scrollbar
+- Stick-to-edge helpers (`useStickToBottom` / `useStickToTop`) for chat and
+  feed UIs
 - Dynamic page sizing based on viewport
+- No third-party virtualization dependency
 
 ## Restrictions
 
-- Only fixed row heights are currently supported.
+- Vertical lists only.
+- In `native` anchoring mode, relies on the browser's CSS `overflow-anchor`
+  (Chromium, Firefox, Safari 16.4+). `manual` mode — the default on iOS —
+  implements the equivalent itself and has no such dependency.
+- Without `count`, the scrollbar is approximate: off-screen extent is sized
+  from `estimateSize` and grows as rows are discovered (as with any virtualized
+  list of unknown length). Visible content is always positioned exactly.
 
 ## Usage
 
@@ -76,8 +94,9 @@ export const queries = defineQueries({
 
 ```tsx
 import {
+  rowAttributes,
   useZeroVirtualizer,
-  useHistoryPermalinkState,
+  useHistoryScrollState,
 } from '@rocicorp/zero-virtual/react';
 import {useCallback, useRef} from 'react';
 
@@ -91,10 +110,9 @@ function toStartRow(item: Item): ItemStart {
 
 export function ItemList() {
   const parentRef = useRef<HTMLDivElement>(null);
-  const [permalinkState, setPermalinkState] =
-    useHistoryPermalinkState<ItemStart>();
+  const [scrollState, onScrollStateChange] = useHistoryScrollState<ItemStart>();
 
-  const {virtualizer, rowAt} = useZeroVirtualizer({
+  const {items, spaceBefore, spaceAfter} = useZeroVirtualizer({
     listContextParams: {},
     getScrollElement: useCallback(() => parentRef.current, []),
     estimateSize: useCallback(() => 48, []),
@@ -112,35 +130,117 @@ export function ItemList() {
       }),
       [],
     ),
-    permalinkState,
-    onPermalinkStateChange: setPermalinkState,
+    scrollState,
+    onScrollStateChange,
   });
 
-  const virtualItems = virtualizer.getVirtualItems();
-
+  // Rows render in normal document flow between two spacers that stand in for
+  // the not-yet-loaded rows above and below. The hook manages `overflow-anchor`
+  // on the scroll container per the anchoring mode; put `overflow-anchor: none`
+  // on the spacers so anchoring always targets a real row, never a spacer.
   return (
     <div ref={parentRef} style={{overflow: 'auto', height: '100vh'}}>
-      <div style={{height: virtualizer.getTotalSize(), position: 'relative'}}>
-        {virtualItems.map(virtualRow => {
-          const row = rowAt(virtualRow.index);
-          return (
-            <div
-              key={virtualRow.key}
-              data-index={virtualRow.index}
-              style={{
-                position: 'absolute',
-                transform: `translateY(${virtualRow.start}px)`,
-              }}
-            >
-              {row ? row.title : 'Loading...'}
-            </div>
-          );
-        })}
-      </div>
+      <div style={{height: spaceBefore, overflowAnchor: 'none'}} />
+      {items.map(({index, key, row}) => (
+        <div key={key} {...rowAttributes(index, key)}>
+          {row ? row.title : 'Loading...'}
+        </div>
+      ))}
+      <div style={{height: spaceAfter, overflowAnchor: 'none'}} />
     </div>
   );
 }
 ```
+
+`rowAttributes(index, key)` stamps each row with the `data-vrow-index` /
+`data-vrow-key` attributes the hook uses to measure which rows are visible (to
+trigger paging), pick its anchoring reference, and locate a permalink target.
+Every row — including loading placeholders — must carry them.
+
+### Element vs window scrolling
+
+`useZeroVirtualizer` scrolls inside an overflow element — `getScrollElement`
+returns that element. To scroll the **window** instead, use
+`useZeroWindowVirtualizer` with the exact same options and render shape; here
+`getScrollElement` returns the element the rows are rendered into (which lives in
+normal page flow), and the window is the scroll container:
+
+```tsx
+import {useZeroWindowVirtualizer} from '@rocicorp/zero-virtual/react';
+
+const {items, spaceBefore, spaceAfter} = useZeroWindowVirtualizer({
+  /* ...same options... */
+});
+```
+
+Both hooks share a `ScrollAdapter` abstraction (`elementScrollAdapter` /
+`windowScrollAdapter` are exported); provide your own to scroll a custom
+container.
+
+### Scroll anchoring modes
+
+The `anchoring` option controls how the viewport is kept stable as off-screen
+content changes size (rows loading, dynamic heights resolving, estimates
+relabeling):
+
+- **`'auto'`** (default) — `'manual'` on iOS, `'native'` everywhere else.
+- **`'native'`** — the browser's CSS `overflow-anchor` does the work.
+- **`'manual'`** — the virtualizer pins a reference row itself and folds
+  above-viewport size changes back into the scroll position. Native anchoring
+  effectively writes `scrollTop`, which iOS ignores or janks on during momentum
+  scrolling; in manual mode corrections during a touch gesture are held in a
+  CSS transform and reconciled into `scrollTop` when the gesture ends (disable
+  via `useTransformWhileScrolling: false` to defer corrections to gesture end
+  instead).
+
+Manual mode matches native semantics, including suppression at scroll offset 0
+— content prepended while you're at the very top is revealed, not compensated
+away.
+
+For the **element scroller** in manual mode, wrap the spacers and rows in an
+in-flow wrapper and pass it via `getShiftElement` — that wrapper is what the
+momentum-time transform applies to:
+
+```tsx
+<div ref={parentRef} style={{overflow: 'auto', height: '100vh'}}>
+  <div ref={shiftRef}>{/* spacers + rows */}</div>
+</div>
+```
+
+(The window scroller needs no extra wrapper — the rows container itself is the
+shift target.)
+
+### Exact row count
+
+Without a known total, the scroll extent is estimated from the rows discovered
+so far, so it keeps growing as you scroll into new rows and the scrollbar
+handle jumps at page boundaries. Pass `count` whenever you can get the total
+cheaply (e.g. a count query) for an accurate, stable scrollbar:
+
+```ts
+useZeroVirtualizer({count: totalRows /* ... */});
+```
+
+### Following an edge (chat / feed UIs)
+
+Scroll anchoring keeps what you're looking at stable; it never _follows_ new
+content. For a chat/log pinned to the newest message at the bottom, or a feed
+at the top that should reveal newly arrived items, layer the stick-to-edge
+hooks on top:
+
+```ts
+import {useStickToBottom, useStickToTop} from '@rocicorp/zero-virtual/react';
+
+// Any value that changes when content can grow at the edge:
+const tick = `${items.length}:${items[0]?.key}:${items.at(-1)?.key}:${spaceBefore}:${spaceAfter}`;
+
+useStickToBottom(getScrollElement, tick); // chat / log
+useStickToTop(getScrollElement, tick); // feed parked at the top
+```
+
+They only follow while the user is parked at that edge: scroll away and the
+following stops (read history in peace); scroll back and it re-arms. For the
+window scroller, pass `() => document.scrollingElement` as the element getter.
 
 ### Query functions
 
@@ -179,19 +279,19 @@ getPageQuery: ({limit, start, dir, settled}) => ({
 - **`settleTime`** (option) — how long to wait before considering the list settled (default 2000ms)
 - **`onSettled`** (option) — callback fired when `settled` transitions to `true`, useful for deferred side effects like syncing search params to the URL
 
-### `useHistoryPermalinkState`
+### `useHistoryScrollState`
 
-A ready-made hook that persists virtualizer scroll/pagination state in `window.history.state`, so back/forward navigation restores position automatically:
+A ready-made hook that persists the virtualizer's scroll/pagination state in `window.history.state`, so back/forward navigation restores position automatically. Pass its results to the `scrollState` and `onScrollStateChange` options:
 
 ```ts
-const [permalinkState, setPermalinkState] =
-  useHistoryPermalinkState<MyStartRow>();
+const [scrollState, onScrollStateChange] = useHistoryScrollState<MyStartRow>();
 ```
 
 Pass a custom `key` if you have multiple virtualizers on the same page:
 
 ```ts
-const [state, setState] = useHistoryPermalinkState<MyStartRow>('myList');
+const [scrollState, onScrollStateChange] =
+  useHistoryScrollState<MyStartRow>('myList');
 ```
 
 For a complete working example including sorting, permalinks, and scroll-position persistence, see [demo/App.tsx](demo/App.tsx).
@@ -233,4 +333,4 @@ pnpm dev:ui
 ## Other Examples
 
 - https://github.com/rocicorp/ztunes (live at https://ztunes.rocicorp.dev/)
-  https://github.com/rocicorp/mono/tree/main/apps/zbugs (live at https://gigabugs.rocicorp.dev/)
+- https://github.com/rocicorp/mono/tree/main/apps/zbugs (live at https://gigabugs.rocicorp.dev/)

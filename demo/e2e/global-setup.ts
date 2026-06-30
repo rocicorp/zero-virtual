@@ -162,17 +162,25 @@ function spawnZeroCache(port: number) {
   return proc;
 }
 
-function killExistingZeroCache(): void {
-  if (!existsSync(PID_FILE)) return;
+/**
+ * Kill the zero-cache recorded in PID_FILE (if any) and remove the file.
+ * Returns the pid that was signalled, or null if none. Also used by
+ * global-teardown, which logs the kill.
+ */
+export function killExistingZeroCache(): number | null {
+  if (!existsSync(PID_FILE)) return null;
   const pid = parseInt(readFileSync(PID_FILE, 'utf-8').trim(), 10);
+  let killed: number | null = null;
   if (!isNaN(pid)) {
     try {
       process.kill(pid, 'SIGTERM');
+      killed = pid;
     } catch {
       // Process may already be gone — that's fine.
     }
   }
   rmSync(PID_FILE, {force: true});
+  return killed;
 }
 
 function sleep(ms: number): Promise<void> {
