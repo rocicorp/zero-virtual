@@ -4,5 +4,9 @@
     "outDir": "../dist/",
     "noEmit": false
   },
-  "include": ["./react/index.ts"]
+  "include": [
+    "./react/index.ts",
+    "./solid/index.ts",
+    "./core/index.ts"
+  ]
 }

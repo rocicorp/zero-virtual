@@ -31,6 +31,16 @@ export {
   type RowsSnapshot,
 } from './rows.ts';
 export {
+  createStickToBottom,
+  DEFAULT_STICK_SLACK,
+  type StickToBottomController,
+} from './stick-to-bottom.ts';
+export {
+  ZeroVirtualizer,
+  type VirtualizerOptions,
+  type VirtualizerSnapshot,
+} from './virtualizer.ts';
+export {
   elementScrollAdapter,
   windowScrollAdapter,
   type ScrollAdapter,

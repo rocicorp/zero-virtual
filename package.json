@@ -24,6 +24,14 @@
     "./react": {
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js"
+    },
+    "./solid": {
+      "types": "./dist/solid/index.d.ts",
+      "import": "./dist/solid/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
     }
   },
   "scripts": {
@@ -51,13 +59,26 @@
     "oxlint-tsgolint": "^0.17.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "solid-js": "^1.9.14",
     "vite": "^8.0.3",
     "vitest": "^4.1.2"
   },
   "peerDependencies": {
     "@rocicorp/zero": "1.7.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "solid-js": "^1.9.4"
   },
-  "packageManager": "pnpm@11.1.3"
+  "packageManager": "pnpm@11.1.3",
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "solid-js": {
+      "optional": true
+    }
+  }
 }

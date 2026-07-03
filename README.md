@@ -11,6 +11,7 @@ Live demo at: https://gigabugs.rocicorp.dev/.
 
 Features:
 
+- React and SolidJS bindings over one framework-agnostic core
 - Bidirectional infinite scrolling (load more items at top or bottom)
 - Uniform, non-uniform, or fully dynamic (content-measured) row heights
 - Element scrolling or window scrolling (`useZeroWindowVirtualizer`)
@@ -32,6 +33,19 @@ Features:
 - Without `count`, the scrollbar is approximate: off-screen extent is sized
   from `estimateSize` and grows as rows are discovered (as with any virtualized
   list of unknown length). Visible content is always positioned exactly.
+
+## Entry points
+
+- **`@rocicorp/zero-virtual/react`** — the React hooks (this guide).
+- **`@rocicorp/zero-virtual/solid`** — the SolidJS bindings:
+  `createZeroVirtualizer` / `createZeroWindowVirtualizer`,
+  `createHistoryScrollState`, `createStickToBottom`. Same options and
+  snapshot shape as React, with accessors in the reactive slots (query
+  functions are bound via `@rocicorp/zero/solid`).
+- **`@rocicorp/zero-virtual/core`** — the framework-agnostic
+  `ZeroVirtualizer` the wrappers share. **Experimental: this entry point is
+  public so you can build bindings for other frameworks, but its API may
+  change in breaking ways in any release while it settles.**
 
 ## Usage
 
