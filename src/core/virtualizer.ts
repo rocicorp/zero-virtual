@@ -22,13 +22,6 @@ const MIN_PAGE_SIZE = 100;
 
 const NUM_ROWS_FOR_LOADING_SKELETON = 1;
 
-// After the finger lifts, assume momentum may still be gliding for at least this
-// long before an idle-timeout is allowed to conclude the gesture has ended.
-const MOMENTUM_GUARD_MS = 180;
-// How long the scroll must be quiet (no scroll events) before we treat a gesture
-// as ended, when the native `scrollend` event isn't available. Tune on device.
-const IDLE_DEBOUNCE_MS = 120;
-
 // Debounce for persisting scroll state via onScrollStateChange.
 const PERSIST_DEBOUNCE_MS = 100;
 
@@ -226,8 +219,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // scrolls can safely write scrollTop.
   #touchScroll = false;
   #fingerDown = false;
-  #momentumGuardUntil = 0;
-  #idleTimer: ReturnType<typeof setTimeout> | undefined;
+  // Whether any (non-programmatic) scrolling happened during the current touch
+  // gesture: a plain tap must end the gesture at touchend itself, because no
+  // scrolling means no `scrollend` will ever fire for it.
+  #gestureScrolled = false;
   #settleTimer: ReturnType<typeof setTimeout> | undefined;
   #persistTimer: ReturnType<typeof setTimeout> | undefined;
   // The live anchoring state; also exposed (read-only) as `debug`.
@@ -377,7 +372,6 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.#resizeObserver?.disconnect();
     this.#resizeObserver = null;
     this.#observedItems = null;
-    clearTimeout(this.#idleTimer);
     clearTimeout(this.#settleTimer);
     clearTimeout(this.#persistTimer);
     this.#adapter.scrollElement(el).style.overflowAnchor =
@@ -765,7 +759,6 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.#anchorState.isScrolling = false;
     this.#touchScroll = false;
     this.#fingerDown = false;
-    clearTimeout(this.#idleTimer);
     this.#flushHold();
     this.#refreshAnchor();
     this.#evaluate();
@@ -785,21 +778,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   // ---- event handlers --------------------------------------------------------
-
-  #scheduleIdleCheck(): void {
-    clearTimeout(this.#idleTimer);
-    this.#idleTimer = setTimeout(() => this.#tryEndScroll(), IDLE_DEBOUNCE_MS);
-  }
-
-  #tryEndScroll(): void {
-    // Never end while a finger is down or momentum may still be gliding — a
-    // scrollTop write then would cancel the fling (the classic iOS jolt).
-    if (this.#fingerDown || Date.now() < this.#momentumGuardUntil) {
-      this.#scheduleIdleCheck();
-      return;
-    }
-    this.#withNotify(() => this.#endScrolling());
-  }
+  // Gesture end is driven by the native `scrollend` event (guaranteed by the
+  // supported browsers — see the Safari 26 requirement in the README), plus
+  // touch state: a gesture never ends while a finger is down, and a tap that
+  // never scrolled ends at touchend (no scrolling → no scrollend).
 
   #onScroll = (): void => {
     const programmatic = this.#programmaticScroll;
@@ -811,8 +793,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // anchor.
     if (this.#manual() && !programmatic) {
       this.#anchorState.isScrolling = true;
+      this.#gestureScrolled = true;
       this.#refreshAnchor();
-      if (!this.#fingerDown) this.#scheduleIdleCheck();
     }
     this.#resetSettleTimer();
     this.#withNotify(() => this.#evaluate());
@@ -828,14 +810,21 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #onTouchStart = (): void => {
     this.#fingerDown = true;
     this.#touchScroll = true;
+    // Arm the hold path immediately so a correction landing between
+    // touchstart and the first scroll event never writes scrollTop under an
+    // active finger.
     this.#anchorState.isScrolling = true;
-    clearTimeout(this.#idleTimer);
+    this.#gestureScrolled = false;
   };
 
   #onTouchEnd = (): void => {
     this.#fingerDown = false;
-    this.#momentumGuardUntil = Date.now() + MOMENTUM_GUARD_MS;
-    this.#scheduleIdleCheck();
+    if (!this.#gestureScrolled) {
+      // A tap: nothing scrolled, so no scrollend is coming — end now.
+      this.#withNotify(() => this.#endScrolling());
+    }
+    // Otherwise momentum (or the just-finished drag) concludes with the
+    // browser's scrollend, which reconciles via #onScrollEnd.
   };
 
   // Scroll-driven evaluation (replaces the old scrollTick re-render): paging,

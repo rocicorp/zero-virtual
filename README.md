@@ -26,6 +26,10 @@ Features:
 ## Restrictions
 
 - Vertical lists only.
+- **Browser support: Chromium 114+, Firefox 109+, Safari 26+.** The floor is
+  the native `scrollend` event, which the manual anchoring relies on to
+  reconcile momentum-time corrections at the end of a touch gesture (there is
+  deliberately no timer-based fallback for older engines).
 - In `native` anchoring mode, relies on the browser's CSS `overflow-anchor`
   (Chromium and Firefox; Safari doesn't implement it). The default `auto` mode
   feature-detects and falls back to `manual`, which implements the equivalent
