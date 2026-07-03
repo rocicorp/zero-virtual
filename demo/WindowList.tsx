@@ -57,7 +57,7 @@ export function WindowList(): React.ReactNode {
   const getPageQuery = useGetPageQuery(listContextParams);
   const [scrollState, onScrollStateChange] = useHistoryScrollState<ItemStart>();
 
-  const {items, spaceBefore, spaceAfter, estimatedTotal, total, debug} =
+  const {items, spaceBefore, spaceAfter, estimatedTotal, total} =
     useZeroWindowVirtualizer({
       listContextParams,
       getScrollElement,
@@ -106,7 +106,6 @@ export function WindowList(): React.ReactNode {
         <Spacer height={spaceAfter} />
       </div>
       <DevPanel
-        debug={debug}
         getScrollElement={getScrollElement}
         windowMode
         heightMode={heightMode}

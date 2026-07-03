@@ -4,11 +4,6 @@ import styles from './DevPanel.module.css';
 import type {HeightMode} from './list-shared.ts';
 import {useUrlState} from './use-url-state.ts';
 
-type DebugState = {
-  isScrolling: boolean;
-  pendingJump: number;
-};
-
 /**
  * The collapsible dev panel from the design handoff: all demo configuration
  * (scroll container, item sizing, add-item actions), the virtualizer's live
@@ -17,7 +12,6 @@ type DebugState = {
  * re-renders the list.
  */
 export function DevPanel({
-  debug,
   getScrollElement,
   windowMode = false,
   heightMode,
@@ -28,7 +22,6 @@ export function DevPanel({
   follow,
   onFollowChange,
 }: {
-  debug: {readonly current: DebugState};
   getScrollElement: () => HTMLElement | null;
   windowMode?: boolean;
   heightMode: HeightMode;
@@ -43,10 +36,7 @@ export function DevPanel({
   // The scroll-container mode lives in the URL (it selects which demo renders).
   const [scroller, setScroller] = useUrlState('scroller', 'element');
 
-  const [snap, setSnap] = useState<DebugState & {st: number}>({
-    st: 0,
-    ...debug.current,
-  });
+  const [snap, setSnap] = useState({st: 0});
   const raf = useRef(0);
   useEffect(() => {
     if (!open) return undefined;
@@ -57,12 +47,12 @@ export function DevPanel({
         : el
           ? Math.round(el.scrollTop)
           : 0;
-      setSnap({st, ...debug.current});
+      setSnap({st});
       raf.current = requestAnimationFrame(tick);
     };
     raf.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf.current);
-  }, [open, debug, getScrollElement, windowMode]);
+  }, [open, getScrollElement, windowMode]);
 
   if (!open) {
     return (
@@ -120,18 +110,6 @@ export function DevPanel({
         <div className={styles.statRow}>
           <span className={styles.statName}>scrollTop</span>
           <span className={styles.statValue}>{snap.st}</span>
-        </div>
-        <div className={styles.statRow}>
-          <span className={styles.statName}>scrolling</span>
-          <span className={styles.statValue}>
-            {snap.isScrolling ? 'yes' : 'no'}
-          </span>
-        </div>
-        <div className={styles.statRow}>
-          <span className={styles.statName}>pending</span>
-          <span className={styles.statValue}>
-            {Math.round(snap.pendingJump)}
-          </span>
         </div>
       </div>
 

@@ -132,12 +132,6 @@ export type VirtualizerSnapshot<TRow> = {
   estimatedTotal: number;
   total: number | undefined;
   settled: boolean;
-  debug: {
-    readonly current: {
-      readonly isScrolling: boolean;
-      readonly pendingJump: number;
-    };
-  };
 };
 
 const EMPTY_ROWS: RowsSnapshot<unknown> = {
@@ -225,7 +219,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #gestureScrolled = false;
   #settleTimer: ReturnType<typeof setTimeout> | undefined;
   #persistTimer: ReturnType<typeof setTimeout> | undefined;
-  // The live anchoring state; also exposed (read-only) as `debug`.
+  // The live anchoring state.
   readonly #anchorState = {isScrolling: false, pendingJump: 0};
   // The row element currently carrying the held margin.
   #holdEl: HTMLElement | null = null;
@@ -559,7 +553,6 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       estimatedTotal: effectiveEstimatedTotal,
       total,
       settled: this.#settled,
-      debug: {current: this.#anchorState},
     };
   }
 
