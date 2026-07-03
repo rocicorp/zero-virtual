@@ -5,15 +5,43 @@ import {
   useMemo,
   useRef,
   useState,
-  type Key,
 } from 'react';
 import {assert} from '../asserts.ts';
 import {
-  useRows,
-  type Anchor,
-  type GetPageQuery,
-  type GetSingleQuery,
-} from './use-rows.ts';
+  findRow,
+  firstRow,
+  queryRows,
+  rectInViewport,
+  VROW_INDEX_ATTR,
+  VROW_KEY_ATTR,
+} from '../core/dom.ts';
+import {
+  elementScrollAdapter,
+  windowScrollAdapter,
+  type ScrollAdapter,
+  type ScrollRect,
+} from '../core/scroll-adapter.ts';
+import type {
+  Anchor,
+  AnchoringMode,
+  GetPageQuery,
+  GetSingleQuery,
+  RowKey,
+  ScrollHistoryState,
+  VirtualRow,
+} from '../core/types.ts';
+import {useRows} from './use-rows.ts';
+
+// Re-exported so the public `./react` entry point is unchanged by the
+// core extraction (index.ts re-exports these from here).
+export {elementScrollAdapter, windowScrollAdapter};
+export type {ScrollAdapter, ScrollRect};
+export {rowAttributes} from '../core/dom.ts';
+export type {
+  AnchoringMode,
+  ScrollHistoryState,
+  VirtualRow,
+} from '../core/types.ts';
 
 // Make sure this is even since we half it for scroll state loading
 const MIN_PAGE_SIZE = 100;
@@ -27,38 +55,7 @@ const MOMENTUM_GUARD_MS = 180;
 // as ended, when the native `scrollend` event isn't available. Tune on device.
 const IDLE_DEBOUNCE_MS = 120;
 
-const defaultKeyExtractor = (index: number): Key => index;
-
-// The row-identification contract between the virtualizer and the rendered
-// rows: every row element (including loading placeholders) carries these two
-// attributes - they are how the virtualizer finds rows in the DOM (visible-row
-// detection for paging, the anchoring reference, permalink targets). Consumers
-// should spread {@linkcode rowAttributes} onto each row element.
-const VROW_INDEX_ATTR = 'data-vrow-index';
-const VROW_KEY_ATTR = 'data-vrow-key';
-
-/**
- * The attributes every rendered row (and loading placeholder) must carry, as an
- * object to spread onto the row element: `<div {...rowAttributes(index, key)}>`.
- * See {@linkcode VirtualRow} for `index` / `key`.
- */
-export function rowAttributes(
-  index: number,
-  key: Key,
-): {'data-vrow-index': number; 'data-vrow-key': Key} {
-  return {[VROW_INDEX_ATTR]: index, [VROW_KEY_ATTR]: key};
-}
-
-/**
- * How the viewport is kept stable as off-screen content resizes:
- * - `native`: rely on the browser's CSS `overflow-anchor` (simplest; used where
- *   it's reliable).
- * - `manual`: the momentum-safe manual anchoring (reference-row pinning, with
- *   touch-time corrections held as a first-row margin), for browsers without
- *   native scroll anchoring.
- * - `auto`: pick per {@linkcode detectNeedsManualAnchoring} (default).
- */
-export type AnchoringMode = 'auto' | 'manual' | 'native';
+const defaultKeyExtractor = (index: number): RowKey => index;
 
 // Use manual anchoring wherever the browser doesn't implement CSS scroll
 // anchoring - notably older versions of Safari. Feature detection, not UA
@@ -67,123 +64,11 @@ function detectNeedsManualAnchoring(): boolean {
   return typeof CSS === 'undefined' || !CSS.supports('overflow-anchor', 'auto');
 }
 
-/**
- * State object that captures the virtualizer's scroll position and pagination state.
- * Used for persisting and restoring the virtualizer state across navigation or page reloads.
- *
- * @typeParam TStartRow - The type of the start row data used for pagination anchoring
- */
-export type ScrollHistoryState<
-  TStartRow,
-  TListContextParams = unknown,
-> = Readonly<{
-  /** The anchor point for pagination (includes position, direction, and start row data) */
-  anchor: Anchor<TStartRow>;
-  /** The scroll position in pixels from the top of the scrollable container */
-  scrollTop: number;
-  /** The estimated total number of rows in the list */
-  estimatedTotal: number;
-  /** Whether the virtualizer has reached the start of the list */
-  hasReachedStart: boolean;
-  /** Whether the virtualizer has reached the end of the list */
-  hasReachedEnd: boolean;
-  /** The list context params active when this state was saved (used to invalidate stale state) */
-  listContextParams: TListContextParams;
-}>;
-
 const TOP_ANCHOR = Object.freeze({
   index: 0,
   kind: 'forward',
   startRow: undefined,
 }) satisfies Anchor<unknown>;
-
-/** The size of the scroll viewport. */
-export type ScrollRect = {width: number; height: number};
-
-/**
- * Abstracts the scroll container so the same virtualizer works whether the list
- * scrolls inside an element or scrolls the window. Mirrors the split TanStack
- * Virtual makes between its `element*` and `window*` scroll helpers.
- *
- * `el` is always the element the rows are rendered into (returned by
- * `getScrollElement`). For element scrolling it is also the scroll container;
- * for window scrolling the window is the scroll container and `el` is only used
- * to locate the rendered rows.
- */
-export type ScrollAdapter = {
-  /**
-   * The actual scrolling element: the overflow container itself for element
-   * scrolling, `document.scrollingElement` for window scrolling. Everything
-   * positional is derived from it - scroll offset (`scrollTop`), viewport size
-   * (`clientWidth`/`clientHeight`), content extent (`scrollHeight`),
-   * `overflow-anchor` toggling, and touch listeners (touches bubble to it).
-   */
-  scrollElement: (el: HTMLElement) => HTMLElement;
-  /**
-   * Top of the scroll viewport in client (getBoundingClientRect) coordinates;
-   * 0 for the window scroller. Row positions are measured against this. (The
-   * nearest TanStack Virtual concept is `scrollMargin`, but that is a static
-   * offset from the scroll origin rather than a client coordinate, so the name
-   * is not borrowed.)
-   */
-  viewportTop: (el: HTMLElement) => number;
-  /**
-   * Listen for `scroll` / `scrollend` on the scroll container (these don't
-   * bubble, so where to listen is adapter-specific: the element itself vs. the
-   * window). Returns an unsubscribe fn.
-   */
-  subscribe: (
-    el: HTMLElement,
-    onScroll: () => void,
-    onScrollEnd: () => void,
-  ) => () => void;
-};
-
-/** Scroll adapter for a list that scrolls inside an overflow element. */
-export const elementScrollAdapter: ScrollAdapter = {
-  scrollElement: el => el,
-  viewportTop: el => el.getBoundingClientRect().top,
-  subscribe: (el, onScroll, onScrollEnd) => {
-    el.addEventListener('scroll', onScroll, {passive: true});
-    el.addEventListener('scrollend', onScrollEnd);
-    return () => {
-      el.removeEventListener('scroll', onScroll);
-      el.removeEventListener('scrollend', onScrollEnd);
-    };
-  },
-};
-
-/** Scroll adapter for a list that scrolls the window. */
-export const windowScrollAdapter: ScrollAdapter = {
-  scrollElement: () =>
-    (document.scrollingElement as HTMLElement | null) ??
-    document.documentElement,
-  viewportTop: () => 0,
-  subscribe: (_el, onScroll, onScrollEnd) => {
-    window.addEventListener('scroll', onScroll, {passive: true});
-    window.addEventListener('scrollend', onScrollEnd);
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('scrollend', onScrollEnd);
-    };
-  },
-};
-
-/**
- * A single item to render. Rows are rendered in normal document flow (no
- * absolute positioning), so there is no `start`/`size` - the browser lays them
- * out.
- *
- * @typeParam TRow - The type of row data returned from queries
- */
-export type VirtualRow<TRow> = {
-  /** The row's index in the (estimated) full list. */
-  index: number;
-  /** Stable key for React. Row id when loaded, otherwise index-derived. */
-  key: Key;
-  /** The row data, or undefined while the row is still loading. */
-  row: TRow | undefined;
-};
 
 /**
  * Options for configuring the Zero virtualizer.
@@ -219,7 +104,7 @@ export type UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> = {
   anchoring?: AnchoringMode | undefined;
 
   /** Function that extracts a stable unique key from a row. */
-  getRowKey: (row: TRow) => Key;
+  getRowKey: (row: TRow) => RowKey;
 
   /** Parameters that define the list's query context (filters, sort order, etc.) */
   listContextParams: TListContextParams;
@@ -571,7 +456,7 @@ function useZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
   // loads. It stays null when a permalink points at an already-visible row (e.g.
   // clicking a visible row), so clicking a row never scrolls it. Initialized for
   // a direct load (`/#id` with no restored scroll state).
-  const pendingPermalinkScrollRef = useRef<Key | null>(
+  const pendingPermalinkScrollRef = useRef<RowKey | null>(
     permalinkID && !effectiveScrollState ? permalinkID : null,
   );
 
@@ -623,7 +508,7 @@ function useZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
   // writing scrollTop mid-momentum is ignored / cancels the fling on iOS, while a
   // layout shift is fine - and reconcile margin->scrollTop atomically when the
   // gesture ends.
-  const anchorKeyRef = useRef<Key | null>(null);
+  const anchorKeyRef = useRef<RowKey | null>(null);
   // The reference row's top offset from the viewport top, in the settled
   // (hold-free) frame - what the anchoring keeps stable across relabels and
   // off-screen resizes (matching native `overflow-anchor`, which anchors to the
@@ -1332,26 +1217,4 @@ function getNearPageEdgeThreshold(pageSize: number) {
 
 function makeEven(n: number) {
   return n % 2 === 0 ? n : n + 1;
-}
-
-/** All rendered row elements inside the container, in DOM order. */
-function queryRows(el: HTMLElement): Iterable<HTMLElement> {
-  return el.querySelectorAll<HTMLElement>(`[${VROW_INDEX_ATTR}]`);
-}
-
-/** The first rendered row element (the held-margin carrier), or null. */
-function firstRow(el: HTMLElement): HTMLElement | null {
-  return el.querySelector<HTMLElement>(`[${VROW_INDEX_ATTR}]`);
-}
-
-/** Find a rendered row element by its stable key. */
-function findRow(el: HTMLElement, key: Key): HTMLElement | null {
-  return el.querySelector<HTMLElement>(
-    `[${VROW_KEY_ATTR}="${CSS.escape(String(key))}"]`,
-  );
-}
-
-/** Whether a client-coordinate rect overlaps the `[top, bottom)` viewport band. */
-function rectInViewport(rect: DOMRect, top: number, bottom: number): boolean {
-  return rect.bottom > top && rect.top < bottom;
 }

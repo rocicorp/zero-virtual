@@ -1,106 +1,38 @@
+import {useQuery} from '@rocicorp/zero/react';
+import {useMemo} from 'react';
+import {
+  assembleRows,
+  buildAfterQuery,
+  buildMainQuery,
+  buildSingleQuery,
+  permalinkMissing,
+  type RowsSnapshot,
+} from '../core/rows.ts';
 import type {
-  DefaultContext,
-  DefaultSchema,
-  QueryOrQueryRequest,
-} from '@rocicorp/zero';
-import {useQuery, type UseQueryOptions} from '@rocicorp/zero/react';
-import {useCallback} from 'react';
-import {assert, unreachable} from '../asserts.ts';
+  Anchor,
+  GetPageQuery,
+  GetSingleQuery,
+} from '../core/types.ts';
+
+// Re-exported so existing imports of these (previously defined here) keep
+// working; they now live in the framework-free core.
+export type {
+  Anchor,
+  GetPageQuery,
+  GetPageQueryOptions,
+  GetQueryReturnType,
+  GetSingleQuery,
+  GetSingleQueryOptions,
+  QueryOptions,
+  QueryResult,
+} from '../core/types.ts';
 
 /**
- * Represents a position in the virtualized list used for pagination.
- *
- * @typeParam TStartRow - The type of data needed to anchor pagination
- */
-export type Anchor<TStartRow> =
-  | Readonly<{
-      index: number;
-      kind: 'forward';
-      startRow?: TStartRow | undefined;
-    }>
-  | Readonly<{
-      index: number;
-      kind: 'backward';
-      startRow: TStartRow;
-    }>
-  | Readonly<{
-      index: number;
-      kind: 'permalink';
-      id: string;
-    }>;
-
-/** Result returned by query functions: a query plus optional per-query options. */
-export type QueryResult<TReturn> = {
-  query: GetQueryReturnType<TReturn>;
-  options?: UseQueryOptions;
-};
-
-/**
- * Options passed to {@link GetPageQuery}.
- *
- * @typeParam TStartRow - The type of data needed to anchor pagination
- */
-export type GetPageQueryOptions<TStartRow> = {
-  /** The maximum number of rows to return */
-  limit: number;
-  /** The start row data to anchor the query, or null if starting from the beginning */
-  start: TStartRow | null;
-  /** The direction to paginate ('forward' or 'backward') */
-  dir: 'forward' | 'backward';
-  /** Whether the list has been idle for `settleTime` ms */
-  settled: boolean;
-};
-
-/**
- * Function that returns a query for fetching a page of rows.
- *
- * @typeParam TRow - The type of row data returned from queries
- * @typeParam TStartRow - The type of data needed to anchor pagination
- */
-export type GetPageQuery<TRow, TStartRow> = (
-  options: GetPageQueryOptions<TStartRow>,
-) => QueryResult<TRow>;
-
-/**
- * Options passed to {@link GetSingleQuery}.
- */
-export type GetSingleQueryOptions = {
-  /** The ID of the row to fetch */
-  id: string;
-  /** Whether the list has been idle for `settleTime` ms */
-  settled: boolean;
-};
-
-/**
- * Function that returns a query for fetching a single row by ID.
- *
- * @typeParam TRow - The type of row data returned from queries
- */
-export type GetSingleQuery<TRow> = (
-  options: GetSingleQueryOptions,
-) => QueryResult<TRow | undefined>;
-
-/**
- * Return type of a Zero query or query request.
- *
- * @typeParam TReturn - The type of the query return value
- */
-export type GetQueryReturnType<TReturn> = QueryOrQueryRequest<
-  keyof DefaultSchema['tables'] & string,
-  // oxlint-disable-next-line no-explicit-any
-  any, // input
-  // oxlint-disable-next-line no-explicit-any
-  any, // output
-  DefaultSchema,
-  TReturn,
-  DefaultContext
->;
-
-/**
- * Internal hook that manages the fetching and caching of rows for the virtualizer.
- *
- * @typeParam TRow - The type of row data returned from queries
- * @typeParam TStartRow - The type of data needed to anchor pagination
+ * Internal hook that binds the virtualizer's staged queries to Zero's React
+ * bindings. All windowing math lives in the framework-free core
+ * ({@linkcode assembleRows}); this hook owns only the query staging — three
+ * `useQuery` slots, called unconditionally in the same order every render
+ * (queries 2 and 3 depend on query 1's result for permalink anchors).
  */
 export function useRows<TRow, TStartRow>({
   pageSize,
@@ -117,188 +49,54 @@ export function useRows<TRow, TStartRow>({
   getPageQuery: GetPageQuery<TRow, TStartRow>;
   getSingleQuery: GetSingleQuery<TRow>;
   toStartRow: (row: TRow) => TStartRow;
-}): {
-  rowAt: (index: number) => TRow | undefined;
-  rowsLength: number;
-  complete: boolean;
-  rowsEmpty: boolean;
-  atStart: boolean;
-  atEnd: boolean;
-  firstRowIndex: number;
-  permalinkNotFound: boolean;
-} {
-  const {kind, index: anchorIndex} = anchor;
-  const isPermalink = kind === 'permalink';
-  assert(!isPermalink || pageSize % 2 === 0);
-  const halfPageSize = pageSize / 2;
+}): RowsSnapshot<TRow> {
+  const inputs = {pageSize, anchor, settled};
 
-  // --- All hooks called unconditionally, in the same order on every render ---
-
-  // Hook 1: single-item lookup (permalink only; null otherwise keeps hook count stable)
-  const permalinkId = isPermalink
-    ? (anchor as Extract<Anchor<TStartRow>, {kind: 'permalink'}>).id
-    : '';
-  const singleResult_ = isPermalink
-    ? getSingleQuery({id: permalinkId, settled})
-    : null;
-  const [singleRow, singleResult] = useQuery(
-    singleResult_?.query ?? null,
-    singleResult_?.options,
-  );
+  // Stage 1: single-item lookup (permalink only; null keeps the slot stable).
+  const q1 = buildSingleQuery(inputs, getSingleQuery);
+  const [singleRow, singleResult] = useQuery(q1?.query ?? null, q1?.options);
   const typedSingleRow = singleRow as TRow | undefined;
-  const completeRow = singleResult.type === 'complete';
-  const permalinkNotFound =
-    isPermalink && completeRow && typedSingleRow === undefined;
+  const singleComplete = singleResult.type === 'complete';
 
+  const notFound = permalinkMissing(inputs, typedSingleRow, singleComplete);
   const singleStart = typedSingleRow ? toStartRow(typedSingleRow) : null;
-  const pageStart = !isPermalink
-    ? ((anchor as Extract<Anchor<TStartRow>, {kind: 'forward' | 'backward'}>)
-        .startRow ?? null)
-    : null;
 
-  // Hook 2: page-before rows (permalink) OR main page rows (forward/backward)
-  const q2Result = isPermalink
-    ? !permalinkNotFound && singleStart
-      ? getPageQuery({
-          limit: halfPageSize + 1,
-          start: singleStart,
-          dir: 'backward',
-          settled,
-        })
-      : null
-    : getPageQuery({
-        limit: pageSize + 1,
-        start: pageStart,
-        dir: kind as 'forward' | 'backward',
-        settled,
-      });
-  const [rows2, result2] = useQuery(q2Result?.query ?? null, q2Result?.options);
+  // Stage 2: page-before rows (permalink) OR the main page rows.
+  const q2 = buildMainQuery(inputs, getPageQuery, singleStart, notFound);
+  const [mainRows, mainResult] = useQuery(q2?.query ?? null, q2?.options);
 
-  // Hook 3: page-after rows (permalink only; null for forward/backward)
-  const q3Result =
-    isPermalink && !permalinkNotFound && singleStart
-      ? getPageQuery({
-          limit: halfPageSize,
-          start: singleStart,
-          dir: 'forward',
-          settled,
-        })
-      : null;
-  const [rows3, result3] = useQuery(q3Result?.query ?? null, q3Result?.options);
+  // Stage 3: page-after rows (permalink only).
+  const q3 = buildAfterQuery(inputs, getPageQuery, singleStart, notFound);
+  const [afterRows, afterResult] = useQuery(q3?.query ?? null, q3?.options);
 
-  // Derive values needed in useCallback before calling it
-  const typedRows2 = rows2 as unknown as TRow[] | undefined;
-  const typedRows3 = rows3 as unknown as TRow[] | undefined;
+  const mainComplete = mainResult.type === 'complete';
+  const afterComplete = afterResult.type === 'complete';
 
-  const rowsBeforeLength = typedRows2?.length ?? 0;
-  const rowsAfterLength = typedRows3?.length ?? 0;
-  const rowsBeforeSize = Math.min(rowsBeforeLength, halfPageSize);
-  const rowsAfterSize = Math.min(rowsAfterLength, halfPageSize - 1);
-
-  const typedPageRows = (typedRows2 ?? []) as TRow[];
-  const hasMoreRows = !isPermalink && typedPageRows.length > pageSize;
-  const paginatedRowsLength = hasMoreRows ? pageSize : typedPageRows.length;
-
-  // Hook 4: single unified rowAt — same hook, same dep-array size, every render
-  const rowAt = useCallback(
-    (index: number): TRow | undefined => {
-      switch (kind) {
-        case 'permalink': {
-          if (index === anchorIndex) {
-            return typedSingleRow;
-          }
-          if (index > anchorIndex) {
-            if (typedRows3 === undefined) return undefined;
-            const i = index - anchorIndex - 1;
-            return i < rowsAfterSize ? typedRows3[i] : undefined;
-          }
-          if (typedRows2 === undefined) return undefined;
-          const i = anchorIndex - index - 1;
-          return i < rowsBeforeSize ? typedRows2[i] : undefined;
-        }
-        case 'forward': {
-          const i = index - anchorIndex;
-          return i >= 0 && i < paginatedRowsLength
-            ? typedPageRows[i]
-            : undefined;
-        }
-        case 'backward': {
-          const i = anchorIndex - index - 1;
-          return i >= 0 && i < paginatedRowsLength
-            ? typedPageRows[i]
-            : undefined;
-        }
-        default:
-          unreachable(kind);
-      }
-    },
+  // Memoized so the snapshot (and its rowAt identity) is stable across
+  // renders whose query results didn't change.
+  return useMemo(
+    () =>
+      assembleRows(
+        {pageSize, anchor, settled},
+        {
+          singleRow: typedSingleRow,
+          singleComplete,
+          mainRows: mainRows as unknown as TRow[] | undefined,
+          mainComplete,
+          afterRows: afterRows as unknown as TRow[] | undefined,
+          afterComplete,
+        },
+      ),
     [
-      isPermalink,
-      kind,
-      anchorIndex,
+      pageSize,
+      anchor,
+      settled,
       typedSingleRow,
-      typedRows2,
-      typedRows3,
-      rowsBeforeSize,
-      rowsAfterSize,
-      typedPageRows,
-      paginatedRowsLength,
+      singleComplete,
+      mainRows,
+      mainComplete,
+      afterRows,
+      afterComplete,
     ],
   );
-
-  // --- Pure value branching (no hooks below this line) ---
-
-  const complete2 = result2.type === 'complete';
-  const complete3 = result3.type === 'complete';
-
-  if (isPermalink) {
-    return {
-      rowAt,
-      rowsLength: permalinkNotFound
-        ? 0
-        : rowsBeforeSize + rowsAfterSize + (typedSingleRow ? 1 : 0),
-      complete: completeRow && (permalinkNotFound || (complete2 && complete3)),
-      rowsEmpty:
-        permalinkNotFound ||
-        typedSingleRow === undefined ||
-        (rowsBeforeSize === 0 && rowsAfterSize === 0),
-      atStart:
-        permalinkNotFound || (complete2 && rowsBeforeLength <= halfPageSize),
-      atEnd:
-        permalinkNotFound || (complete3 && rowsAfterLength <= halfPageSize - 1),
-      firstRowIndex: permalinkNotFound
-        ? anchorIndex
-        : anchorIndex - rowsBeforeSize,
-      permalinkNotFound,
-    };
-  }
-
-  kind satisfies 'forward' | 'backward';
-
-  if (kind === 'forward') {
-    return {
-      rowAt,
-      rowsLength: paginatedRowsLength,
-      complete: complete2,
-      rowsEmpty: typedPageRows.length === 0,
-      atStart: pageStart === null || anchorIndex === 0,
-      atEnd: complete2 && !hasMoreRows,
-      firstRowIndex: anchorIndex,
-      permalinkNotFound,
-    };
-  }
-
-  kind satisfies 'backward';
-  assert(pageStart !== null);
-
-  return {
-    rowAt,
-    rowsLength: paginatedRowsLength,
-    complete: complete2,
-    rowsEmpty: typedPageRows.length === 0,
-    atStart: complete2 && !hasMoreRows,
-    atEnd: false,
-    firstRowIndex: anchorIndex - paginatedRowsLength,
-    permalinkNotFound,
-  };
 }
