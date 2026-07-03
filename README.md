@@ -18,8 +18,7 @@ Features:
 - Permalink support (jump to and highlight a specific item by ID)
 - State persistence (restore scroll position across navigation)
 - Exact `count` support for an accurate, stable scrollbar
-- Stick-to-edge helpers (`useStickToBottom` / `useStickToTop`) for chat and
-  feed UIs
+- Stick-to-bottom helper (`useStickToBottom`) for chat / log UIs
 - Dynamic page sizing based on viewport
 - No third-party virtualization dependency
 
@@ -27,8 +26,9 @@ Features:
 
 - Vertical lists only.
 - In `native` anchoring mode, relies on the browser's CSS `overflow-anchor`
-  (Chromium, Firefox, Safari 16.4+). `manual` mode — the default on iOS —
-  implements the equivalent itself and has no such dependency.
+  (Chromium and Firefox; Safari doesn't implement it). The default `auto` mode
+  feature-detects and falls back to `manual`, which implements the equivalent
+  itself and has no such dependency.
 - Without `count`, the scrollbar is approximate: off-screen extent is sized
   from `estimateSize` and grows as rows are discovered (as with any virtualized
   list of unknown length). Visible content is always positioned exactly.
@@ -183,32 +183,19 @@ The `anchoring` option controls how the viewport is kept stable as off-screen
 content changes size (rows loading, dynamic heights resolving, estimates
 relabeling):
 
-- **`'auto'`** (default) — `'manual'` on iOS, `'native'` everywhere else.
+- **`'auto'`** (default) — feature-detects CSS `overflow-anchor` support:
+  `'native'` where the browser implements it, `'manual'` elsewhere (notably
+  all of Safari).
 - **`'native'`** — the browser's CSS `overflow-anchor` does the work.
 - **`'manual'`** — the virtualizer pins a reference row itself and folds
-  above-viewport size changes back into the scroll position. Native anchoring
-  effectively writes `scrollTop`, which iOS ignores or janks on during momentum
-  scrolling; in manual mode corrections during a touch gesture are held in a
-  CSS transform and reconciled into `scrollTop` when the gesture ends (disable
-  via `useTransformWhileScrolling: false` to defer corrections to gesture end
-  instead).
+  above-viewport size changes back into the scroll position. Writing
+  `scrollTop` mid-momentum cancels the fling on iOS, so corrections during a
+  touch gesture are instead held as a margin on the first rendered row and
+  reconciled into `scrollTop` when the gesture ends.
 
 Manual mode matches native semantics, including suppression at scroll offset 0
 — content prepended while you're at the very top is revealed, not compensated
 away.
-
-For the **element scroller** in manual mode, wrap the spacers and rows in an
-in-flow wrapper and pass it via `getShiftElement` — that wrapper is what the
-momentum-time transform applies to:
-
-```tsx
-<div ref={parentRef} style={{overflow: 'auto', height: '100vh'}}>
-  <div ref={shiftRef}>{/* spacers + rows */}</div>
-</div>
-```
-
-(The window scroller needs no extra wrapper — the rows container itself is the
-shift target.)
 
 ### Exact row count
 

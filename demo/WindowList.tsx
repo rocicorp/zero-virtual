@@ -1,8 +1,8 @@
 import {
   useHistoryScrollState,
   useStickToBottom,
-  useStickToTop,
   useZeroWindowVirtualizer,
+  windowScrollAdapter,
 } from '@rocicorp/zero-virtual/react';
 import React, {useCallback, useRef} from 'react';
 import {DevPanel} from './DevPanel.tsx';
@@ -20,6 +20,7 @@ import {
 } from './list-shared.ts';
 import type {ItemStart} from './queries.ts';
 import {useHash} from './use-hash.ts';
+import styles from './WindowList.module.css';
 
 /**
  * A minimal list that scrolls the *window* (rather than an overflow element),
@@ -40,8 +41,6 @@ export function WindowList(): React.ReactNode {
   const {
     heightMode,
     setHeightMode,
-    transformOn,
-    setTransformOn,
     anchoring,
     setAnchoring,
     count,
@@ -50,16 +49,9 @@ export function WindowList(): React.ReactNode {
   } = useDemoControls();
 
   // The rows are rendered into this element (in normal page flow); the window
-  // is the scroll container. The rows wrapper is itself the shift target for
-  // the window scroller, so `getShiftElement` defaults to it.
+  // is the scroll container.
   const rowsRef = useRef<HTMLDivElement>(null);
   const getScrollElement = useCallback(() => rowsRef.current, []);
-  // Follow-edge sticks against the document scrolling element (the window is
-  // the scroller, not the rows wrapper `getScrollElement` returns).
-  const getStickElement = useCallback(
-    () => document.scrollingElement as HTMLElement | null,
-    [],
-  );
 
   const estimateSize = useEstimateSize(heightMode);
   const getPageQuery = useGetPageQuery(listContextParams);
@@ -69,7 +61,6 @@ export function WindowList(): React.ReactNode {
     useZeroWindowVirtualizer({
       listContextParams,
       getScrollElement,
-      useTransformWhileScrolling: transformOn,
       anchoring,
       count,
       getRowKey,
@@ -83,23 +74,14 @@ export function WindowList(): React.ReactNode {
     });
 
   const contentTick = contentTickOf(items, spaceBefore, spaceAfter);
-  useStickToBottom(getStickElement, contentTick, {
+  useStickToBottom(getScrollElement, contentTick, {
     enabled: follow === 'bottom',
+    adapter: windowScrollAdapter,
   });
-  useStickToTop(getStickElement, contentTick, {enabled: follow === 'top'});
 
   return (
-    <div style={{fontFamily: 'Inter, system-ui, sans-serif'}}>
-      {/* Sticky bar: the header carries its own padding and bottom border; the
-          wrapper only pins it and paints the background while stuck. */}
-      <div
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 1,
-          background: '#fff',
-        }}
-      >
+    <div className={styles.page}>
+      <div className={styles.stickyBar}>
         <ListHeader
           total={total}
           estimatedTotal={estimatedTotal}
@@ -130,8 +112,6 @@ export function WindowList(): React.ReactNode {
         heightMode={heightMode}
         onHeightModeChange={setHeightMode}
         sortDirection={sortDirection}
-        transformOn={transformOn}
-        onToggleTransform={setTransformOn}
         anchoring={anchoring}
         onAnchoringChange={setAnchoring}
         follow={follow}

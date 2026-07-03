@@ -1,7 +1,6 @@
 import {
   useHistoryScrollState,
   useStickToBottom,
-  useStickToTop,
   useZeroVirtualizer,
 } from '@rocicorp/zero-virtual/react';
 import React, {useCallback, useRef} from 'react';
@@ -37,8 +36,6 @@ export function App(): React.ReactNode {
   const {
     heightMode,
     setHeightMode,
-    transformOn,
-    setTransformOn,
     anchoring,
     setAnchoring,
     count,
@@ -47,10 +44,7 @@ export function App(): React.ReactNode {
   } = useDemoControls();
 
   const parentRef = useRef<HTMLDivElement>(null);
-  const shiftRef = useRef<HTMLDivElement>(null);
-
   const getScrollElement = useCallback(() => parentRef.current, []);
-  const getShiftElement = useCallback(() => shiftRef.current, []);
 
   const estimateSize = useEstimateSize(heightMode);
   const getPageQuery = useGetPageQuery(listContextParams);
@@ -60,8 +54,6 @@ export function App(): React.ReactNode {
     useZeroVirtualizer({
       listContextParams,
       getScrollElement,
-      getShiftElement,
-      useTransformWhileScrolling: transformOn,
       anchoring,
       count,
       getRowKey,
@@ -81,7 +73,6 @@ export function App(): React.ReactNode {
   useStickToBottom(getScrollElement, contentTick, {
     enabled: follow === 'bottom',
   });
-  useStickToTop(getScrollElement, contentTick, {enabled: follow === 'top'});
 
   return (
     <div className={styles.page}>
@@ -94,23 +85,20 @@ export function App(): React.ReactNode {
           onToggleSortField={toggleSortField}
           onToggleSortDirection={toggleSortDirection}
         />
-        {/* Scrollable viewport. Rows render in normal flow between two spacers,
-            inside a shift wrapper the virtualizer transforms for momentum-safe
-            anchoring (in manual mode; native mode leaves it to the browser). */}
+        {/* Scrollable viewport. Rows render in normal flow between two spacers
+            that stand in for the unloaded rows above and below. */}
         <div ref={parentRef} className={styles.viewport}>
-          <div ref={shiftRef}>
-            <Spacer height={spaceBefore} />
-            {items.map(item => (
-              <ItemRow
-                key={item.key}
-                item={item}
-                heightMode={heightMode}
-                sortField={sortField}
-                permalinkID={permalinkID}
-              />
-            ))}
-            <Spacer height={spaceAfter} />
-          </div>
+          <Spacer height={spaceBefore} />
+          {items.map(item => (
+            <ItemRow
+              key={item.key}
+              item={item}
+              heightMode={heightMode}
+              sortField={sortField}
+              permalinkID={permalinkID}
+            />
+          ))}
+          <Spacer height={spaceAfter} />
         </div>
       </div>
       {permalinkID && (
@@ -122,8 +110,6 @@ export function App(): React.ReactNode {
         heightMode={heightMode}
         onHeightModeChange={setHeightMode}
         sortDirection={sortDirection}
-        transformOn={transformOn}
-        onToggleTransform={setTransformOn}
         anchoring={anchoring}
         onAnchoringChange={setAnchoring}
         follow={follow}

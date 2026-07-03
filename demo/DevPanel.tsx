@@ -6,7 +6,6 @@ import {useUrlState} from './use-url-state.ts';
 
 type DebugState = {
   isScrolling: boolean;
-  translate: number;
   pendingJump: number;
 };
 
@@ -24,8 +23,6 @@ export function DevPanel({
   heightMode,
   onHeightModeChange,
   sortDirection,
-  transformOn,
-  onToggleTransform,
   anchoring,
   onAnchoringChange,
   follow,
@@ -37,8 +34,6 @@ export function DevPanel({
   heightMode: HeightMode;
   onHeightModeChange: (v: string) => void;
   sortDirection: 'asc' | 'desc';
-  transformOn: boolean;
-  onToggleTransform: (v: boolean) => void;
   anchoring: string;
   onAnchoringChange: (v: string) => void;
   follow: string;
@@ -133,10 +128,6 @@ export function DevPanel({
           </span>
         </div>
         <div className={styles.statRow}>
-          <span className={styles.statName}>translate</span>
-          <span className={styles.statValue}>{Math.round(snap.translate)}</span>
-        </div>
-        <div className={styles.statRow}>
           <span className={styles.statName}>pending</span>
           <span className={styles.statValue}>
             {Math.round(snap.pendingJump)}
@@ -145,15 +136,6 @@ export function DevPanel({
       </div>
 
       <div className={`${styles.section} ${styles.options}`}>
-        <label className={styles.checkboxLabel}>
-          <input
-            type="checkbox"
-            className={styles.checkbox}
-            checked={transformOn}
-            onChange={e => onToggleTransform(e.target.checked)}
-          />
-          transform while scrolling
-        </label>
         <label className={styles.optionRow}>
           <span className={styles.optionName}>anchoring</span>
           <select
@@ -174,7 +156,6 @@ export function DevPanel({
             onChange={e => onFollowChange(e.target.value)}
           >
             <option value="bottom">bottom (chat)</option>
-            <option value="top">top</option>
             <option value="off">none</option>
           </select>
         </label>

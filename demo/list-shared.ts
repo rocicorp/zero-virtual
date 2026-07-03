@@ -110,7 +110,6 @@ export function useEstimateSize(heightMode: HeightMode): () => number {
 export function useDemoControls() {
   const [heightModeStr, setHeightMode] = useUrlState('height', 'uniform');
   const heightMode = heightModeStr as HeightMode;
-  const [transformOn, setTransformOn] = useState(true);
   const [anchoringStr, setAnchoring] = useUrlState('anchoring', 'manual');
   const anchoring = anchoringStr as AnchoringMode;
   const [countStr] = useUrlState('count', '');
@@ -123,8 +122,6 @@ export function useDemoControls() {
   return {
     heightMode,
     setHeightMode,
-    transformOn,
-    setTransformOn,
     anchoring,
     setAnchoring,
     count,

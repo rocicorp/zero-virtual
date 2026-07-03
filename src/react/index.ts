@@ -7,11 +7,7 @@ export type {
   QueryResult,
 } from './use-rows.ts';
 export {useHistoryScrollState} from './use-history-scroll-state.ts';
-export {
-  useStickToBottom,
-  useStickToTop,
-  type StickOptions,
-} from './use-stick-to-edge.ts';
+export {useStickToBottom, type StickOptions} from './use-stick-to-edge.ts';
 export {
   elementScrollAdapter,
   rowAttributes,

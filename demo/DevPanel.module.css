@@ -179,23 +179,6 @@
   color: #e8e8ea;
 }
 
-.checkboxLabel {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  cursor: pointer;
-  color: #c8c8cc;
-}
-
-.checkbox {
-  width: 16px;
-  height: 16px;
-  accent-color: #3b82f6;
-  cursor: pointer;
-  flex: 0 0 auto;
-  margin: 0;
-}
-
 .optionRow {
   display: flex;
   align-items: center;
