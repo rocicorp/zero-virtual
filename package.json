@@ -39,6 +39,7 @@
     "check-types": "tsgo -p src/tsconfig.json && tsgo -p demo/tsconfig.app.json && tsgo -p demo/tsconfig.node.json && tsgo -p demo/e2e/tsconfig.json",
     "lint": "oxlint --type-aware",
     "check": "oxlint --type-aware --type-check",
+    "fmt": "oxfmt",
     "format": "oxfmt",
     "build": "tsgo -p src/tsconfig.json",
     "test": "vitest run",
