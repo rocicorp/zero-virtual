@@ -50,7 +50,7 @@ export function App(): React.ReactNode {
   const getPageQuery = useGetPageQuery(listContextParams);
   const [scrollState, onScrollStateChange] = useHistoryScrollState<ItemStart>();
 
-  const {items, spaceBefore, spaceAfter, estimatedTotal, total, debug} =
+  const {items, spaceBefore, spaceAfter, estimatedTotal, total} =
     useZeroVirtualizer({
       listContextParams,
       getScrollElement,
@@ -105,7 +105,6 @@ export function App(): React.ReactNode {
         <ItemDetail id={permalinkID} onClose={() => setHash('')} />
       )}
       <DevPanel
-        debug={debug}
         getScrollElement={getScrollElement}
         heightMode={heightMode}
         onHeightModeChange={setHeightMode}
