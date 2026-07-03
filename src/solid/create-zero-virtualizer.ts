@@ -117,7 +117,11 @@ export function createZeroVirtualizer<TListContextParams, TRow, TStartRow>(
  * rather than an overflow element (`getScrollElement` returns the element the
  * rows are rendered into; the window is the scroll container).
  */
-export function createZeroWindowVirtualizer<TListContextParams, TRow, TStartRow>(
+export function createZeroWindowVirtualizer<
+  TListContextParams,
+  TRow,
+  TStartRow,
+>(
   options: Accessor<
     CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>
   >,

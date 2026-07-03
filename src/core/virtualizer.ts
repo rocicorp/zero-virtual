@@ -974,7 +974,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
         estimatedTotal: 0,
         hasReachedStart: true,
         hasReachedEnd: false,
-        queryAnchor: {anchor: TOP_ANCHOR as Anchor<TStartRow>, listContextParams},
+        queryAnchor: {
+          anchor: TOP_ANCHOR as Anchor<TStartRow>,
+          listContextParams,
+        },
       });
     }
   }

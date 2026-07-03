@@ -124,7 +124,9 @@ export function permalinkMissing<TRow, TStartRow>(
   singleRow: TRow | undefined,
   singleComplete: boolean,
 ): boolean {
-  return isPermalink(inputs.anchor) && singleComplete && singleRow === undefined;
+  return (
+    isPermalink(inputs.anchor) && singleComplete && singleRow === undefined
+  );
 }
 
 /**
@@ -201,8 +203,7 @@ export function assembleRows<TRow, TStartRow>(
         singleRow === undefined ||
         (rowsBeforeSize === 0 && rowsAfterSize === 0),
       atStart:
-        permalinkNotFound ||
-        (mainComplete && rowsBeforeLength <= halfPageSize),
+        permalinkNotFound || (mainComplete && rowsBeforeLength <= halfPageSize),
       atEnd:
         permalinkNotFound ||
         (afterComplete && rowsAfterLength <= halfPageSize - 1),

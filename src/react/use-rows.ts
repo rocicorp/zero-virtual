@@ -8,11 +8,7 @@ import {
   permalinkMissing,
   type RowsSnapshot,
 } from '../core/rows.ts';
-import type {
-  Anchor,
-  GetPageQuery,
-  GetSingleQuery,
-} from '../core/types.ts';
+import type {Anchor, GetPageQuery, GetSingleQuery} from '../core/types.ts';
 
 /**
  * Internal hook that binds the virtualizer's staged queries to Zero's React
