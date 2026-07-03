@@ -392,8 +392,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
    * observable changed.
    */
   afterDOMUpdate(): void {
-    const startVersion = this.#version;
+    this.#withNotify(() => this.#afterDOMUpdate());
+  }
 
+  #afterDOMUpdate(): void {
     // The settle clock restarts when the list context changes (new sort /
     // filter = a fresh, un-settled list).
     if (this.#options.listContextParams !== this.#lastSettleContext) {
@@ -415,10 +417,6 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.#relabelAnchor();
     this.#evaluatePaging();
     this.#schedulePersistIfChanged();
-
-    if (this.#version !== startVersion) {
-      this.#notify();
-    }
   }
 
   // ---- derived values --------------------------------------------------------
@@ -574,6 +572,16 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #notify(): void {
     for (const listener of this.#listeners) {
       listener();
+    }
+  }
+
+  // Run a state-mutating block outside render, notifying listeners once at
+  // the end if anything observable changed.
+  #withNotify(fn: () => void): void {
+    const before = this.#version;
+    fn();
+    if (this.#version !== before) {
+      this.#notify();
     }
   }
 
@@ -790,9 +798,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       this.#scheduleIdleCheck();
       return;
     }
-    const before = this.#version;
-    this.#endScrolling();
-    if (this.#version !== before) this.#notify();
+    this.#withNotify(() => this.#endScrolling());
   }
 
   #onScroll = (): void => {
@@ -809,17 +815,13 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       if (!this.#fingerDown) this.#scheduleIdleCheck();
     }
     this.#resetSettleTimer();
-    const before = this.#version;
-    this.#evaluate();
-    if (this.#version !== before) this.#notify();
+    this.#withNotify(() => this.#evaluate());
   };
 
   #onScrollEnd = (): void => {
     if (!this.#manual()) return;
     if (!this.#fingerDown) {
-      const before = this.#version;
-      this.#endScrolling();
-      if (this.#version !== before) this.#notify();
+      this.#withNotify(() => this.#endScrolling());
     }
   };
 
@@ -1050,11 +1052,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     if (items === this.#observedItems && this.#resizeObserver) return;
     this.#observedItems = items;
     this.#resizeObserver?.disconnect();
-    this.#resizeObserver = new ResizeObserver(() => {
-      const before = this.#version;
-      this.#measureAndCompensate();
-      if (this.#version !== before) this.#notify();
-    });
+    this.#resizeObserver = new ResizeObserver(() =>
+      this.#withNotify(() => this.#measureAndCompensate()),
+    );
     for (const child of queryRows(el)) {
       this.#resizeObserver.observe(child, {box: 'border-box'});
     }

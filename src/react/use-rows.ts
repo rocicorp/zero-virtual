@@ -14,19 +14,6 @@ import type {
   GetSingleQuery,
 } from '../core/types.ts';
 
-// Re-exported so existing imports of these (previously defined here) keep
-// working; they now live in the framework-free core.
-export type {
-  Anchor,
-  GetPageQuery,
-  GetPageQueryOptions,
-  GetQueryReturnType,
-  GetSingleQuery,
-  GetSingleQueryOptions,
-  QueryOptions,
-  QueryResult,
-} from '../core/types.ts';
-
 /**
  * Internal hook that binds the virtualizer's staged queries to Zero's React
  * bindings. All windowing math lives in the framework-free core

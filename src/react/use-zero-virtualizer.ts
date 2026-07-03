@@ -3,26 +3,14 @@ import {
   elementScrollAdapter,
   windowScrollAdapter,
   type ScrollAdapter,
-  type ScrollRect,
 } from '../core/scroll-adapter.ts';
-import type {GetPageQuery, GetSingleQuery, RowKey} from '../core/types.ts';
+import type {GetPageQuery, GetSingleQuery} from '../core/types.ts';
 import {
   ZeroVirtualizer,
   type VirtualizerOptions,
   type VirtualizerSnapshot,
 } from '../core/virtualizer.ts';
 import {useRows} from './use-rows.ts';
-
-// Re-exported so the public `./react` entry point is unchanged by the
-// core extraction (index.ts re-exports these from here).
-export {elementScrollAdapter, windowScrollAdapter};
-export type {ScrollAdapter, ScrollRect};
-export {rowAttributes} from '../core/dom.ts';
-export type {
-  AnchoringMode,
-  ScrollHistoryState,
-  VirtualRow,
-} from '../core/types.ts';
 
 /**
  * Options for configuring the Zero virtualizer. The core options (see
@@ -163,7 +151,3 @@ export function useZeroWindowVirtualizer<TListContextParams, TRow, TStartRow>(
     options.scrollAdapter ?? windowScrollAdapter,
   );
 }
-
-// Referenced by docs above; re-exported for wrapper implementors.
-export type {VirtualizerOptions, VirtualizerSnapshot};
-export type {GetPageQuery, GetSingleQuery, RowKey};

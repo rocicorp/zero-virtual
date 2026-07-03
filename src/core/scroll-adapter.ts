@@ -56,9 +56,7 @@ export const elementScrollAdapter: ScrollAdapter = {
 
 /** Scroll adapter for a list that scrolls the window. */
 export const windowScrollAdapter: ScrollAdapter = {
-  scrollElement: () =>
-    (document.scrollingElement as HTMLElement | null) ??
-    document.documentElement,
+  scrollElement: () => document.scrollingElement as HTMLElement,
   viewportTop: () => 0,
   subscribe: (_el, onScroll, onScrollEnd) => {
     window.addEventListener('scroll', onScroll, {passive: true});
