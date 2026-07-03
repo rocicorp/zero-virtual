@@ -24,6 +24,7 @@ export function createStickToBottom(
   options: Accessor<StickOptions> = () => ({}),
 ): void {
   let controller: ReturnType<typeof createController> | null = null;
+  let controllerKey: readonly [unknown, unknown] | null = null;
   onCleanup(() => controller?.detach());
 
   createEffect(() => {
@@ -36,9 +37,22 @@ export function createStickToBottom(
     if (!enabled) {
       controller?.detach();
       controller = null;
+      controllerKey = null;
       return;
     }
+    // Recreate when the controller's construction inputs change (they're
+    // baked into the core controller), mirroring the React binding.
+    const key = [adapter, slack] as const;
+    if (
+      controller &&
+      controllerKey &&
+      (controllerKey[0] !== key[0] || controllerKey[1] !== key[1])
+    ) {
+      controller.detach();
+      controller = null;
+    }
     controller ??= createController(getScrollElement, adapter, slack);
+    controllerKey = key;
     controller.contentChanged();
   });
 }
