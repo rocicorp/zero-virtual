@@ -12,7 +12,11 @@ function getHash(): string {
 function subscribe(callback: () => void): () => void {
   const onNavigate = (e: NavigateEvent) => {
     if (e.canIntercept && navigation.currentEntry?.url) {
-      e.intercept();
+      // `scroll: 'manual'` stops the browser from scrolling the document on hash
+      // navigations. We manage scroll ourselves (the virtualizer scrolls the
+      // permalink target into view and restores saved positions); without this,
+      // in window-scroller mode the native fragment scroll fights that logic.
+      e.intercept({scroll: 'manual'});
       const currentURL = new URL(navigation.currentEntry.url);
       const destinationURL = new URL(e.destination.url);
       if (currentURL.pathname === destinationURL.pathname) {

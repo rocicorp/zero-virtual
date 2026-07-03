@@ -1,12 +1,11 @@
 import {
   useHistoryScrollState,
   useStickToBottom,
-  useZeroVirtualizer,
+  useZeroWindowVirtualizer,
+  windowScrollAdapter,
 } from '@rocicorp/zero-virtual/react';
 import React, {useCallback, useRef} from 'react';
-import styles from './App.module.css';
 import {DevPanel} from './DevPanel.tsx';
-import {ItemDetail} from './ItemDetail.tsx';
 import {ItemRow, Spacer} from './ItemRow.tsx';
 import {ListHeader} from './ListHeader.tsx';
 import {
@@ -21,9 +20,15 @@ import {
 } from './list-shared.ts';
 import type {ItemStart} from './queries.ts';
 import {useHash} from './use-hash.ts';
+import styles from './WindowList.module.css';
 
-export function App(): React.ReactNode {
-  const [hash, setHash] = useHash();
+/**
+ * A minimal list that scrolls the *window* (rather than an overflow element),
+ * using {@link useZeroWindowVirtualizer}. Rows are in normal page flow; the
+ * page scrolls. Reached via `?scroller=window`.
+ */
+export function WindowList(): React.ReactNode {
+  const [hash] = useHash();
   const permalinkID = hash || null;
 
   const {
@@ -43,15 +48,17 @@ export function App(): React.ReactNode {
     setFollow,
   } = useDemoControls();
 
-  const parentRef = useRef<HTMLDivElement>(null);
-  const getScrollElement = useCallback(() => parentRef.current, []);
+  // The rows are rendered into this element (in normal page flow); the window
+  // is the scroll container.
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const getScrollElement = useCallback(() => rowsRef.current, []);
 
   const estimateSize = useEstimateSize(heightMode);
   const getPageQuery = useGetPageQuery(listContextParams);
   const [scrollState, onScrollStateChange] = useHistoryScrollState<ItemStart>();
 
   const {items, spaceBefore, spaceAfter, estimatedTotal, total, debug} =
-    useZeroVirtualizer({
+    useZeroWindowVirtualizer({
       listContextParams,
       getScrollElement,
       anchoring,
@@ -64,19 +71,17 @@ export function App(): React.ReactNode {
       permalinkID,
       scrollState,
       onScrollStateChange,
-      onSettled: useCallback(() => {
-        console.log('onSettled');
-      }, []),
     });
 
   const contentTick = contentTickOf(items, spaceBefore, spaceAfter);
   useStickToBottom(getScrollElement, contentTick, {
     enabled: follow === 'bottom',
+    adapter: windowScrollAdapter,
   });
 
   return (
     <div className={styles.page}>
-      <div className={styles.list}>
+      <div className={styles.stickyBar}>
         <ListHeader
           total={total}
           estimatedTotal={estimatedTotal}
@@ -85,28 +90,25 @@ export function App(): React.ReactNode {
           onToggleSortField={toggleSortField}
           onToggleSortDirection={toggleSortDirection}
         />
-        {/* Scrollable viewport. Rows render in normal flow between two spacers
-            that stand in for the unloaded rows above and below. */}
-        <div ref={parentRef} className={styles.viewport}>
-          <Spacer height={spaceBefore} />
-          {items.map(item => (
-            <ItemRow
-              key={item.key}
-              item={item}
-              heightMode={heightMode}
-              sortField={sortField}
-              permalinkID={permalinkID}
-            />
-          ))}
-          <Spacer height={spaceAfter} />
-        </div>
       </div>
-      {permalinkID && (
-        <ItemDetail id={permalinkID} onClose={() => setHash('')} />
-      )}
+
+      <div ref={rowsRef}>
+        <Spacer height={spaceBefore} />
+        {items.map(item => (
+          <ItemRow
+            key={item.key}
+            item={item}
+            heightMode={heightMode}
+            sortField={sortField}
+            permalinkID={permalinkID}
+          />
+        ))}
+        <Spacer height={spaceAfter} />
+      </div>
       <DevPanel
         debug={debug}
         getScrollElement={getScrollElement}
+        windowMode
         heightMode={heightMode}
         onHeightModeChange={setHeightMode}
         sortDirection={sortDirection}

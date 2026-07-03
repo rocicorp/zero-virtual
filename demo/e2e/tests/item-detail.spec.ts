@@ -1,18 +1,12 @@
 import {expect, test} from '@playwright/test';
 import {TEST_ITEMS} from '../seed-test.ts';
+import {ALPHA, gotoHomeAndWaitForRows} from './helpers.ts';
 
 const TIMEOUT = 15_000;
 
-// In the default sort (modified desc) Alpha Item is at index 0.
-const ALPHA = TEST_ITEMS.find(i => i.title === 'Alpha Item')!;
-
 test.describe('Item detail panel', () => {
   test.beforeEach(async ({page}) => {
-    await page.goto('/');
-    // Wait for the list to have real rows loaded.
-    await expect(page.locator(`a[href="#${ALPHA.id}"]`)).toBeVisible({
-      timeout: TIMEOUT,
-    });
+    await gotoHomeAndWaitForRows(page, TIMEOUT);
   });
 
   test('clicking a row opens the detail panel', async ({page}) => {

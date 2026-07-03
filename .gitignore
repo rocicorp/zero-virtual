@@ -8,3 +8,5 @@ dist/
 rocicorp-zero-virtual-*.tgz
 docs
 .last-run.json
+test-results/
+playwright-report/

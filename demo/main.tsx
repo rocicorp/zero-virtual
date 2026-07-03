@@ -1,7 +1,8 @@
 import {ZeroProvider} from '@rocicorp/zero/react';
 import {createRoot} from 'react-dom/client';
-import {App} from './App.tsx';
+import {Demo} from './Demo.tsx';
 import './index.css';
+import {mutators} from './mutators.ts';
 import {schema} from './schema.ts';
 
 const userID = import.meta.env.VITE_PUBLIC_USER_ID ?? 'anon';
@@ -12,11 +13,12 @@ const apiBase = `${url.origin}/api/zero`;
 createRoot(document.getElementById('root')!).render(
   <ZeroProvider
     schema={schema}
+    mutators={mutators}
     userID={userID}
     cacheURL={`${url.protocol}//${url.hostname}:${cachePort}`}
     mutateURL={`${apiBase}/mutate`}
     queryURL={`${apiBase}/query`}
   >
-    <App />
+    <Demo />
   </ZeroProvider>,
 );

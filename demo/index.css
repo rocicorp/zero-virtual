@@ -1,3 +1,12 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
+  font-family: Inter, system-ui, sans-serif;
+  background: #fff;
+  color: #0a0a0a;
 }

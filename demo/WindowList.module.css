@@ -1,0 +1,12 @@
+.page {
+  font-family: Inter, system-ui, sans-serif;
+}
+
+/* Sticky bar: the header carries its own padding and bottom border; this
+   wrapper only pins it and paints the background while stuck. */
+.stickyBar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+}
