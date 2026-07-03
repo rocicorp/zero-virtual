@@ -1,6 +1,6 @@
 import {useCallback, useMemo} from 'react';
 import {useHistoryState} from './use-history-state.ts';
-import type {ScrollHistoryState} from './use-zero-virtualizer.ts';
+import type {ScrollHistoryState} from '../core/types.ts';
 
 const DEFAULT_KEY = 'scrollState';
 
