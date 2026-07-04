@@ -1,8 +1,0 @@
-{
-  "extends": "../tsconfig-shared.json",
-  "compilerOptions": {
-    "jsx": "preserve",
-    "jsxImportSource": "solid-js"
-  },
-  "include": ["./*.tsx", "./*.ts"]
-}

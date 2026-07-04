@@ -1,0 +1,23 @@
+{
+  "name": "demo-shared",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:zero-cache": "zero-cache-dev",
+    "dev:db-up": "docker compose --env-file .env -f ./docker/docker-compose.yml up",
+    "dev:db-down": "docker compose --env-file .env -f ./docker/docker-compose.yml down",
+    "dev:clean": "source .env && docker volume rm -f docker_zstart_pgdata && rm -rf \"${ZERO_REPLICA_FILE}\"*",
+    "seed": "node --env-file=.env seed.ts"
+  },
+  "dependencies": {
+    "@rocicorp/zero": "1.7.0",
+    "hono": "^4.12.9",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^10.4.0",
+    "@types/node": "^25.5.0",
+    "@types/pg": "^8.20.0"
+  }
+}
