@@ -294,27 +294,29 @@ cheaply (e.g. a count query) for an accurate, stable scrollbar:
 useZeroVirtualizer({count: totalRows /* ... */});
 ```
 
-### Following an edge (chat / feed UIs)
+### Following the bottom (chat / log UIs)
 
 Scroll anchoring keeps what you're looking at stable; it never _follows_ new
-content. For a chat/log pinned to the newest message at the bottom, or a feed
-at the top that should reveal newly arrived items, layer the stick-to-edge
-hooks on top:
+content. For a chat/log pinned to the newest message at the bottom, layer the
+stick-to-bottom hook on top:
 
 ```ts
-import {useStickToBottom, useStickToTop} from '@rocicorp/zero-virtual/react';
+import {useStickToBottom} from '@rocicorp/zero-virtual/react';
 
-// Any value that changes when content can grow at the edge:
+// Any value that changes when content can grow at the bottom:
 const tick = `${items.length}:${items[0]?.key}:${items.at(-1)?.key}:${spaceBefore}:${spaceAfter}`;
 
-useStickToBottom(getScrollElement, tick); // chat / log
-useStickToTop(getScrollElement, tick); // feed parked at the top
+useStickToBottom(getScrollElement, tick);
 ```
 
-They only follow while the user is parked at that edge: scroll away and the
-following stops (read history in peace); scroll back and it re-arms. For the
-window scroller, pass `() => document.scrollingElement` as the element getter.
-In Solid, use `createStickToBottom(getScrollElement, () => tick)`.
+It only follows while the user is parked at the bottom: scroll away and the
+following stops (read history in peace); scroll back down and it re-arms. For
+the window scroller, pass `() => document.scrollingElement` as the element
+getter. In Solid, use `createStickToBottom(getScrollElement, () => tick)`.
+
+A feed parked at the top needs no helper: at scroll offset 0, scroll anchoring
+(native and manual alike) deliberately stands down, so newly prepended content
+is revealed rather than compensated away.
 
 ### Query functions
 

@@ -105,7 +105,7 @@ export function useEstimateSize(heightMode: HeightMode): () => number {
  * inputs): row-height mode, transform-while-scrolling, anchoring mode, the
  * optional exact `count` (for an accurate, stable scrollbar — e.g. ?count=5000;
  * without it the estimate grows as rows are discovered and the handle jumps),
- * and follow-edge (stick-to-bottom for chat, stick-to-top for a feed at 0).
+ * and follow-bottom (stick-to-bottom for chat).
  */
 export function useDemoControls() {
   const [heightModeStr, setHeightMode] = useUrlState('height', 'uniform');
