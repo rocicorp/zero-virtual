@@ -49,14 +49,27 @@ describe('ZeroVirtualizer snapshot — items, spacers and total', () => {
   test.for([
     {
       name: 'empty, loading (no rows yet)',
-      rows: {rowsLength: 0, complete: false, atStart: false, atEnd: false, firstRowIndex: 0},
+      rows: {
+        rowsLength: 0,
+        complete: false,
+        atStart: false,
+        atEnd: false,
+        firstRowIndex: 0,
+      },
       expectedItems: 0,
       expectedSpaceBefore: 0,
       expectedTotal: undefined,
     },
     {
       name: 'empty, complete',
-      rows: {rowsLength: 0, complete: true, rowsEmpty: true, atStart: true, atEnd: true, firstRowIndex: 0},
+      rows: {
+        rowsLength: 0,
+        complete: true,
+        rowsEmpty: true,
+        atStart: true,
+        atEnd: true,
+        firstRowIndex: 0,
+      },
       expectedItems: 0,
       expectedSpaceBefore: 0,
       expectedSpaceAfter: 0,
@@ -64,14 +77,28 @@ describe('ZeroVirtualizer snapshot — items, spacers and total', () => {
     },
     {
       name: 'loading from top, some rows',
-      rows: {rowsLength: 20, complete: false, rowsEmpty: false, atStart: true, atEnd: false, firstRowIndex: 0},
+      rows: {
+        rowsLength: 20,
+        complete: false,
+        rowsEmpty: false,
+        atStart: true,
+        atEnd: false,
+        firstRowIndex: 0,
+      },
       expectedItems: 20,
       expectedSpaceBefore: 0, // atStart
       expectedTotal: undefined,
     },
     {
       name: 'all rows loaded',
-      rows: {rowsLength: 20, complete: true, rowsEmpty: false, atStart: true, atEnd: true, firstRowIndex: 0},
+      rows: {
+        rowsLength: 20,
+        complete: true,
+        rowsEmpty: false,
+        atStart: true,
+        atEnd: true,
+        firstRowIndex: 0,
+      },
       expectedItems: 20,
       expectedSpaceBefore: 0,
       expectedSpaceAfter: 0,
@@ -79,7 +106,14 @@ describe('ZeroVirtualizer snapshot — items, spacers and total', () => {
     },
     {
       name: 'loading at end, rows above (firstRowIndex>0)',
-      rows: {rowsLength: 20, complete: false, rowsEmpty: false, atStart: false, atEnd: true, firstRowIndex: 5},
+      rows: {
+        rowsLength: 20,
+        complete: false,
+        rowsEmpty: false,
+        atStart: false,
+        atEnd: true,
+        firstRowIndex: 5,
+      },
       expectedItems: 20,
       expectedSpaceBefore: 5 * EST, // 5 estimated rows above
       expectedSpaceAfter: 0, // atEnd
@@ -87,14 +121,27 @@ describe('ZeroVirtualizer snapshot — items, spacers and total', () => {
     },
     {
       name: 'complete in middle (firstRowIndex>0)',
-      rows: {rowsLength: 50, complete: true, rowsEmpty: false, atStart: false, atEnd: false, firstRowIndex: 10},
+      rows: {
+        rowsLength: 50,
+        complete: true,
+        rowsEmpty: false,
+        atStart: false,
+        atEnd: false,
+        firstRowIndex: 10,
+      },
       expectedItems: 50,
       expectedSpaceBefore: 10 * EST,
       expectedTotal: undefined,
     },
   ])(
     '$name',
-    ({rows, expectedItems, expectedSpaceBefore, expectedSpaceAfter, expectedTotal}) => {
+    ({
+      rows,
+      expectedItems,
+      expectedSpaceBefore,
+      expectedSpaceAfter,
+      expectedTotal,
+    }) => {
       const snapshot = makeVirtualizer(rows).getSnapshot();
 
       expect(snapshot.items).toHaveLength(expectedItems);
@@ -127,7 +174,14 @@ describe('ZeroVirtualizer snapshot — items, spacers and total', () => {
 
   test('explicit count overrides estimated total', () => {
     const snapshot = makeVirtualizer(
-      {rowsLength: 20, complete: false, rowsEmpty: false, atStart: true, atEnd: false, firstRowIndex: 0},
+      {
+        rowsLength: 20,
+        complete: false,
+        rowsEmpty: false,
+        atStart: true,
+        atEnd: false,
+        firstRowIndex: 0,
+      },
       {count: 42},
     ).getSnapshot();
 
@@ -138,7 +192,14 @@ describe('ZeroVirtualizer snapshot — items, spacers and total', () => {
 
   test('explicit zero count reports empty list', () => {
     const snapshot = makeVirtualizer(
-      {rowsLength: 20, complete: false, rowsEmpty: false, atStart: true, atEnd: false, firstRowIndex: 0},
+      {
+        rowsLength: 20,
+        complete: false,
+        rowsEmpty: false,
+        atStart: true,
+        atEnd: false,
+        firstRowIndex: 0,
+      },
       {count: 0},
     ).getSnapshot();
 
@@ -150,10 +211,26 @@ describe('ZeroVirtualizer snapshot — items, spacers and total', () => {
 
 describe('ZeroVirtualizer wrapper contract', () => {
   test('snapshot identity is cached until state changes', () => {
-    const v = makeVirtualizer({rowsLength: 3, complete: true, rowsEmpty: false, atStart: true, atEnd: true, firstRowIndex: 0});
+    const v = makeVirtualizer({
+      rowsLength: 3,
+      complete: true,
+      rowsEmpty: false,
+      atStart: true,
+      atEnd: true,
+      firstRowIndex: 0,
+    });
     const a = v.getSnapshot();
     expect(v.getSnapshot()).toBe(a);
-    v.setRows(makeRows({rowsLength: 4, complete: true, rowsEmpty: false, atStart: true, atEnd: true, firstRowIndex: 0}));
+    v.setRows(
+      makeRows({
+        rowsLength: 4,
+        complete: true,
+        rowsEmpty: false,
+        atStart: true,
+        atEnd: true,
+        firstRowIndex: 0,
+      }),
+    );
     expect(v.getSnapshot()).not.toBe(a);
   });
 
@@ -164,7 +241,14 @@ describe('ZeroVirtualizer wrapper contract', () => {
 
     // Staging alone never notifies (render-safe).
     v.setRows(
-      makeRows({rowsLength: 10, complete: true, rowsEmpty: false, atStart: true, atEnd: false, firstRowIndex: 0}),
+      makeRows({
+        rowsLength: 10,
+        complete: true,
+        rowsEmpty: false,
+        atStart: true,
+        atEnd: false,
+        firstRowIndex: 0,
+      }),
     );
     v.setOptions(makeOptions());
     expect(listener).not.toHaveBeenCalled();

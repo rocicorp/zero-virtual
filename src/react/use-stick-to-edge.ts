@@ -1,5 +1,8 @@
 import {useLayoutEffect, useRef} from 'react';
-import {elementScrollAdapter, type ScrollAdapter} from '../core/scroll-adapter.ts';
+import {
+  elementScrollAdapter,
+  type ScrollAdapter,
+} from '../core/scroll-adapter.ts';
 import {
   createStickToBottom,
   DEFAULT_STICK_SLACK,

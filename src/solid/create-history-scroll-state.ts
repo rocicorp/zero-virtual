@@ -48,7 +48,12 @@ export function createHistoryScrollState<TStartRow>(
     const state = getHistoryStateSnapshot();
     updateHistoryState({
       ...((state as Record<string, unknown>) ?? {}),
-      [key]: newState,
+      // Zero's Solid useQuery hands out store proxies, and the anchor's start
+      // row is taken straight from a query row — so the state can contain a
+      // proxy, which the Navigation API's structured clone rejects. Round-trip
+      // through JSON to get plain data (this module already defines state
+      // identity by JSON, see the equality memo above).
+      [key]: newState && JSON.parse(JSON.stringify(newState)),
     });
   };
 

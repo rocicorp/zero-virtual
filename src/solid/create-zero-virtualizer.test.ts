@@ -106,6 +106,48 @@ describe('createZeroVirtualizer (solid wrapper wiring)', () => {
     });
   });
 
+  test('items keep their instance per row key across row updates', () => {
+    const el = document.createElement('div');
+    const rowsData = [{id: 'a'}, {id: 'b'}, {id: 'c'}];
+    const [rows, setRows] = createSignal(
+      makeRows({
+        rowsLength: 3,
+        complete: true,
+        rowsEmpty: false,
+        atStart: true,
+        atEnd: true,
+        firstRowIndex: 0,
+        rowAt: i => rowsData[i],
+      }),
+    );
+    rowsMock.accessor = rows;
+
+    createRoot(dispose => {
+      const snap = createZeroVirtualizer(() => makeOptions(el));
+      const first = snap().items[0];
+      expect(first.key).toBe('a');
+
+      // A new rows snapshot makes the core rebuild every VirtualRow wrapper,
+      // but the keyed store projection must keep the instance for 'a' — this
+      // is what lets a plain <For> preserve row DOM across paging.
+      const more = [...rowsData, {id: 'd'}];
+      setRows(
+        makeRows({
+          rowsLength: 4,
+          complete: true,
+          rowsEmpty: false,
+          atStart: true,
+          atEnd: false,
+          firstRowIndex: 0,
+          rowAt: i => more[i],
+        }),
+      );
+      expect(snap().items).toHaveLength(4);
+      expect(snap().items[0]).toBe(first);
+      dispose();
+    });
+  });
+
   test('feeds live query inputs to the rows layer', () => {
     const el = document.createElement('div');
     const [rows] = createSignal(makeRows({}));

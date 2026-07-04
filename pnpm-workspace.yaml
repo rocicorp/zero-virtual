@@ -1,5 +1,6 @@
 packages:
   - 'demo'
+  - 'demo-solid'
 
 onlyBuiltDependencies:
   - '@rocicorp/zero-sqlite3'

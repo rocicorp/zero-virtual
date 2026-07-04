@@ -25,7 +25,9 @@ export function createRows<TRow, TStartRow>(args: {
   toStartRow: Accessor<(row: TRow) => TStartRow>;
 }): Accessor<RowsSnapshot<TRow>> {
   // Stage 1: single-item lookup (permalink only; null keeps the slot stable).
-  const q1 = createMemo(() => buildSingleQuery(args.inputs(), args.getSingleQuery()));
+  const q1 = createMemo(() =>
+    buildSingleQuery(args.inputs(), args.getSingleQuery()),
+  );
   const [singleRow, singleDetails] = useQuery(
     () => q1()?.query ?? null,
     () => q1()?.options ?? {},
@@ -41,7 +43,12 @@ export function createRows<TRow, TStartRow>(args: {
 
   // Stage 2: page-before rows (permalink) OR the main page rows.
   const q2 = createMemo(() =>
-    buildMainQuery(args.inputs(), args.getPageQuery(), singleStart(), notFound()),
+    buildMainQuery(
+      args.inputs(),
+      args.getPageQuery(),
+      singleStart(),
+      notFound(),
+    ),
   );
   const [mainRows, mainDetails] = useQuery(
     () => q2()?.query ?? null,
@@ -50,7 +57,12 @@ export function createRows<TRow, TStartRow>(args: {
 
   // Stage 3: page-after rows (permalink only).
   const q3 = createMemo(() =>
-    buildAfterQuery(args.inputs(), args.getPageQuery(), singleStart(), notFound()),
+    buildAfterQuery(
+      args.inputs(),
+      args.getPageQuery(),
+      singleStart(),
+      notFound(),
+    ),
   );
   const [afterRows, afterDetails] = useQuery(
     () => q3()?.query ?? null,
