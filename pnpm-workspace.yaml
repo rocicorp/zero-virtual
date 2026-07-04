@@ -1,6 +1,7 @@
 packages:
-  - 'demo'
-  - 'demo-solid'
+  - 'demo/react'
+  - 'demo/shared'
+  - 'demo/solid'
 
 onlyBuiltDependencies:
   - '@rocicorp/zero-sqlite3'

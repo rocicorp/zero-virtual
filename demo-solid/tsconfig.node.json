@@ -1,4 +1,0 @@
-{
-  "extends": "../tsconfig-shared.json",
-  "include": ["./vite.config.ts", "./vite-env.d.ts"]
-}

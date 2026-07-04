@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig-shared.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "paths": {
+      "@rocicorp/zero-virtual/react": ["../../src/react/index.ts"]
+    }
+  },
+  "include": ["./*.tsx", "./*.ts"],
+  "exclude": ["./playwright.config.ts"]
+}

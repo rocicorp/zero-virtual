@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig-shared.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "types": ["vite/client"],
+    "paths": {
+      "@rocicorp/zero-virtual/solid": ["../../src/solid/index.ts"]
+    }
+  },
+  "include": ["./*.tsx", "./*.ts", "./vite-env.d.ts"]
+}

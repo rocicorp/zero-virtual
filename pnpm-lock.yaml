@@ -55,17 +55,51 @@ importers:
         specifier: ^4.1.2
         version: 4.1.2(@opentelemetry/api@1.9.0)(@types/node@25.5.0)(happy-dom@20.8.9)(vite@8.0.3(@types/node@25.5.0)(yaml@2.9.0))
 
-  demo:
+  demo/react:
     dependencies:
-      '@hono/node-server':
-        specifier: ^1.19.11
-        version: 1.19.11(hono@4.12.9)
       '@rocicorp/zero':
         specifier: 1.7.0
         version: 1.7.0(@opentelemetry/core@2.8.0(@opentelemetry/api@1.9.0))(pg@8.20.0)(react@19.2.4)(solid-js@1.9.14)
       '@rocicorp/zero-virtual':
         specifier: workspace:*
-        version: link:..
+        version: link:../..
+      react:
+        specifier: ^19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.2.4
+        version: 19.2.4(react@19.2.4)
+    devDependencies:
+      '@hono/node-server':
+        specifier: ^1.19.11
+        version: 1.19.11(hono@4.12.9)
+      '@playwright/test':
+        specifier: ^1.61.0
+        version: 1.61.0
+      '@types/node':
+        specifier: ^25.5.0
+        version: 25.5.0
+      '@types/pg':
+        specifier: ^8.20.0
+        version: 8.20.0
+      pg:
+        specifier: ^8.20.0
+        version: 8.20.0
+      playwright:
+        specifier: ^1.61.0
+        version: 1.61.0
+      playwright-core:
+        specifier: ^1.61.0
+        version: 1.61.0
+      vite:
+        specifier: ^8.0.3
+        version: 8.0.3(@types/node@25.5.0)(yaml@2.9.0)
+
+  demo/shared:
+    dependencies:
+      '@rocicorp/zero':
+        specifier: 1.7.0
+        version: 1.7.0(@opentelemetry/core@2.8.0(@opentelemetry/api@1.9.0))(pg@8.20.0)(react@19.2.4)(solid-js@1.9.14)
       hono:
         specifier: ^4.12.9
         version: 4.12.9
@@ -76,42 +110,21 @@ importers:
       '@faker-js/faker':
         specifier: ^10.4.0
         version: 10.4.0
-      '@playwright/test':
-        specifier: ^1.61.0
-        version: 1.61.0
       '@types/node':
         specifier: ^25.5.0
         version: 25.5.0
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
-      playwright:
-        specifier: ^1.61.0
-        version: 1.61.0
-      playwright-core:
-        specifier: ^1.61.0
-        version: 1.61.0
-      react:
-        specifier: ^19.2.4
-        version: 19.2.4
-      react-dom:
-        specifier: ^19.2.4
-        version: 19.2.4(react@19.2.4)
-      solid-js:
-        specifier: ^1.9.14
-        version: 1.9.14
-      vite:
-        specifier: ^8.0.3
-        version: 8.0.3(@types/node@25.5.0)(yaml@2.9.0)
 
-  demo-solid:
+  demo/solid:
     dependencies:
       '@rocicorp/zero':
         specifier: 1.7.0
         version: 1.7.0(@opentelemetry/core@2.8.0(@opentelemetry/api@1.9.0))(pg@8.20.0)(react@19.2.4)(solid-js@1.9.14)
       '@rocicorp/zero-virtual':
         specifier: workspace:*
-        version: link:..
+        version: link:../..
       solid-js:
         specifier: ^1.9.14
         version: 1.9.14

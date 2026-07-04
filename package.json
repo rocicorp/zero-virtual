@@ -35,8 +35,8 @@
     }
   },
   "scripts": {
-    "dev": "pnpm --filter demo dev",
-    "check-types": "tsgo -p src/tsconfig.json && tsgo -p demo/tsconfig.app.json && tsgo -p demo/tsconfig.node.json && tsgo -p demo/e2e/tsconfig.json && tsgo -p demo-solid/tsconfig.app.json && tsgo -p demo-solid/tsconfig.node.json",
+    "dev": "pnpm --filter demo-react dev:ui",
+    "check-types": "tsgo -p src/tsconfig.json && tsgo -p demo/react/tsconfig.app.json && tsgo -p demo/react/tsconfig.node.json && tsgo -p demo/react/e2e/tsconfig.json && tsgo -p demo/solid/tsconfig.app.json && tsgo -p demo/solid/tsconfig.node.json",
     "lint": "oxlint --type-aware",
     "check": "oxlint --type-aware --type-check",
     "fmt": "oxfmt",

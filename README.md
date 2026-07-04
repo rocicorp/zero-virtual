@@ -53,7 +53,7 @@ Features:
 
 ## Usage
 
-This guide explains how to add `@rocicorp/zero-virtual` to your own Zero app, using the [demo](demo/) as a reference.
+This guide explains how to add `@rocicorp/zero-virtual` to your own Zero app, using the [React demo](demo/react/) as a reference. The walkthrough uses the React hooks; the [SolidJS section](#solidjs) below shows the same wiring with the Solid bindings (a full Solid port of the demo lives in [demo/solid](demo/solid/)).
 
 ### Prerequisites
 
@@ -69,7 +69,7 @@ npm install @rocicorp/zero-virtual
 
 **2. Define your page and single-row queries**
 
-`useZeroVirtualizer` fetches rows in pages and can also look up a single row by ID for permalink support. Define these using Zero's `defineQuery` / `defineQueries` helpers. See [demo/queries.ts](demo/queries.ts) for an example:
+`useZeroVirtualizer` fetches rows in pages and can also look up a single row by ID for permalink support. Define these using Zero's `defineQuery` / `defineQueries` helpers. See [demo/shared/queries.ts](demo/shared/queries.ts) for an example:
 
 ```ts
 import {defineQueries, defineQuery} from '@rocicorp/zero';
@@ -175,6 +175,74 @@ export function ItemList() {
 trigger paging), pick its anchoring reference, and locate a permalink target.
 Every row — including loading placeholders — must carry them.
 
+### SolidJS
+
+`@rocicorp/zero-virtual/solid` exposes the same functionality over Solid's
+reactive primitives (query functions are bound via `@rocicorp/zero/solid`).
+The differences from the React hook:
+
+- Options are passed as an **accessor**; any signals read inside it
+  re-evaluate the options reactively (the equivalent of hook deps).
+- The result is an **accessor of the snapshot** — same fields as React.
+- `items` is a store reconciled by row key: a row's `VirtualRow` instance is
+  stable while its key stays in the list, so a plain `<For>` preserves row
+  DOM across paging (which is what scroll anchoring measures against).
+
+```tsx
+import {For} from 'solid-js';
+import {
+  createHistoryScrollState,
+  createZeroVirtualizer,
+  rowAttributes,
+} from '@rocicorp/zero-virtual/solid';
+
+export function ItemList() {
+  let parentRef: HTMLDivElement | undefined;
+  const [scrollState, onScrollStateChange] =
+    createHistoryScrollState<ItemStart>();
+
+  const snapshot = createZeroVirtualizer(() => ({
+    listContextParams: {},
+    getScrollElement: () => parentRef ?? null,
+    estimateSize: () => 48,
+    getRowKey,
+    toStartRow,
+    getPageQuery: ({limit, start, dir}) => ({
+      query: queries.item.getPageQuery({limit, start, dir}),
+    }),
+    getSingleQuery: ({id}) => ({
+      query: queries.item.getSingleQuery({id}),
+    }),
+    scrollState: scrollState(),
+    onScrollStateChange,
+  }));
+
+  return (
+    <div ref={parentRef} style={{overflow: 'auto', height: '100vh'}}>
+      <div
+        style={{height: `${snapshot().spaceBefore}px`, 'overflow-anchor': 'none'}}
+      />
+      <For each={snapshot().items}>
+        {item => (
+          <div {...rowAttributes(item.index, item.key)}>
+            {item.row ? item.row.title : 'Loading...'}
+          </div>
+        )}
+      </For>
+      <div
+        style={{height: `${snapshot().spaceAfter}px`, 'overflow-anchor': 'none'}}
+      />
+    </div>
+  );
+}
+```
+
+The window scroller is `createZeroWindowVirtualizer`, scroll persistence is
+`createHistoryScrollState` (returns `[Accessor, setter]`), and stick-to-bottom
+is `createStickToBottom(getScrollElement, dep, options?)` where `dep` is an
+accessor that changes when content can grow at the bottom. See
+[demo/solid/App.tsx](demo/solid/App.tsx) for all of them in one place.
+
 ### Element vs window scrolling
 
 `useZeroVirtualizer` scrolls inside an overflow element — `getScrollElement`
@@ -193,7 +261,7 @@ const {items, spaceBefore, spaceAfter} = useZeroWindowVirtualizer({
 
 Both hooks share a `ScrollAdapter` abstraction (`elementScrollAdapter` /
 `windowScrollAdapter` are exported); provide your own to scroll a custom
-container.
+container. The Solid equivalent is `createZeroWindowVirtualizer`.
 
 ### Scroll anchoring modes
 
@@ -246,6 +314,7 @@ useStickToTop(getScrollElement, tick); // feed parked at the top
 They only follow while the user is parked at that edge: scroll away and the
 following stops (read history in peace); scroll back and it re-arms. For the
 window scroller, pass `() => document.scrollingElement` as the element getter.
+In Solid, use `createStickToBottom(getScrollElement, () => tick)`.
 
 ### Query functions
 
@@ -299,7 +368,10 @@ const [scrollState, onScrollStateChange] =
   useHistoryScrollState<MyStartRow>('myList');
 ```
 
-For a complete working example including sorting, permalinks, and scroll-position persistence, see [demo/App.tsx](demo/App.tsx).
+The Solid mirror is `createHistoryScrollState` — same key parameter, with the
+state returned as an accessor.
+
+For a complete working example including sorting, permalinks, and scroll-position persistence, see [demo/react/App.tsx](demo/react/App.tsx) — or its Solid twin, [demo/solid/App.tsx](demo/solid/App.tsx).
 
 ## Running the demo
 
@@ -309,29 +381,35 @@ First, install dependencies from the repo root:
 pnpm i
 ```
 
-Then `cd` into the demo directory for the remaining steps:
-
-```sh
-cd demo
-```
+The demo is split into three packages: the shared stack (postgres, zero-cache,
+API handlers) in `demo/shared`, and two front ends over it — `demo/react` and
+`demo/solid`.
 
 Run Docker:
 
 ```sh
+cd demo/shared
 pnpm dev:db-up
 ```
 
 **In a second terminal**, run the zero-cache server:
 
 ```sh
-cd demo
+cd demo/shared
 pnpm dev:zero-cache
 ```
 
-**In a third terminal**, run the Vite dev server:
+**In a third terminal**, run the Vite dev server for the React demo:
 
 ```sh
-cd demo
+cd demo/react
+pnpm dev:ui
+```
+
+or for the SolidJS demo (they can run side by side):
+
+```sh
+cd demo/solid
 pnpm dev:ui
 ```
 
