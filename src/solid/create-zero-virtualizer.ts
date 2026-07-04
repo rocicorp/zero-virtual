@@ -6,12 +6,13 @@ import {
   type Accessor,
 } from 'solid-js';
 import {createEffect} from 'solid-js';
+import {createStore, reconcile} from 'solid-js/store';
 import {
   elementScrollAdapter,
   windowScrollAdapter,
   type ScrollAdapter,
 } from '../core/scroll-adapter.ts';
-import type {GetPageQuery, GetSingleQuery} from '../core/types.ts';
+import type {GetPageQuery, GetSingleQuery, VirtualRow} from '../core/types.ts';
 import {
   ZeroVirtualizer,
   type VirtualizerOptions,
@@ -48,9 +49,11 @@ export type CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> =
  * framework-agnostic {@linkcode ZeroVirtualizer} core (the same core the
  * React hook uses).
  *
- * Returns an accessor of the current snapshot — coarse-grained on purpose
- * (the snapshot identity only changes when content does; a fine-grained
- * store projection can layer on top later).
+ * Returns an accessor of the current snapshot. The snapshot itself is
+ * coarse-grained (its identity only changes when content does), but `items`
+ * is a store reconciled by row key: a {@linkcode VirtualRow} keeps its
+ * instance while its key stays in the list, so a plain `<For>` preserves row
+ * DOM across paging — which is what scroll anchoring measures against.
  *
  * Call during component setup (uses `onCleanup`).
  */
@@ -104,12 +107,26 @@ export function createZeroVirtualizer<TListContextParams, TRow, TStartRow>(
     core.afterDOMUpdate();
   });
 
-  return createMemo(() => {
+  const snapshot = createMemo(() => {
     version();
     rows();
     options();
     return core.getSnapshot();
   });
+
+  // Keyed projection of the snapshot's items. The core rebuilds every
+  // VirtualRow wrapper when the loaded window changes, so reference-keyed
+  // rendering (`<For>`) would recreate all row DOM on each page load.
+  // Reconciling into a store keyed by row key keeps each wrapper's instance
+  // stable (the same approach as @tanstack/solid-virtual). Zero's Solid
+  // useQuery already keeps row references stable, so an unchanged `row` is
+  // referentially equal and short-circuits the diff.
+  const [items, setItems] = createStore<VirtualRow<TRow>[]>([]);
+  createComputed(() =>
+    setItems(reconcile(snapshot().items as VirtualRow<TRow>[], {key: 'key'})),
+  );
+
+  return createMemo(() => ({...snapshot(), items}));
 }
 
 /**

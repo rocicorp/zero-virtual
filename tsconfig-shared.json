@@ -21,7 +21,7 @@
     "declaration": true,
     "forceConsistentCasingInFileNames": true,
     "allowJs": true,
-    "preserveSymlinks": true,
+    "preserveSymlinks": false,
     "types": [],
     "resolveJsonModule": true,
     "noEmit": true,

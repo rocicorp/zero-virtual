@@ -9,5 +9,9 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     include: ['src/**/*.test.{ts,tsx}'],
+    // Inline solid-js so its own imports (e.g. solid-js/store -> solid-js)
+    // also resolve with the conditions above — externalized, the nested
+    // import would pick the server build, whose DEV export is undefined.
+    server: {deps: {inline: [/solid-js/]}},
   },
 });
