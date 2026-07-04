@@ -1,6 +1,6 @@
 {
   "name": "@rocicorp/zero-virtual",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Infinite Virtual Scroller for Zero",
   "keywords": [
     "infinite",
@@ -39,6 +39,7 @@
     "check-types": "tsgo -p src/tsconfig.json && tsgo -p demo/tsconfig.app.json && tsgo -p demo/tsconfig.node.json && tsgo -p demo/e2e/tsconfig.json && tsgo -p demo-solid/tsconfig.app.json && tsgo -p demo-solid/tsconfig.node.json",
     "lint": "oxlint --type-aware",
     "check": "oxlint --type-aware --type-check",
+    "fmt": "oxfmt",
     "format": "oxfmt",
     "build": "tsgo -p src/tsconfig.json",
     "test": "vitest run",
