@@ -5,7 +5,11 @@ import {
   type VirtualRow,
 } from '@rocicorp/zero-virtual/react';
 import {useCallback, useMemo, useState} from 'react';
-import {queries, type ItemStart, type ListContextParams} from '../shared/queries.ts';
+import {
+  queries,
+  type ItemStart,
+  type ListContextParams,
+} from '../shared/queries.ts';
 import type {Item} from '../shared/schema.ts';
 import {useUrlState} from './use-url-state.ts';
 

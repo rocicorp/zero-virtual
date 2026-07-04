@@ -220,7 +220,10 @@ export function ItemList() {
   return (
     <div ref={parentRef} style={{overflow: 'auto', height: '100vh'}}>
       <div
-        style={{height: `${snapshot().spaceBefore}px`, 'overflow-anchor': 'none'}}
+        style={{
+          'height': `${snapshot().spaceBefore}px`,
+          'overflow-anchor': 'none',
+        }}
       />
       <For each={snapshot().items}>
         {item => (
@@ -230,7 +233,10 @@ export function ItemList() {
         )}
       </For>
       <div
-        style={{height: `${snapshot().spaceAfter}px`, 'overflow-anchor': 'none'}}
+        style={{
+          'height': `${snapshot().spaceAfter}px`,
+          'overflow-anchor': 'none',
+        }}
       />
     </div>
   );
