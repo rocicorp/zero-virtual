@@ -56,10 +56,11 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-// Rows are rendered in flow between a top spacer (`spaceBefore`) and a bottom
-// spacer (`spaceAfter`); there is no virtual "count". These cases pin down the
-// derived outputs: how many rows to render, the spacer sizes, and `total`.
-describe('useZeroVirtualizer - items, spacers and total', () => {
+// Rows are rendered in flow inside a content wrapper padded by `spaceBefore`
+// (top) and `spaceAfter` (bottom); there is no virtual "count". These cases
+// pin down the derived outputs: how many rows to render, the space estimates,
+// and `total`.
+describe('useZeroVirtualizer - items, space and total', () => {
   test.for([
     {
       name: 'empty, loading (no rows yet)',

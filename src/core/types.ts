@@ -158,8 +158,8 @@ export type VirtualRow<TRow> = {
  * - `native`: rely on the browser's CSS `overflow-anchor` (simplest; used where
  *   it's reliable).
  * - `manual`: the momentum-safe manual anchoring (reference-row pinning, with
- *   touch-time corrections held as a first-row margin), for browsers without
- *   native scroll anchoring.
+ *   touch-time corrections held as a content-wrapper margin), for browsers
+ *   without native scroll anchoring.
  * - `auto`: feature-detect `overflow-anchor` support (default).
  */
 export type AnchoringMode = 'auto' | 'manual' | 'native';

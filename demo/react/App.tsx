@@ -7,7 +7,7 @@ import React, {useCallback, useRef} from 'react';
 import styles from '../shared/App.module.css';
 import {DevPanel} from './DevPanel.tsx';
 import {ItemDetail} from './ItemDetail.tsx';
-import {ItemRow, Spacer} from './ItemRow.tsx';
+import {ItemRow} from './ItemRow.tsx';
 import {ListHeader} from './ListHeader.tsx';
 import {
   getRowKey,
@@ -81,20 +81,22 @@ export function App(): React.ReactNode {
           onToggleSortField={toggleSortField}
           onToggleSortDirection={toggleSortDirection}
         />
-        {/* Scrollable viewport. Rows render in normal flow between two spacers
-            that stand in for the unloaded rows above and below. */}
+        {/* Scrollable viewport. Rows render in normal flow inside a content
+            wrapper whose padding stands in for the unloaded rows above and
+            below (padding, not margin, so it always contributes to the
+            scrollable extent). */}
         <div ref={parentRef} className={styles.viewport}>
-          <Spacer height={spaceBefore} />
-          {items.map(item => (
-            <ItemRow
-              key={item.key}
-              item={item}
-              heightMode={heightMode}
-              sortField={sortField}
-              permalinkID={permalinkID}
-            />
-          ))}
-          <Spacer height={spaceAfter} />
+          <div style={{paddingTop: spaceBefore, paddingBottom: spaceAfter}}>
+            {items.map(item => (
+              <ItemRow
+                key={item.key}
+                item={item}
+                heightMode={heightMode}
+                sortField={sortField}
+                permalinkID={permalinkID}
+              />
+            ))}
+          </div>
         </div>
       </div>
       {permalinkID && (

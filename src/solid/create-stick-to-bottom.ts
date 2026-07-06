@@ -17,10 +17,11 @@ import type {CreateZeroVirtualizerResult} from './create-zero-virtualizer.ts';
  *
  * @param snapshot The accessor returned by `createZeroVirtualizer` or
  *   `createZeroWindowVirtualizer`. It supplies the scroll wiring (via
- *   `options` / `scrollElement`), and its items/spacers drive the re-pinning.
+ *   `options` / `scrollElement`), and its items/space estimates drive the
+ *   re-pinning.
  * @param deps Optional accessor of extra values that change when content can
- *   grow at the bottom in ways the items/spacers don't capture (e.g. the last
- *   row streaming in taller).
+ *   grow at the bottom in ways the items/space estimates don't capture (e.g.
+ *   the last row streaming in taller).
  */
 export function createStickToBottom<TRow>(
   snapshot: Accessor<CreateZeroVirtualizerResult<TRow>>,

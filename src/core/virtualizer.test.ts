@@ -43,11 +43,12 @@ function makeVirtualizer(
   return v;
 }
 
-// Rows are rendered in flow between a top spacer (`spaceBefore`) and a bottom
-// spacer (`spaceAfter`); there is no virtual "count". These cases pin down the
-// derived outputs — the same table the React hook test used, now exercised
-// directly against the framework-free core (which also covers Solid).
-describe('ZeroVirtualizer snapshot — items, spacers and total', () => {
+// Rows are rendered in flow inside a content wrapper padded by `spaceBefore`
+// (top) and `spaceAfter` (bottom); there is no virtual "count". These cases
+// pin down the derived outputs — the same table the React hook test used, now
+// exercised directly against the framework-free core (which also covers
+// Solid).
+describe('ZeroVirtualizer snapshot — items, space and total', () => {
   test.for([
     {
       name: 'empty, loading (no rows yet)',

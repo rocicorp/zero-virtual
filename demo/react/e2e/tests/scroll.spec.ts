@@ -322,7 +322,7 @@ test.describe('Back / forward and scroll restore', () => {
 
     // The same row must be back in the viewport — `toBeInViewport` (not just
     // `toBeVisible`) catches the regression where the anchor is restored but the
-    // scroll offset is not, leaving the viewport parked on the blank top spacer.
+    // scroll offset is not, leaving the viewport parked on the blank top padding.
     await expect(page.locator(`a[href="${topRowHref}"]`)).toBeInViewport({
       timeout: TIMEOUT,
     });

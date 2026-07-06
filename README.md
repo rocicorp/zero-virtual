@@ -152,19 +152,20 @@ export function ItemList() {
     onScrollStateChange,
   });
 
-  // Rows render in normal document flow between two spacers that stand in for
-  // the not-yet-loaded rows above and below. The hook manages `overflow-anchor`
-  // on the scroll container per the anchoring mode; put `overflow-anchor: none`
-  // on the spacers so anchoring always targets a real row, never a spacer.
+  // Rows render in normal document flow inside a content wrapper whose
+  // padding stands in for the not-yet-loaded rows above and below (padding
+  // rather than margin so it always contributes to the scrollable extent).
+  // The hook manages `overflow-anchor` on the scroll container per the
+  // anchoring mode.
   return (
     <div ref={parentRef} style={{overflow: 'auto', height: '100vh'}}>
-      <div style={{height: spaceBefore, overflowAnchor: 'none'}} />
-      {items.map(({index, key, row}) => (
-        <div key={key} {...rowAttributes(index, key)}>
-          {row ? row.title : 'Loading...'}
-        </div>
-      ))}
-      <div style={{height: spaceAfter, overflowAnchor: 'none'}} />
+      <div style={{paddingTop: spaceBefore, paddingBottom: spaceAfter}}>
+        {items.map(({index, key, row}) => (
+          <div key={key} {...rowAttributes(index, key)}>
+            {row ? row.title : 'Loading...'}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -221,23 +222,18 @@ export function ItemList() {
     <div ref={parentRef} style={{overflow: 'auto', height: '100vh'}}>
       <div
         style={{
-          'height': `${snapshot().spaceBefore}px`,
-          'overflow-anchor': 'none',
+          'padding-top': `${snapshot().spaceBefore}px`,
+          'padding-bottom': `${snapshot().spaceAfter}px`,
         }}
-      />
-      <For each={snapshot().items}>
-        {item => (
-          <div {...rowAttributes(item.index, item.key)}>
-            {item.row ? item.row.title : 'Loading...'}
-          </div>
-        )}
-      </For>
-      <div
-        style={{
-          'height': `${snapshot().spaceAfter}px`,
-          'overflow-anchor': 'none',
-        }}
-      />
+      >
+        <For each={snapshot().items}>
+          {item => (
+            <div {...rowAttributes(item.index, item.key)}>
+              {item.row ? item.row.title : 'Loading...'}
+            </div>
+          )}
+        </For>
+      </div>
     </div>
   );
 }
@@ -287,7 +283,7 @@ relabeling):
 - **`'manual'`** — the virtualizer pins a reference row itself and folds
   above-viewport size changes back into the scroll position. Writing
   `scrollTop` mid-momentum cancels the fling on iOS, so corrections during a
-  touch gesture are instead held as a margin on the first rendered row and
+  touch gesture are instead held as a margin on the content wrapper and
   reconciled into `scrollTop` when the gesture ends.
 
 Manual mode matches native semantics, including suppression at scroll offset 0
@@ -326,8 +322,8 @@ hook reuses the virtualizer's scroll wiring (via `virtualizer.options` /
 
 The full signature is `useStickToBottom(virtualizer, options?, deps?)`, with
 `enabled` and `slack` in the options. Re-pinning is driven by the loaded
-window and the spacers; pass `deps` for content that grows at the bottom
-without changing them — e.g. the last row streaming in taller:
+window and the space estimates; pass `deps` for content that grows at the
+bottom without changing them — e.g. the last row streaming in taller:
 
 ```ts
 useStickToBottom(virtualizer, {}, [lastMessage?.text]);

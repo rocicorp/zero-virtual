@@ -27,10 +27,10 @@ export type {StickOptions} from '../core/stick-to-bottom.ts';
  * @param virtualizer The result of `useZeroVirtualizer` /
  *   `useZeroWindowVirtualizer`. It supplies the scroll wiring (via
  *   `virtualizer.options` / `virtualizer.scrollElement`), and its
- *   items/spacers drive the re-pinning.
+ *   items/space estimates drive the re-pinning.
  * @param deps Extra values that change when content can grow at the bottom in
- *   ways the items/spacers don't capture (e.g. the last row streaming in
- *   taller). Must keep a stable length across renders, like hook deps.
+ *   ways the items/space estimates don't capture (e.g. the last row streaming
+ *   in taller). Must keep a stable length across renders, like hook deps.
  */
 export function useStickToBottom<TRow>(
   virtualizer: ZeroVirtualizerResult<TRow>,

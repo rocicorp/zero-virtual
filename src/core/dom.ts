@@ -25,7 +25,7 @@ export function queryRows(el: HTMLElement): Iterable<HTMLElement> {
   return el.querySelectorAll<HTMLElement>(`[${VROW_INDEX_ATTR}]`);
 }
 
-/** The first rendered row element (the held-margin carrier), or null. */
+/** The first rendered row element, or null. */
 export function firstRow(el: HTMLElement): HTMLElement | null {
   return el.querySelector<HTMLElement>(`[${VROW_INDEX_ATTR}]`);
 }

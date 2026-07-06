@@ -7,7 +7,7 @@ import {For, Show, createMemo} from 'solid-js';
 import styles from '../shared/App.module.css';
 import {DevPanel} from './DevPanel.tsx';
 import {ItemDetail} from './ItemDetail.tsx';
-import {ItemRow, Spacer} from './ItemRow.tsx';
+import {ItemRow} from './ItemRow.tsx';
 import {ListHeader} from './ListHeader.tsx';
 import {
   createDemoControls,
@@ -85,22 +85,30 @@ export function App() {
           onToggleSortDirection={toggleSortDirection}
         />
         <div ref={parentRef} class={styles.viewport}>
-          <Spacer height={virtualizer().spaceBefore} />
-          {/* Plain <For> is safe here: the binding exposes items as a store
-              reconciled by row key, so a row's VirtualRow instance — and with
-              it the DOM node scroll anchoring measures against — survives
-              paging. */}
-          <For each={virtualizer().items}>
-            {item => (
-              <ItemRow
-                item={item}
-                heightMode={heightMode()}
-                sortField={sortField() as 'created' | 'modified'}
-                permalinkID={permalinkID()}
-              />
-            )}
-          </For>
-          <Spacer height={virtualizer().spaceAfter} />
+          {/* Content wrapper: its padding stands in for the unloaded rows
+              above and below (padding, not margin, so it always contributes
+              to the scrollable extent). */}
+          <div
+            style={{
+              'padding-top': `${virtualizer().spaceBefore}px`,
+              'padding-bottom': `${virtualizer().spaceAfter}px`,
+            }}
+          >
+            {/* Plain <For> is safe here: the binding exposes items as a store
+                reconciled by row key, so a row's VirtualRow instance — and
+                with it the DOM node scroll anchoring measures against —
+                survives paging. */}
+            <For each={virtualizer().items}>
+              {item => (
+                <ItemRow
+                  item={item}
+                  heightMode={heightMode()}
+                  sortField={sortField() as 'created' | 'modified'}
+                  permalinkID={permalinkID()}
+                />
+              )}
+            </For>
+          </div>
         </div>
       </div>
 

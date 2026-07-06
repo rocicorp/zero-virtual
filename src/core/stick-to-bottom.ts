@@ -84,7 +84,7 @@ export function createStickToBottom(
 
 /**
  * The values that change whenever content can grow at the bottom: the loaded
- * window and the spacers. The React binding spreads them into its effect
+ * window and the space estimates. The React binding spreads them into its effect
  * deps; the Solid binding calls this inside its effect so reading the store
  * fields tracks them.
  */

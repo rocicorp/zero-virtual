@@ -49,10 +49,6 @@ function rowPresentation(
   }
 }
 
-export function Spacer(props: {height: number}) {
-  return <div class={styles.spacer} style={`height: ${props.height}px;`} />;
-}
-
 // Reads props via accessors (no destructuring): `item` is a store node the
 // binding keeps stable per row key, so the same DOM node survives paging
 // while its index/heightMode/permalink props update in place.
