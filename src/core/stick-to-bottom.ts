@@ -1,4 +1,5 @@
-import type {ObserveElementOffset, ResolvedScrollOptions} from './scroll.ts';
+import {contentWrapper} from './dom.ts';
+import type {ResolvedScrollOptions} from './scroll.ts';
 
 /**
  * Slack (px) around the bottom edge so sub-pixel rounding or a stray
@@ -19,95 +20,119 @@ export type StickOptions = {
 
 export type StickToBottomController = {
   /**
-   * Call after content may have grown at the bottom (post-DOM-update,
-   * pre-paint). Re-pins to the bottom if the user was parked there; attaches
-   * the scroll listener lazily once the element exists.
+   * Idempotent (re)wiring: resolves the elements and attaches the observers
+   * once both exist, re-attaching if either was replaced. Call whenever the
+   * elements may have (dis)appeared — e.g. per framework commit. The actual
+   * re-pinning is driven by the observers, not by this call.
    */
-  contentChanged(): void;
-  /** Remove listeners. Safe to call repeatedly. */
+  ensure(): void;
+  /** Remove listeners and observers. Safe to call repeatedly. */
   detach(): void;
 };
 
 /**
- * The framework-free heart of stick-to-bottom: track "is the user parked at
- * the bottom?" on every scroll (i.e. *before* content grows, which is the
- * whole trick), and snap back to the bottom on content growth only while
- * stuck. Starts unstuck; the first measurement decides (a freshly mounted
- * short list measures as at-bottom, so a chat still starts stuck, while a
- * restored mid-list position is never yanked).
+ * The framework-free heart of stick-to-bottom, driven purely by the DOM:
+ * track "is the user parked at the bottom?" on every scroll (i.e. *before*
+ * content grows, which is the whole trick), and snap back to the bottom on
+ * growth only while stuck. Growth is detected with two ResizeObservers — one
+ * on the rows' content wrapper (anything that changes the scrollable extent:
+ * rows added, the space estimates re-rendered as padding, a row streaming in
+ * taller) and one on the scroll container (viewport resizes; the window
+ * `resize` event when the document itself scrolls). Both fire post-layout,
+ * pre-paint, so the re-pin never flickers. No content change notifications
+ * are needed from the framework or the virtualizer.
+ *
+ * Starts unstuck; the first measurement decides (a freshly mounted short list
+ * measures as at-bottom, so a chat still starts stuck, while a restored
+ * mid-list position is never yanked).
  *
  * @param getScrollElement Returns the resolved scrolling element (the
  *   virtualizer's `scrollElement`); may be null until mounted.
- * @param observeElementOffset The same scroll-offset observer the virtualizer
- *   uses (stuckness is tracked on every scroll).
+ * @param getContentElement Returns the rows' content wrapper — the element
+ *   whose border-box grows with the content (the bindings derive it as the
+ *   parent of the first rendered row); may be null until rows render.
  */
 export function createStickToBottom(
   getScrollElement: () => HTMLElement | null,
-  observeElementOffset: ObserveElementOffset,
+  getContentElement: () => HTMLElement | null,
   slack: number = DEFAULT_STICK_SLACK,
 ): StickToBottomController {
   let stuck = false;
-  let attachedEl: HTMLElement | null = null;
-  let unsubscribe: (() => void) | null = null;
+  let attached: {
+    readonly scroller: HTMLElement;
+    readonly content: HTMLElement;
+  } | null = null;
+  let cleanup: (() => void) | null = null;
 
-  const ensureAttached = (): HTMLElement | null => {
-    const scroller = getScrollElement();
-    if (scroller === attachedEl) return scroller;
-    unsubscribe?.();
-    unsubscribe = null;
-    attachedEl = scroller;
-    if (!scroller) return null;
-    const measure = () => {
-      stuck =
-        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <=
-        slack;
-    };
-    measure();
-    unsubscribe =
-      observeElementOffset({scrollElement: scroller}, measure) ?? null;
-    return scroller;
+  const detach = () => {
+    cleanup?.();
+    cleanup = null;
+    attached = null;
   };
 
   return {
-    contentChanged() {
-      const scroller = ensureAttached();
-      if (!scroller || !stuck) return;
-      scroller.scrollTop = scroller.scrollHeight;
-    },
-    detach() {
-      unsubscribe?.();
-      unsubscribe = null;
-      attachedEl = null;
-    },
-  };
-}
+    ensure() {
+      const scroller = getScrollElement();
+      const content = scroller && getContentElement();
+      if (
+        attached &&
+        attached.scroller === scroller &&
+        attached.content === content
+      ) {
+        return;
+      }
+      detach();
+      if (!scroller || !content) return;
+      attached = {scroller, content};
 
-/**
- * The values that change whenever content can grow at the bottom: the loaded
- * window and the spacers. The React binding spreads them into its effect
- * deps; the Solid binding calls this inside its effect so reading the store
- * fields tracks them.
- */
-export function contentGrowthDeps(snapshot: {
-  readonly items: ReadonlyArray<{readonly key: unknown}>;
-  readonly spaceBefore: number;
-  readonly spaceAfter: number;
-}): unknown[] {
-  const {items, spaceBefore, spaceAfter} = snapshot;
-  return [
-    items.length,
-    items[0]?.key ?? '',
-    items[items.length - 1]?.key ?? '',
-    spaceBefore,
-    spaceAfter,
-  ];
+      const measure = () => {
+        stuck =
+          scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <=
+          slack;
+      };
+      // Re-pin using the stuckness measured before the growth. Snap to the
+      // exact bottom rather than preserving the (sub-slack) gap: the slack is
+      // rounding tolerance, not an intentional offset, and snapping is what
+      // guarantees the newest content is on screen. Writing past the maximum
+      // and letting the browser clamp lands on the exact (possibly
+      // fractional) end; the resulting scroll event re-measures at the
+      // bottom, so stuck stays latched.
+      const repin = () => {
+        if (stuck) scroller.scrollTop = scroller.scrollHeight;
+      };
+      measure();
+
+      // Scroll events fire on the window when the document itself scrolls.
+      const scrollTarget: HTMLElement | Window =
+        scroller === document.scrollingElement ? window : scroller;
+      scrollTarget.addEventListener('scroll', measure, {passive: true});
+      const observer = new ResizeObserver(repin);
+      observer.observe(content, {box: 'border-box'});
+      let removeWindowResize: (() => void) | null = null;
+      if (scroller === document.scrollingElement) {
+        // A ResizeObserver on the scrolling element tracks the document (its
+        // content), not the viewport — use the window resize event instead.
+        window.addEventListener('resize', repin);
+        removeWindowResize = () => window.removeEventListener('resize', repin);
+      } else {
+        observer.observe(scroller, {box: 'border-box'});
+      }
+      cleanup = () => {
+        scrollTarget.removeEventListener('scroll', measure);
+        observer.disconnect();
+        removeWindowResize?.();
+      };
+    },
+    detach,
+  };
 }
 
 export type StickToBottomCache = {
   /**
-   * Call per content tick while enabled. Recreates the controller when the
+   * Call per framework tick while enabled. Recreates the controller when the
    * resolved scroll wiring or `slack` changes (they're baked into the core
-   * controller), then re-pins via {@linkcode StickToBottomController.contentChanged}.
+   * controller), then lets it lazily (re)attach via
+   * {@linkcode StickToBottomController.ensure}.
    */
   ensure(
     virtualizer: {
@@ -141,11 +166,14 @@ export function createStickToBottomCache(): StickToBottomCache {
       // controller's whole lifetime.
       controller ??= createStickToBottom(
         () => virtualizer.scrollElement,
-        options.observeElementOffset,
+        () => {
+          const scroller = virtualizer.scrollElement;
+          return scroller && contentWrapper(scroller);
+        },
         slack,
       );
       key = [options, slack];
-      controller.contentChanged();
+      controller.ensure();
     },
     detach() {
       controller?.detach();

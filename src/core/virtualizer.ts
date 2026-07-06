@@ -265,9 +265,13 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #observedItems: ReadonlyArray<VirtualRow<TRow>> | null = null;
   #programmaticScroll = false;
   #anchorKey: RowKey | null = null;
-  // The reference row's top offset from the viewport top, in the settled
-  // (hold-free) frame — what the anchoring keeps stable across relabels and
-  // off-screen resizes (matching native `overflow-anchor`).
+  // The reference row's top position in content (document) coordinates, in
+  // the settled (hold-free) frame. Content above the row changing size moves
+  // it off this target; the measured delta is what compensation folds back
+  // into scrollTop (or the held margin) so the viewport stays visually stable
+  // (matching native `overflow-anchor`). Content coordinates, not
+  // viewport-relative: scrolling must not read as content movement (see
+  // #anchorOffsetOf).
   #anchorOffset = 0;
   // True from a list reset (context change / restore / permalink) until the new
   // data has loaded, so we don't adopt or pin a stale reference row.
@@ -285,7 +289,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #persistTimer: ReturnType<typeof setTimeout> | undefined;
   // The live anchoring state.
   readonly #anchorState = {isScrolling: false, pendingJump: 0};
-  // The row element currently carrying the held margin.
+  // The element currently carrying the held margin (see #holdTarget).
   #holdEl: HTMLElement | null = null;
 
   // Set to a permalink id when navigation targets a row that is NOT currently
@@ -388,8 +392,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
     // Toggle native scroll anchoring to match the resolved mode: off (so it
     // can't fight our compensation) in manual mode, on in native mode. Set on
-    // the scroll element; spacers keep their own `overflow-anchor: none` so
-    // native mode still anchors to a real row, not a resizing spacer.
+    // the scroll element; the rows live inside a padded content wrapper, and
+    // native anchoring picks a real row inside it — wrapper padding changes
+    // move the row, which is exactly what the browser compensates for.
     const scroller = this.#resolveScrollElement(el);
     this.#scrollElement = scroller;
     this.#prevOverflowAnchor = scroller.style.overflowAnchor;
@@ -564,9 +569,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     const {estimatedTotal, hasReachedStart, hasReachedEnd} = this.#paging;
     const effectiveEstimatedTotal = this.#effectiveEstimatedTotal();
 
-    // Spacer heights: the estimated pixel extent of the unloaded rows above
-    // and below the loaded window (the scrollbar is approximate, exactly as
-    // with any virtualized list).
+    // Space estimates: the estimated pixel extent of the unloaded rows above
+    // and below the loaded window, rendered as the content wrapper's padding
+    // (the scrollbar is approximate, exactly as with any virtualized list).
     const rowEstimate = this.#rowEstimate();
     const rowsBefore = Math.max(0, rows.firstRowIndex);
     const rowsAfter = rows.atEnd
@@ -719,35 +724,59 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // visually stable ourselves: pin one keyed "reference" row; whenever the
   // loaded rows change size above it, measure how far it moved and put it back.
   // Idle we fold the correction into scrollTop; during a touch gesture we hold
-  // it as a margin-top on the first rendered row — writing scrollTop
-  // mid-momentum is ignored / cancels the fling on iOS, while a layout shift
-  // is fine — and reconcile margin→scrollTop when the gesture ends.
+  // it as a margin-top on the content wrapper — writing scrollTop mid-momentum
+  // is ignored / cancels the fling on iOS, while a layout shift is fine — and
+  // reconcile margin→scrollTop when the gesture ends.
 
-  // Apply the held correction as a margin-top on the first rendered row (px is
+  // The element that carries the held margin: the rows' content wrapper (it
+  // survives paging, unlike the first row). Margin, not the wrapper's padding:
+  // the hold is usually negative (pull content up) and padding clamps at 0 —
+  // and `padding-top` is the consumer's `spaceBefore` binding, which their
+  // next render would clobber. Falls back to the first row itself when rows
+  // are direct children of the scroll container, where a margin on it would
+  // land outside the scrollable content and shift nothing.
+  #holdTarget(el: HTMLElement): HTMLElement | null {
+    const first = firstRow(el);
+    if (!first) return null;
+    const parent = first.parentElement;
+    return parent && parent !== this.#scroller(el) ? parent : first;
+  }
+
+  // Apply the held correction as a margin-top on the hold target (px is
   // -pendingJump: negative pulls the content up).
   #applyHold(px: number): void {
     const el = this.#el;
-    const first = el ? firstRow(el) : null;
+    const target = el ? this.#holdTarget(el) : null;
     const prev = this.#holdEl;
-    if (prev && prev !== first) prev.style.marginTop = '';
-    this.#holdEl = px !== 0 ? first : null;
-    if (first) first.style.marginTop = px !== 0 ? `${px}px` : '';
+    if (prev && prev !== target) prev.style.marginTop = '';
+    this.#holdEl = px !== 0 ? target : null;
+    if (target) target.style.marginTop = px !== 0 ? `${px}px` : '';
   }
 
-  // If paging replaced the first row while a hold is applied, move the margin
-  // to the new first row (pre-paint, so nothing shifts visibly).
+  // If the hold carrier changed while a hold is applied (only possible in the
+  // first-row fallback — the wrapper survives paging), move the margin to the
+  // new carrier (pre-paint, so nothing shifts visibly).
   #migrateHold(): void {
     if (this.#holdEl === null) return;
     const el = this.#el;
-    const first = el ? firstRow(el) : null;
-    if (first !== this.#holdEl) {
+    const target = el ? this.#holdTarget(el) : null;
+    if (target !== this.#holdEl) {
       this.#applyHold(-this.#anchorState.pendingJump);
     }
   }
 
-  // A row rect's top offset from the viewport top, the held margin folded out.
+  // A row rect's top position in content (document) coordinates — the scroll
+  // offset and the held margin folded out. Content coordinates make the
+  // measurement scroll-invariant: a measure landing between a scrollTop write
+  // and its scroll event (before #onScrollOffset re-bases the anchor) must not
+  // mistake the scroll itself for content movement and "compensate" it away.
   #anchorOffsetOf(el: HTMLElement, rect: DOMRect): number {
-    return rect.top - this.#viewportTop(el) + this.#anchorState.pendingJump;
+    return (
+      rect.top -
+      this.#viewportTop(el) +
+      this.#scrollOffset(el) +
+      this.#anchorState.pendingJump
+    );
   }
 
   #refreshAnchor(): void {
@@ -770,17 +799,17 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   // The single correction choke point: idle → scrollTop; mid-gesture → hold as
-  // the first-row margin, owed to the reconcile at gesture end.
+  // the content-wrapper margin, owed to the reconcile at gesture end.
   #compensate(delta: number): void {
     const el = this.#el;
     if (!el) return;
+    // The target is a content-space position, which neither correction moves
+    // (a scrollTop write by definition; the hold's shift is folded back out by
+    // #anchorOffsetOf via pendingJump). Re-baseline it so the same growth
+    // isn't re-compensated on the next measure.
+    this.#anchorOffset += delta;
     if (this.#anchorState.isScrolling && this.#touchScroll) {
       this.#anchorState.pendingJump += delta;
-      // Unlike the scrollTop path (which moves the settled layout back to the
-      // target), the hold leaves the reference's settled position shifted by
-      // `delta`. Re-baseline the target so we don't keep re-compensating the
-      // same growth; the owed jump is flushed at reconcile.
-      this.#anchorOffset += delta;
       this.#applyHold(-this.#anchorState.pendingJump);
     } else {
       this.#setScrollTop(this.#scrollOffset(el) + delta);
@@ -801,7 +830,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     }
     const el = this.#el;
     if (!el) return;
-    // If paging swapped out the row carrying the held margin, re-pin it before
+    // If the hold carrier changed (first-row fallback only), re-pin it before
     // measuring so the hold isn't double-counted as movement.
     this.#migrateHold();
     // Match native scroll anchoring, which the spec suppresses at scroll
@@ -1199,7 +1228,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
     if (firstVisible === Infinity) {
       // No loaded row is visible: a far jump (scrollbar drag, instant
-      // scrollTop write) put the viewport entirely inside a spacer, so the
+      // scrollTop write) put the viewport entirely inside the wrapper's
+      // padding, so the
       // edge-distance logic below has nothing to react to and paging would
       // stall. Recover: a jump to the very top re-anchors at the start
       // directly; otherwise cascade a page toward the viewport from the
@@ -1275,7 +1305,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       onScrollStateChange({
         anchor,
         // The logical committed offset: if a gesture is mid-flight with an
-        // owed jump held in the first-row margin, fold it in so restore lands
+        // owed jump held in the wrapper margin, fold it in so restore lands
         // right.
         scrollTop: el
           ? this.#scrollOffset(el) + this.#anchorState.pendingJump

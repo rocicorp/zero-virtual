@@ -54,12 +54,14 @@ function makeOptions() {
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
-// Rows are rendered in flow between a top spacer (`spaceBefore`) and a bottom
-// spacer (`spaceAfter`); there is no virtual "count". These cases pin down the
-// derived outputs: how many rows to render, the spacer sizes, and `total`.
-describe('useZeroVirtualizer - items, spacers and total', () => {
+// Rows are rendered in flow inside a content wrapper padded by `spaceBefore`
+// (top) and `spaceAfter` (bottom); there is no virtual "count". These cases
+// pin down the derived outputs: how many rows to render, the space estimates,
+// and `total`.
+describe('useZeroVirtualizer - items, space and total', () => {
   test.for([
     {
       name: 'empty, loading (no rows yet)',
@@ -303,8 +305,42 @@ describe('useStickToBottom over the virtualizer result', () => {
   test('re-pins to the bottom on content growth only while stuck', () => {
     mockUseRows.mockReturnValue(makeUseRowsResult({}));
 
+    // The re-pinning is driven by ResizeObservers on the content wrapper and
+    // the scroll container; capture their callbacks to fire growth manually
+    // (happy-dom never fires them itself).
+    const observers: {cb: ResizeObserverCallback; targets: Element[]}[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        readonly #entry: {cb: ResizeObserverCallback; targets: Element[]};
+        constructor(cb: ResizeObserverCallback) {
+          this.#entry = {cb, targets: []};
+          observers.push(this.#entry);
+        }
+        observe(target: Element) {
+          this.#entry.targets.push(target);
+        }
+        disconnect() {
+          this.#entry.targets.length = 0;
+        }
+      },
+    );
+    const fireResize = () => {
+      for (const {cb, targets} of observers) {
+        if (targets.length > 0) {
+          cb([], undefined as unknown as ResizeObserver);
+        }
+      }
+    };
+
     const options = makeOptions();
     const scrollEl = options.getScrollElement();
+    // The rows' content wrapper (found in the DOM as the first row's parent).
+    const wrapper = document.createElement('div');
+    const row = document.createElement('div');
+    row.setAttribute('data-vrow-index', '0');
+    wrapper.appendChild(row);
+    scrollEl.appendChild(wrapper);
     let scrollTop = 0;
     let scrollHeight = 100;
     Object.defineProperties(scrollEl, {
@@ -318,25 +354,22 @@ describe('useStickToBottom over the virtualizer result', () => {
       clientHeight: {get: () => 100},
     });
 
-    const {rerender} = renderHook(
-      ({dep}: {dep: number}) => {
-        const virtualizer = useZeroVirtualizer(options);
-        useStickToBottom(virtualizer, {}, [dep]);
-      },
-      {initialProps: {dep: 0}},
-    );
+    renderHook(() => {
+      const virtualizer = useZeroVirtualizer(options);
+      useStickToBottom(virtualizer);
+    });
 
     // Mounted parked at the bottom (scrollHeight - scrollTop - clientHeight
-    // = 0) → stuck. Content growth re-pins.
+    // = 0) → stuck. Content growth (the wrapper resizes) re-pins.
     scrollHeight = 250;
-    rerender({dep: 1});
+    fireResize();
     expect(scrollTop).toBe(250);
 
     // Scroll away → unstuck; further growth must not yank the viewport.
     scrollTop = 50;
     scrollEl.dispatchEvent(new Event('scroll'));
     scrollHeight = 300;
-    rerender({dep: 2});
+    fireResize();
     expect(scrollTop).toBe(50);
   });
 });

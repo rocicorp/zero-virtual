@@ -93,8 +93,9 @@ export function useGetPageQuery(listContextParams: ListContextParams) {
 
 /**
  * A single representative row-height estimate per mode, used only to size the
- * spacers that stand in for not-yet-loaded rows (the scrollbar is approximate,
- * as with any virtualized list). Real heights come from the DOM.
+ * content-wrapper padding that stands in for not-yet-loaded rows (the
+ * scrollbar is approximate, as with any virtualized list). Real heights come
+ * from the DOM.
  */
 export function useEstimateSize(heightMode: HeightMode): () => number {
   return useCallback(
@@ -116,8 +117,8 @@ export function useDemoControls() {
   const [anchoringStr, setAnchoring] = useUrlState('anchoring', 'manual');
   const anchoring = anchoringStr as AnchoringMode;
   const [countStr] = useUrlState('count', '');
-  // Guard against non-numeric ?count= — NaN would flow into the spacer math
-  // (NaN heights) with no error.
+  // Guard against non-numeric ?count= — NaN would flow into the space
+  // estimates (NaN padding) with no error.
   const parsedCount = Number(countStr);
   const count =
     countStr && Number.isFinite(parsedCount) ? parsedCount : undefined;

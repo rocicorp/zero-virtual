@@ -57,15 +57,6 @@ function rowPresentation(
 }
 
 /**
- * A spacer standing in for the estimated unloaded rows above/below the loaded
- * window. The `.spacer` class carries `overflow-anchor: none` so native scroll
- * anchoring never anchors to a resizing spacer, only to a real row.
- */
-export function Spacer({height}: {height: number}): React.ReactNode {
-  return <div className={styles.spacer} style={{height}} />;
-}
-
-/**
  * One list row — or its loading placeholder — shared by the element and window
  * scroller demos. `rowAttributes` stamps the attributes the virtualizer
  * measures against (visible-row detection, permalink targets, anchoring

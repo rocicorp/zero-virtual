@@ -62,14 +62,6 @@
      (none in manual mode, auto in native mode) — don't set it here. */
 }
 
-/* Spacers stand in for the estimated unloaded rows above/below the window.
-   They must NOT be scroll-anchor candidates — the browser should anchor to a
-   real row, not a resizing spacer. */
-.spacer {
-  overflow-anchor: none;
-  width: 100%;
-}
-
 /* Rows. The base is the design's two-column row (title + description left,
    date right); per height-mode variants below adjust the vertical rhythm so
    the demo's uniform / fixed / dynamic sizing keeps exercising the engine. */

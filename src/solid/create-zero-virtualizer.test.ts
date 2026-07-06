@@ -101,7 +101,7 @@ describe('createZeroVirtualizer (solid wrapper wiring)', () => {
       expect(snap().items).toHaveLength(4);
       expect(snap().total).toBeUndefined(); // end no longer reached
       // The estimate is a high-water mark of the discovered extent — it never
-      // projects past the loaded rows, so the bottom spacer stays collapsed.
+      // projects past the loaded rows, so the bottom padding stays collapsed.
       expect(snap().spaceAfter).toBe(0);
       dispose();
     });

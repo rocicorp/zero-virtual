@@ -5,7 +5,7 @@ import {
 } from '@rocicorp/zero-virtual/react';
 import React, {useCallback, useRef} from 'react';
 import {DevPanel} from './DevPanel.tsx';
-import {ItemRow, Spacer} from './ItemRow.tsx';
+import {ItemRow} from './ItemRow.tsx';
 import {ListHeader} from './ListHeader.tsx';
 import {
   getRowKey,
@@ -86,8 +86,13 @@ export function WindowList(): React.ReactNode {
         />
       </div>
 
-      <div ref={rowsRef}>
-        <Spacer height={spaceBefore} />
+      {/* The rows element doubles as the content wrapper: its padding stands
+          in for the unloaded rows above and below (it isn't the scroll
+          container — the window is — so padding on it is safe). */}
+      <div
+        ref={rowsRef}
+        style={{paddingTop: spaceBefore, paddingBottom: spaceAfter}}
+      >
         {items.map(item => (
           <ItemRow
             key={item.key}
@@ -97,7 +102,6 @@ export function WindowList(): React.ReactNode {
             permalinkID={permalinkID}
           />
         ))}
-        <Spacer height={spaceAfter} />
       </div>
       <DevPanel
         getScrollElement={getScrollElement}

@@ -1,6 +1,5 @@
 import {useLayoutEffect, useRef} from 'react';
 import {
-  contentGrowthDeps,
   createStickToBottomCache,
   DEFAULT_STICK_SLACK,
   type StickOptions,
@@ -16,6 +15,13 @@ export type {StickOptions} from '../core/stick-to-bottom.ts';
  * chat / log UI. Thin React binding over the core
  * {@linkcode createStickToBottomCache} state machine.
  *
+ * The behavior is driven purely by the DOM: ResizeObservers on the rows'
+ * content wrapper and the scroll container detect every change to the
+ * scrollable extent — including content the virtualizer doesn't know about,
+ * like the last row streaming in taller — so there is nothing to declare in
+ * effect deps. This hook only wires the observers up (lazily, until the
+ * elements exist).
+ *
  * This is a thin layer on top of scroll anchoring, not a replacement for it.
  * Anchoring keeps the view stable when off-screen content above changes; the
  * one thing it never does is *follow* new content arriving at the bottom
@@ -26,36 +32,26 @@ export type {StickOptions} from '../core/stick-to-bottom.ts';
  *
  * @param virtualizer The result of `useZeroVirtualizer` /
  *   `useZeroWindowVirtualizer`. It supplies the scroll wiring (via
- *   `virtualizer.options` / `virtualizer.scrollElement`), and its
- *   items/spacers drive the re-pinning.
- * @param deps Extra values that change when content can grow at the bottom in
- *   ways the items/spacers don't capture (e.g. the last row streaming in
- *   taller). Must keep a stable length across renders, like hook deps.
+ *   `virtualizer.options` / `virtualizer.scrollElement`); the rows' content
+ *   wrapper is found in the DOM.
  */
 export function useStickToBottom<TRow>(
   virtualizer: ZeroVirtualizerResult<TRow>,
   {enabled = true, slack = DEFAULT_STICK_SLACK}: StickOptions = {},
-  deps: ReadonlyArray<unknown> = [],
 ): void {
   const ref = useRef<StickToBottomCache | null>(null);
 
-  // Runs per content tick, pre-paint. The content deps are deliberately in
-  // the deps: when the scroll container renders conditionally,
-  // `scrollElement` can be null at first and nothing else would re-run — the
-  // controller attaches lazily on each tick until the element exists.
+  // Runs per commit, pre-paint, with no deps on purpose: when the scroll
+  // container renders conditionally (or before the first rows render) the
+  // elements can be null and nothing else would re-run — ensure() retries
+  // each tick until they exist, and is an identity-check no-op after that.
   useLayoutEffect(() => {
     if (!enabled) {
       ref.current?.detach();
       return;
     }
     (ref.current ??= createStickToBottomCache()).ensure(virtualizer, slack);
-  }, [
-    ...contentGrowthDeps(virtualizer),
-    ...deps,
-    enabled,
-    virtualizer.options,
-    slack,
-  ]);
+  });
 
   useLayoutEffect(
     () => () => {
