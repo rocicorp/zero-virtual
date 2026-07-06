@@ -7,6 +7,7 @@
  * `./react` and `./solid` entry points are the stable surfaces.
  */
 export {
+  contentWrapper,
   findRow,
   firstRow,
   queryRows,
@@ -31,7 +32,6 @@ export {
   type RowsSnapshot,
 } from './rows.ts';
 export {
-  contentGrowthDeps,
   createStickToBottom,
   createStickToBottomCache,
   DEFAULT_STICK_SLACK,

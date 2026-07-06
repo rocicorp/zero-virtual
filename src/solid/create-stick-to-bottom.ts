@@ -1,6 +1,5 @@
 import {createEffect, onCleanup, type Accessor} from 'solid-js';
 import {
-  contentGrowthDeps,
   createStickToBottomCache,
   DEFAULT_STICK_SLACK,
   type StickOptions,
@@ -13,29 +12,29 @@ import type {CreateZeroVirtualizerResult} from './create-zero-virtualizer.ts';
  * React `useStickToBottom`, over the same core
  * {@linkcode createStickToBottomCache} state machine.
  *
+ * The behavior is driven purely by the DOM (ResizeObservers on the rows'
+ * content wrapper and the scroll container), so there are no content deps to
+ * declare — the effect only wires the observers up, lazily until the
+ * elements exist.
+ *
  * Call during component setup (uses `onCleanup`).
  *
  * @param snapshot The accessor returned by `createZeroVirtualizer` or
  *   `createZeroWindowVirtualizer`. It supplies the scroll wiring (via
- *   `options` / `scrollElement`), and its items/space estimates drive the
- *   re-pinning.
- * @param deps Optional accessor of extra values that change when content can
- *   grow at the bottom in ways the items/space estimates don't capture (e.g.
- *   the last row streaming in taller).
+ *   `options` / `scrollElement`); the rows' content wrapper is found in the
+ *   DOM.
  */
 export function createStickToBottom<TRow>(
   snapshot: Accessor<CreateZeroVirtualizerResult<TRow>>,
   options: Accessor<StickOptions> = () => ({}),
-  deps: Accessor<ReadonlyArray<unknown>> = () => [],
 ): void {
   const cache = createStickToBottomCache();
   onCleanup(() => cache.detach());
 
   createEffect(() => {
+    // Tracking the snapshot retries the lazy attach until the scroll
+    // container and rows exist; after that ensure() is an identity no-op.
     const snapshotValue = snapshot();
-    // Reading the store fields tracks the content-growth signals.
-    contentGrowthDeps(snapshotValue);
-    deps();
     const {enabled = true, slack = DEFAULT_STICK_SLACK} = options();
     if (!enabled) {
       cache.detach();

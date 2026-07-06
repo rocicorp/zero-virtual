@@ -320,17 +320,15 @@ following stops (read history in peace); scroll back down and it re-arms. The
 hook reuses the virtualizer's scroll wiring (via `virtualizer.options` /
 `virtualizer.scrollElement`), so it works unchanged with window scrolling.
 
-The full signature is `useStickToBottom(virtualizer, options?, deps?)`, with
-`enabled` and `slack` in the options. Re-pinning is driven by the loaded
-window and the space estimates; pass `deps` for content that grows at the
-bottom without changing them — e.g. the last row streaming in taller:
+The full signature is `useStickToBottom(virtualizer, options?)`, with
+`enabled` and `slack` in the options. Re-pinning is driven purely by the DOM
+— ResizeObservers on the rows' content wrapper and the scroll container — so
+_any_ growth at the bottom re-pins, including content the virtualizer doesn't
+know about, like the last row streaming in taller. There are no content deps
+to declare.
 
-```ts
-useStickToBottom(virtualizer, {}, [lastMessage?.text]);
-```
-
-In Solid, use `createStickToBottom(snapshot, options?, deps?)` with accessors
-in the reactive slots.
+In Solid, use `createStickToBottom(snapshot, options?)` with accessors in the
+reactive slots.
 
 A feed parked at the top needs no helper: at scroll offset 0, scroll anchoring
 (native and manual alike) deliberately stands down, so newly prepended content
