@@ -1,6 +1,7 @@
 import {createRoot, createSignal, type Accessor} from 'solid-js';
 import {beforeEach, describe, expect, test, vi} from 'vitest';
 import type {RowsQueryInputs, RowsSnapshot} from '../core/rows.ts';
+import {observeElementOffset, observeElementRect} from '../core/scroll.ts';
 import {
   createZeroVirtualizer,
   type CreateZeroVirtualizerOptions,
@@ -163,6 +164,45 @@ describe('createZeroVirtualizer (solid wrapper wiring)', () => {
       });
       expect(inputs().pageSize).toBeGreaterThanOrEqual(100);
       expect(inputs().settled).toBe(false);
+      dispose();
+    });
+  });
+
+  test('result exposes the resolved wiring with stable identity', () => {
+    const el = document.createElement('div');
+    const rowsData = [{id: 'a'}];
+    const [rows, setRows] = createSignal(makeRows({}));
+    rowsMock.accessor = rows;
+
+    createRoot(dispose => {
+      const getScrollElement = () => el;
+      const snap = createZeroVirtualizer(() => ({
+        ...makeOptions(el),
+        getScrollElement,
+      }));
+
+      expect(snap().options.getScrollElement).toBe(getScrollElement);
+      expect(snap().options.observeElementRect).toBe(observeElementRect);
+      expect(snap().options.observeElementOffset).toBe(observeElementOffset);
+      // TanStack-style: the resolved current scrolling element.
+      expect(snap().scrollElement).toBe(el);
+
+      // A content change produces a fresh snapshot but must not churn the
+      // options bag (stick-to-bottom keys its controller on it).
+      const before = snap().options;
+      setRows(
+        makeRows({
+          rowsLength: 1,
+          complete: true,
+          rowsEmpty: false,
+          atStart: true,
+          atEnd: true,
+          firstRowIndex: 0,
+          rowAt: i => rowsData[i],
+        }),
+      );
+      expect(snap().items).toHaveLength(1);
+      expect(snap().options).toBe(before);
       dispose();
     });
   });

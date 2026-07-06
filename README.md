@@ -1,17 +1,17 @@
 # zero-virtual
 
 Infinite virtual scroller for [Zero](https://zero.rocicorp.dev/). Rows render in
-normal document flow and scroll anchoring keeps the viewport stable as rows load
-— the browser's native CSS `overflow-anchor` where it's reliable, and a built-in
-momentum-safe manual equivalent on iOS (auto-detected). Scrolling stays smooth
-and variable / dynamic row heights work out of the box. No third-party
-virtualization dependency.
+normal document flow and scroll anchoring keeps the viewport stable as rows
+load using the browser's native CSS `overflow-anchor` where it's reliable, and
+a built-in momentum-safe manual equivalent on iOS (auto-detected). Scrolling
+stays smooth and variable / dynamic row heights work out of the box. No
+third-party virtualization dependency.
 
 Live demo at: https://gigabugs.rocicorp.dev/.
 
 Features:
 
-- React and SolidJS bindings over one framework-agnostic core
+- **React** and **SolidJS** bindings over one framework-agnostic core
 - Bidirectional infinite scrolling (load more items at top or bottom)
 - Uniform, non-uniform, or fully dynamic (content-measured) row heights
 - Element scrolling or window scrolling (`useZeroWindowVirtualizer`)
@@ -31,9 +31,9 @@ Features:
   reconcile momentum-time corrections at the end of a touch gesture (there is
   deliberately no timer-based fallback for older engines).
 - In `native` anchoring mode, relies on the browser's CSS `overflow-anchor`
-  (Chromium and Firefox; Safari doesn't implement it). The default `auto` mode
-  feature-detects and falls back to `manual`, which implements the equivalent
-  itself and has no such dependency.
+  (Chromium and Firefox; Safari implements it but doesn't enable it by default
+  as of July 2026). The default `auto` mode feature-detects and falls back to
+  `manual`, which implements the equivalent itself and has no such dependency.
 - Without `count`, the scrollbar is approximate: off-screen extent is sized
   from `estimateSize` and grows as rows are discovered (as with any virtualized
   list of unknown length). Visible content is always positioned exactly.
@@ -245,8 +245,8 @@ export function ItemList() {
 
 The window scroller is `createZeroWindowVirtualizer`, scroll persistence is
 `createHistoryScrollState` (returns `[Accessor, setter]`), and stick-to-bottom
-is `createStickToBottom(getScrollElement, dep, options?)` where `dep` is an
-accessor that changes when content can grow at the bottom. See
+is `createStickToBottom(snapshot, options?, deps?)` where `snapshot` is the
+accessor returned by the virtualizer. See
 [demo/solid/App.tsx](demo/solid/App.tsx) for all of them in one place.
 
 ### Element vs window scrolling
@@ -265,9 +265,14 @@ const {items, spaceBefore, spaceAfter} = useZeroWindowVirtualizer({
 });
 ```
 
-Both hooks share a `ScrollAdapter` abstraction (`elementScrollAdapter` /
-`windowScrollAdapter` are exported); provide your own to scroll a custom
-container. The Solid equivalent is `createZeroWindowVirtualizer`.
+Both hooks accept TanStack-style scroll wiring directly in their options:
+`getScrollElement` plus optional `observeElementRect` / `observeElementOffset`
+overrides. They default per hook — the defaults are exported as
+`observeElementRect` / `observeElementOffset` and their window twins
+`observeWindowRect` / `observeWindowOffset`. Override them to observe a
+custom container. The result echoes the resolved wiring as `options` and
+exposes the current scrolling element as `scrollElement`, also TanStack-style.
+The Solid equivalent is `createZeroWindowVirtualizer`.
 
 ### Scroll anchoring modes
 
@@ -277,7 +282,7 @@ relabeling):
 
 - **`'auto'`** (default) — feature-detects CSS `overflow-anchor` support:
   `'native'` where the browser implements it, `'manual'` elsewhere (notably
-  all of Safari).
+  Safari, which as of July 2026 implements but does not enable it by default).
 - **`'native'`** — the browser's CSS `overflow-anchor` does the work.
 - **`'manual'`** — the virtualizer pins a reference row itself and folds
   above-viewport size changes back into the scroll position. Writing
@@ -309,16 +314,27 @@ stick-to-bottom hook on top:
 ```ts
 import {useStickToBottom} from '@rocicorp/zero-virtual/react';
 
-// Any value that changes when content can grow at the bottom:
-const tick = `${items.length}:${items[0]?.key}:${items.at(-1)?.key}:${spaceBefore}:${spaceAfter}`;
-
-useStickToBottom(getScrollElement, tick);
+// `virtualizer` is the object returned by useZeroVirtualizer or
+// useZeroWindowVirtualizer.
+useStickToBottom(virtualizer);
 ```
 
 It only follows while the user is parked at the bottom: scroll away and the
-following stops (read history in peace); scroll back down and it re-arms. For
-the window scroller, pass `() => document.scrollingElement` as the element
-getter. In Solid, use `createStickToBottom(getScrollElement, () => tick)`.
+following stops (read history in peace); scroll back down and it re-arms. The
+hook reuses the virtualizer's scroll wiring (via `virtualizer.options` /
+`virtualizer.scrollElement`), so it works unchanged with window scrolling.
+
+The full signature is `useStickToBottom(virtualizer, options?, deps?)`, with
+`enabled` and `slack` in the options. Re-pinning is driven by the loaded
+window and the spacers; pass `deps` for content that grows at the bottom
+without changing them — e.g. the last row streaming in taller:
+
+```ts
+useStickToBottom(virtualizer, {}, [lastMessage?.text]);
+```
+
+In Solid, use `createStickToBottom(snapshot, options?, deps?)` with accessors
+in the reactive slots.
 
 A feed parked at the top needs no helper: at scroll offset 0, scroll anchoring
 (native and manual alike) deliberately stands down, so newly prepended content
@@ -341,7 +357,9 @@ type GetSingleQueryOptions = {
   settled: boolean;
 };
 
-type QueryResult<TReturn> = {query: ...; options?: UseQueryOptions};
+type QueryResult<TReturn> = {query: ...; options?: QueryOptions};
+// QueryOptions ({enabled?, ttl?}) is structurally assignable to the
+// UseQueryOptions of @rocicorp/zero/react and @rocicorp/zero/solid.
 ```
 
 The `settled` flag indicates whether the list has been idle for `settleTime` ms (default 2000). Use this to vary query options based on scroll state — for example, using a shorter TTL while scrolling and a longer one when settled:

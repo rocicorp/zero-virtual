@@ -1,57 +1,46 @@
-import {useLayoutEffect, useReducer, useState} from 'react';
+import {useLayoutEffect, useMemo, useReducer, useState} from 'react';
 import {
-  elementScrollAdapter,
-  windowScrollAdapter,
-  type ScrollAdapter,
-} from '../core/scroll-adapter.ts';
-import type {GetPageQuery, GetSingleQuery} from '../core/types.ts';
+  observeElementOffset,
+  observeElementRect,
+  observeWindowOffset,
+  observeWindowRect,
+  resolveElementScrollElement,
+  resolveWindowScrollElement,
+  type ResolvedScrollOptions,
+  type ResolveScrollElement,
+} from '../core/scroll.ts';
 import {
+  virtualizerResult,
   ZeroVirtualizer,
-  type VirtualizerOptions,
-  type VirtualizerSnapshot,
+  type VirtualizerBindingOptions,
+  type VirtualizerResult,
 } from '../core/virtualizer.ts';
 import {useRows} from './use-rows.ts';
 
 /**
  * Options for configuring the Zero virtualizer. The core options (see
- * {@linkcode VirtualizerOptions}) plus the React-side wiring: the scroll
- * element getter, the query functions (bound via `@rocicorp/zero/react`), and
- * an optional custom scroll adapter.
+ * {@linkcode VirtualizerBindingOptions}) plus the React-side wiring: the
+ * scroll element getter, the query functions (bound via
+ * `@rocicorp/zero/react`), and optional overrides of the scroll observers
+ * (TanStack Virtual style).
  *
  * @typeParam TListContextParams - The type of parameters that define the list's query context
  * @typeParam TRow - The type of row data returned from queries
  * @typeParam TStartRow - The type of data needed to anchor pagination (typically a subset of TRow)
  */
 export type UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> =
-  VirtualizerOptions<TListContextParams, TRow, TStartRow> & {
-    /** Returns the scrollable container element. */
-    getScrollElement: () => HTMLElement | null;
-
-    /** Function that returns a query for fetching a page of rows */
-    getPageQuery: GetPageQuery<TRow, TStartRow>;
-    /** Function that returns a query for fetching a single row by ID */
-    getSingleQuery: GetSingleQuery<TRow>;
-    /** Function to extract the start row data from a full row (for pagination anchoring) */
-    toStartRow: (row: TRow) => TStartRow;
-
-    /**
-     * How the scroll container is read and driven. Defaults to
-     * {@linkcode elementScrollAdapter} for {@linkcode useZeroVirtualizer} and
-     * {@linkcode windowScrollAdapter} for {@linkcode useZeroWindowVirtualizer}.
-     * Provide a custom adapter to scroll some other container.
-     */
-    scrollAdapter?: ScrollAdapter | undefined;
-  };
+  VirtualizerBindingOptions<TListContextParams, TRow, TStartRow>;
 
 /**
  * Result object returned by the useZeroVirtualizer hook: the loaded rows to
- * render between two spacers, plus load/paging status. See
- * {@linkcode VirtualizerSnapshot} for field semantics. The object identity is
- * stable between renders whose content didn't change.
+ * render between two spacers, plus load/paging status, the resolved scroll
+ * wiring (`options`), and the current scrolling element (`scrollElement`).
+ * See {@linkcode VirtualizerResult} for field semantics. The object identity
+ * is stable between renders whose content didn't change.
  *
  * @typeParam TRow - The type of row data returned from queries
  */
-export type ZeroVirtualizerResult<TRow> = VirtualizerSnapshot<TRow>;
+export type ZeroVirtualizerResult<TRow> = VirtualizerResult<TRow>;
 
 /**
  * Hook that creates a virtualized list with bidirectional pagination and state
@@ -63,8 +52,11 @@ export type ZeroVirtualizerResult<TRow> = VirtualizerSnapshot<TRow>;
  * driven by the core's change notifications.
  */
 function useZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
-  options: UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>,
-  adapter: ScrollAdapter,
+  // The binding options with the observers already defaulted (the hooks
+  // below spread them in, TanStack style).
+  options: UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> &
+    ResolvedScrollOptions,
+  resolveScrollElement: ResolveScrollElement,
 ): ZeroVirtualizerResult<TRow> {
   const [, rerender] = useReducer(() => ({}), {});
   // One core instance per hook lifetime. The constructor is pure (no DOM /
@@ -75,7 +67,7 @@ function useZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
     () =>
       new ZeroVirtualizer<TListContextParams, TRow, TStartRow>(
         options,
-        adapter,
+        resolveScrollElement,
       ),
   );
 
@@ -112,7 +104,16 @@ function useZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
     core.afterDOMUpdate();
   });
 
-  return core.getSnapshot();
+  const {getScrollElement, observeElementRect, observeElementOffset} = options;
+  const resultOptions = useMemo(
+    () => ({getScrollElement, observeElementRect, observeElementOffset}),
+    [getScrollElement, observeElementRect, observeElementOffset],
+  );
+  const snapshot = core.getSnapshot();
+  return useMemo(
+    () => virtualizerResult(snapshot, resultOptions, resolveScrollElement),
+    [snapshot, resultOptions, resolveScrollElement],
+  );
 }
 
 /**
@@ -128,8 +129,13 @@ export function useZeroVirtualizer<TListContextParams, TRow, TStartRow>(
   options: UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>,
 ): ZeroVirtualizerResult<TRow> {
   return useZeroVirtualizerImpl(
-    options,
-    options.scrollAdapter ?? elementScrollAdapter,
+    {
+      ...options,
+      observeElementRect: options.observeElementRect ?? observeElementRect,
+      observeElementOffset:
+        options.observeElementOffset ?? observeElementOffset,
+    },
+    resolveElementScrollElement,
   );
 }
 
@@ -147,7 +153,11 @@ export function useZeroWindowVirtualizer<TListContextParams, TRow, TStartRow>(
   options: UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>,
 ): ZeroVirtualizerResult<TRow> {
   return useZeroVirtualizerImpl(
-    options,
-    options.scrollAdapter ?? windowScrollAdapter,
+    {
+      ...options,
+      observeElementRect: options.observeElementRect ?? observeWindowRect,
+      observeElementOffset: options.observeElementOffset ?? observeWindowOffset,
+    },
+    resolveWindowScrollElement,
   );
 }

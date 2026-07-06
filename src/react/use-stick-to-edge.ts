@@ -1,35 +1,20 @@
 import {useLayoutEffect, useRef} from 'react';
 import {
-  elementScrollAdapter,
-  type ScrollAdapter,
-} from '../core/scroll-adapter.ts';
-import {
-  createStickToBottom,
+  contentGrowthDeps,
+  createStickToBottomCache,
   DEFAULT_STICK_SLACK,
-  type StickToBottomController,
+  type StickOptions,
+  type StickToBottomCache,
 } from '../core/stick-to-bottom.ts';
+import type {ZeroVirtualizerResult} from './use-zero-virtualizer.ts';
 
-export type StickOptions = {
-  /**
-   * Turn the behavior on/off without violating the rules of hooks (call the
-   * hook unconditionally, flip this instead). Defaults to `true`.
-   */
-  enabled?: boolean | undefined;
-  /** Px of slack around the edge (defaults to {@link DEFAULT_STICK_SLACK}). */
-  slack?: number | undefined;
-  /**
-   * How the scroll container is read and driven — pass the same adapter the
-   * virtualizer uses ({@linkcode elementScrollAdapter} by default,
-   * `windowScrollAdapter` for a window scroller).
-   */
-  adapter?: ScrollAdapter | undefined;
-};
+export type {StickOptions} from '../core/stick-to-bottom.ts';
 
 /**
  * Stick-to-bottom: when content grows, keep the viewport pinned to the bottom
  * — but only if the user was already parked there. The building block for a
  * chat / log UI. Thin React binding over the core
- * {@linkcode createStickToBottom} controller.
+ * {@linkcode createStickToBottomCache} state machine.
  *
  * This is a thin layer on top of scroll anchoring, not a replacement for it.
  * Anchoring keeps the view stable when off-screen content above changes; the
@@ -39,54 +24,42 @@ export type StickOptions = {
  * the manual mode matches), so content prepended while you're at the very top
  * is already revealed.
  *
- * @param getScrollElement Returns the scroll container — the same element the
- *   virtualizer's `getScrollElement` returns.
- * @param dep A value that changes whenever the content can grow at the bottom
- *   (e.g. the newest row's key, the row count, or a measurement tick).
+ * @param virtualizer The result of `useZeroVirtualizer` /
+ *   `useZeroWindowVirtualizer`. It supplies the scroll wiring (via
+ *   `virtualizer.options` / `virtualizer.scrollElement`), and its
+ *   items/spacers drive the re-pinning.
+ * @param deps Extra values that change when content can grow at the bottom in
+ *   ways the items/spacers don't capture (e.g. the last row streaming in
+ *   taller). Must keep a stable length across renders, like hook deps.
  */
-export function useStickToBottom(
-  getScrollElement: () => HTMLElement | null,
-  dep: unknown,
-  {
-    enabled = true,
-    slack = DEFAULT_STICK_SLACK,
-    adapter = elementScrollAdapter,
-  }: StickOptions = {},
+export function useStickToBottom<TRow>(
+  virtualizer: ZeroVirtualizerResult<TRow>,
+  {enabled = true, slack = DEFAULT_STICK_SLACK}: StickOptions = {},
+  deps: ReadonlyArray<unknown> = [],
 ): void {
-  const ref = useRef<{
-    controller: StickToBottomController;
-    key: readonly [() => HTMLElement | null, ScrollAdapter, number];
-  } | null>(null);
+  const ref = useRef<StickToBottomCache | null>(null);
 
-  // Runs per content tick, pre-paint. `dep` is deliberately in the deps: when
-  // the scroll container renders conditionally, `getScrollElement()` can be
-  // null at first and nothing else would re-run — the controller attaches
-  // lazily on each tick until the element exists.
+  // Runs per content tick, pre-paint. The content deps are deliberately in
+  // the deps: when the scroll container renders conditionally,
+  // `scrollElement` can be null at first and nothing else would re-run — the
+  // controller attaches lazily on each tick until the element exists.
   useLayoutEffect(() => {
     if (!enabled) {
-      ref.current?.controller.detach();
-      ref.current = null;
+      ref.current?.detach();
       return;
     }
-    const key = [getScrollElement, adapter, slack] as const;
-    if (
-      !ref.current ||
-      ref.current.key[0] !== key[0] ||
-      ref.current.key[1] !== key[1] ||
-      ref.current.key[2] !== key[2]
-    ) {
-      ref.current?.controller.detach();
-      ref.current = {
-        controller: createStickToBottom(getScrollElement, adapter, slack),
-        key,
-      };
-    }
-    ref.current.controller.contentChanged();
-  }, [dep, enabled, getScrollElement, adapter, slack]);
+    (ref.current ??= createStickToBottomCache()).ensure(virtualizer, slack);
+  }, [
+    ...contentGrowthDeps(virtualizer),
+    ...deps,
+    enabled,
+    virtualizer.options,
+    slack,
+  ]);
 
   useLayoutEffect(
     () => () => {
-      ref.current?.controller.detach();
+      ref.current?.detach();
       ref.current = null;
     },
     [],

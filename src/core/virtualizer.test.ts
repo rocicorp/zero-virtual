@@ -1,6 +1,6 @@
 import {describe, expect, test, vi} from 'vitest';
 import type {RowsSnapshot} from './rows.ts';
-import {elementScrollAdapter} from './scroll-adapter.ts';
+import {observeElementOffset, observeElementRect} from './scroll.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
 
 const EST = 48;
@@ -28,6 +28,8 @@ function makeOptions(
     estimateSize: () => EST,
     getRowKey: row => (row as {id: string}).id,
     listContextParams: {},
+    observeElementRect,
+    observeElementOffset,
     ...overrides,
   };
 }
@@ -36,7 +38,7 @@ function makeVirtualizer(
   rows: Partial<RowsSnapshot<unknown>>,
   options: Partial<VirtualizerOptions<unknown, unknown, unknown>> = {},
 ) {
-  const v = new ZeroVirtualizer(makeOptions(options), elementScrollAdapter);
+  const v = new ZeroVirtualizer(makeOptions(options));
   v.setRows(makeRows(rows));
   return v;
 }
@@ -235,7 +237,7 @@ describe('ZeroVirtualizer wrapper contract', () => {
   });
 
   test('setRows/setOptions are silent; afterDOMUpdate notifies on transitions', () => {
-    const v = new ZeroVirtualizer(makeOptions(), elementScrollAdapter);
+    const v = new ZeroVirtualizer(makeOptions());
     const listener = vi.fn();
     v.subscribe(listener);
 
@@ -265,10 +267,7 @@ describe('ZeroVirtualizer wrapper contract', () => {
 
   test('query inputs fall back to the new context after a context change', () => {
     const ctxA = {sort: 'a'};
-    const v = new ZeroVirtualizer(
-      makeOptions({listContextParams: ctxA}),
-      elementScrollAdapter,
-    );
+    const v = new ZeroVirtualizer(makeOptions({listContextParams: ctxA}));
     expect(v.getQueryInputs().anchor.kind).toBe('forward');
 
     // New context: queries must immediately target it (top anchor), even

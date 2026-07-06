@@ -2,7 +2,6 @@ import type {
   AnchoringMode,
   GetPageQueryOptions,
   GetSingleQueryOptions,
-  VirtualRow,
 } from '../../src/solid/index.ts';
 import {createMemo} from 'solid-js';
 import {
@@ -104,14 +103,4 @@ export function createDemoControls() {
     follow,
     setFollow,
   };
-}
-
-export function contentTickOf(
-  items: ReadonlyArray<VirtualRow<Item>>,
-  spaceBefore: number,
-  spaceAfter: number,
-): string {
-  return `${items.length}:${items[0]?.key ?? ''}:${
-    items[items.length - 1]?.key ?? ''
-  }:${spaceBefore}:${spaceAfter}`;
 }

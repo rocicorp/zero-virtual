@@ -10,7 +10,6 @@ import {ItemDetail} from './ItemDetail.tsx';
 import {ItemRow, Spacer} from './ItemRow.tsx';
 import {ListHeader} from './ListHeader.tsx';
 import {
-  contentTickOf,
   getRowKey,
   getSingleQuery,
   toStartRow,
@@ -50,29 +49,26 @@ export function App(): React.ReactNode {
   const getPageQuery = useGetPageQuery(listContextParams);
   const [scrollState, onScrollStateChange] = useHistoryScrollState<ItemStart>();
 
-  const {items, spaceBefore, spaceAfter, estimatedTotal, total} =
-    useZeroVirtualizer({
-      listContextParams,
-      getScrollElement,
-      anchoring,
-      count,
-      getRowKey,
-      estimateSize,
-      getPageQuery,
-      getSingleQuery,
-      toStartRow,
-      permalinkID,
-      scrollState,
-      onScrollStateChange,
-      onSettled: useCallback(() => {
-        console.log('onSettled');
-      }, []),
-    });
-
-  const contentTick = contentTickOf(items, spaceBefore, spaceAfter);
-  useStickToBottom(getScrollElement, contentTick, {
-    enabled: follow === 'bottom',
+  const virtualizer = useZeroVirtualizer({
+    listContextParams,
+    getScrollElement,
+    anchoring,
+    count,
+    getRowKey,
+    estimateSize,
+    getPageQuery,
+    getSingleQuery,
+    toStartRow,
+    permalinkID,
+    scrollState,
+    onScrollStateChange,
+    onSettled: useCallback(() => {
+      console.log('onSettled');
+    }, []),
   });
+  const {items, spaceBefore, spaceAfter, estimatedTotal, total} = virtualizer;
+
+  useStickToBottom(virtualizer, {enabled: follow === 'bottom'});
 
   return (
     <div className={styles.page}>

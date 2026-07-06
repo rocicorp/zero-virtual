@@ -10,7 +10,6 @@ import {ItemDetail} from './ItemDetail.tsx';
 import {ItemRow, Spacer} from './ItemRow.tsx';
 import {ListHeader} from './ListHeader.tsx';
 import {
-  contentTickOf,
   createDemoControls,
   createEstimateSize,
   createGetPageQuery,
@@ -52,7 +51,7 @@ export function App() {
   const [scrollState, onScrollStateChange] =
     createHistoryScrollState<ItemStart>();
 
-  const snapshot = createZeroVirtualizer(() => ({
+  const virtualizer = createZeroVirtualizer(() => ({
     listContextParams: listContextParams(),
     getScrollElement,
     anchoring: anchoring(),
@@ -70,12 +69,7 @@ export function App() {
     },
   }));
 
-  const contentTick = createMemo(() => {
-    const s = snapshot();
-    return contentTickOf(s.items, s.spaceBefore, s.spaceAfter);
-  });
-
-  createStickToBottom(getScrollElement, contentTick, () => ({
+  createStickToBottom(virtualizer, () => ({
     enabled: follow() === 'bottom',
   }));
 
@@ -83,20 +77,20 @@ export function App() {
     <div class={styles.page}>
       <div class={styles.list}>
         <ListHeader
-          total={snapshot().total}
-          estimatedTotal={snapshot().estimatedTotal}
+          total={virtualizer().total}
+          estimatedTotal={virtualizer().estimatedTotal}
           sortField={sortField() as 'created' | 'modified'}
           sortDirection={sortDirection() as 'asc' | 'desc'}
           onToggleSortField={toggleSortField}
           onToggleSortDirection={toggleSortDirection}
         />
         <div ref={parentRef} class={styles.viewport}>
-          <Spacer height={snapshot().spaceBefore} />
+          <Spacer height={virtualizer().spaceBefore} />
           {/* Plain <For> is safe here: the binding exposes items as a store
               reconciled by row key, so a row's VirtualRow instance — and with
               it the DOM node scroll anchoring measures against — survives
               paging. */}
-          <For each={snapshot().items}>
+          <For each={virtualizer().items}>
             {item => (
               <ItemRow
                 item={item}
@@ -106,7 +100,7 @@ export function App() {
               />
             )}
           </For>
-          <Spacer height={snapshot().spaceAfter} />
+          <Spacer height={virtualizer().spaceAfter} />
         </div>
       </div>
 

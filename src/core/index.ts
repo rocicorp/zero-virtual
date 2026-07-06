@@ -31,21 +31,37 @@ export {
   type RowsSnapshot,
 } from './rows.ts';
 export {
+  contentGrowthDeps,
   createStickToBottom,
+  createStickToBottomCache,
   DEFAULT_STICK_SLACK,
+  type StickOptions,
+  type StickToBottomCache,
   type StickToBottomController,
 } from './stick-to-bottom.ts';
 export {
+  virtualizerResult,
   ZeroVirtualizer,
+  type VirtualizerBindingOptions,
   type VirtualizerOptions,
+  type VirtualizerResult,
   type VirtualizerSnapshot,
 } from './virtualizer.ts';
 export {
-  elementScrollAdapter,
-  windowScrollAdapter,
-  type ScrollAdapter,
+  observeElementOffset,
+  observeElementRect,
+  observeWindowOffset,
+  observeWindowRect,
+  resolveElementScrollElement,
+  resolveWindowScrollElement,
+  type ObserveElementOffset,
+  type ObserveElementRect,
+  type ResolvedScrollOptions,
+  type ResolveScrollElement,
+  type ScrollObserverInstance,
   type ScrollRect,
-} from './scroll-adapter.ts';
+  type VirtualizerScrollOptions,
+} from './scroll.ts';
 export type {
   Anchor,
   AnchoringMode,

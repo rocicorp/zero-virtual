@@ -105,6 +105,23 @@ export type GetSingleQuery<TRow> = (
 ) => QueryResult<TRow | undefined>;
 
 /**
+ * The query wiring the framework bindings add on top of the core options
+ * (the query functions are bound via `@rocicorp/zero/react` or
+ * `@rocicorp/zero/solid`).
+ *
+ * @typeParam TRow - The type of row data returned from queries
+ * @typeParam TStartRow - The type of data needed to anchor pagination
+ */
+export type VirtualizerQueryOptions<TRow, TStartRow> = {
+  /** Function that returns a query for fetching a page of rows */
+  getPageQuery: GetPageQuery<TRow, TStartRow>;
+  /** Function that returns a query for fetching a single row by ID */
+  getSingleQuery: GetSingleQuery<TRow>;
+  /** Function to extract the start row data from a full row (for pagination anchoring) */
+  toStartRow: (row: TRow) => TStartRow;
+};
+
+/**
  * Return type of a Zero query or query request.
  *
  * @typeParam TReturn - The type of the query return value

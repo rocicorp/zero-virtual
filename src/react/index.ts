@@ -1,10 +1,16 @@
 export {rowAttributes} from '../core/dom.ts';
 export {
-  elementScrollAdapter,
-  windowScrollAdapter,
-  type ScrollAdapter,
+  observeElementOffset,
+  observeElementRect,
+  observeWindowOffset,
+  observeWindowRect,
+  type ObserveElementOffset,
+  type ObserveElementRect,
+  type ResolvedScrollOptions,
+  type ScrollObserverInstance,
   type ScrollRect,
-} from '../core/scroll-adapter.ts';
+  type VirtualizerScrollOptions,
+} from '../core/scroll.ts';
 export type {
   AnchoringMode,
   GetPageQuery,

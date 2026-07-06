@@ -2,14 +2,12 @@ import {
   useHistoryScrollState,
   useStickToBottom,
   useZeroWindowVirtualizer,
-  windowScrollAdapter,
 } from '@rocicorp/zero-virtual/react';
 import React, {useCallback, useRef} from 'react';
 import {DevPanel} from './DevPanel.tsx';
 import {ItemRow, Spacer} from './ItemRow.tsx';
 import {ListHeader} from './ListHeader.tsx';
 import {
-  contentTickOf,
   getRowKey,
   getSingleQuery,
   toStartRow,
@@ -57,27 +55,23 @@ export function WindowList(): React.ReactNode {
   const getPageQuery = useGetPageQuery(listContextParams);
   const [scrollState, onScrollStateChange] = useHistoryScrollState<ItemStart>();
 
-  const {items, spaceBefore, spaceAfter, estimatedTotal, total} =
-    useZeroWindowVirtualizer({
-      listContextParams,
-      getScrollElement,
-      anchoring,
-      count,
-      getRowKey,
-      estimateSize,
-      getPageQuery,
-      getSingleQuery,
-      toStartRow,
-      permalinkID,
-      scrollState,
-      onScrollStateChange,
-    });
-
-  const contentTick = contentTickOf(items, spaceBefore, spaceAfter);
-  useStickToBottom(getScrollElement, contentTick, {
-    enabled: follow === 'bottom',
-    adapter: windowScrollAdapter,
+  const virtualizer = useZeroWindowVirtualizer({
+    listContextParams,
+    getScrollElement,
+    anchoring,
+    count,
+    getRowKey,
+    estimateSize,
+    getPageQuery,
+    getSingleQuery,
+    toStartRow,
+    permalinkID,
+    scrollState,
+    onScrollStateChange,
   });
+  const {items, spaceBefore, spaceAfter, estimatedTotal, total} = virtualizer;
+
+  useStickToBottom(virtualizer, {enabled: follow === 'bottom'});
 
   return (
     <div className={styles.page}>
