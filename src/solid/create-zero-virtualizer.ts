@@ -8,41 +8,41 @@ import {
 import {createEffect} from 'solid-js';
 import {createStore, reconcile} from 'solid-js/store';
 import {
-  elementScrollAdapter,
-  windowScrollAdapter,
-  type ScrollAdapter,
-} from '../core/scroll-adapter.ts';
-import type {GetPageQuery, GetSingleQuery, VirtualRow} from '../core/types.ts';
+  observeElementOffset,
+  observeElementRect,
+  observeWindowOffset,
+  observeWindowRect,
+  resolveElementScrollElement,
+  resolveWindowScrollElement,
+  type ResolvedScrollOptions,
+  type ResolveScrollElement,
+} from '../core/scroll.ts';
+import type {VirtualRow} from '../core/types.ts';
 import {
+  virtualizerResult,
   ZeroVirtualizer,
-  type VirtualizerOptions,
-  type VirtualizerSnapshot,
+  type VirtualizerBindingOptions,
+  type VirtualizerResult,
 } from '../core/virtualizer.ts';
 import {createRows} from './create-rows.ts';
 
 /**
- * Options for {@linkcode createZeroVirtualizer}: the core
- * {@linkcode VirtualizerOptions} plus the Solid-side wiring — the scroll
- * element getter, the query functions (bound via `@rocicorp/zero/solid`),
- * and an optional custom scroll adapter.
+ * Options for {@linkcode createZeroVirtualizer}: the core options (see
+ * {@linkcode VirtualizerBindingOptions}) plus the Solid-side wiring — the
+ * scroll element getter, the query functions (bound via
+ * `@rocicorp/zero/solid`), and optional overrides of the scroll observers
+ * (TanStack Virtual style).
  */
 export type CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> =
-  VirtualizerOptions<TListContextParams, TRow, TStartRow> & {
-    /** Returns the scrollable container element (a Solid ref). */
-    getScrollElement: () => HTMLElement | null;
-    /** Function that returns a query for fetching a page of rows */
-    getPageQuery: GetPageQuery<TRow, TStartRow>;
-    /** Function that returns a query for fetching a single row by ID */
-    getSingleQuery: GetSingleQuery<TRow>;
-    /** Function to extract the start row data from a full row */
-    toStartRow: (row: TRow) => TStartRow;
-    /**
-     * How the scroll container is read and driven. Defaults to
-     * {@linkcode elementScrollAdapter}; pass {@linkcode windowScrollAdapter}
-     * for a list that scrolls the window.
-     */
-    scrollAdapter?: ScrollAdapter | undefined;
-  };
+  VirtualizerBindingOptions<TListContextParams, TRow, TStartRow>;
+
+/**
+ * Result of {@linkcode createZeroVirtualizer}: the snapshot plus the resolved
+ * scroll wiring (`options`) and the current scrolling element
+ * (`scrollElement`, a live getter — not a reactive source). See
+ * {@linkcode VirtualizerResult} for field semantics.
+ */
+export type CreateZeroVirtualizerResult<TRow> = VirtualizerResult<TRow>;
 
 /**
  * Solid binding for the Zero virtualizer: a thin reactive shell over the
@@ -57,18 +57,20 @@ export type CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> =
  *
  * Call during component setup (uses `onCleanup`).
  */
-export function createZeroVirtualizer<TListContextParams, TRow, TStartRow>(
+function createZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
+  // The binding options with the observers already defaulted (the entry
+  // points below spread them in, TanStack style).
   options: Accessor<
-    CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>
+    CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> &
+      ResolvedScrollOptions
   >,
-): Accessor<VirtualizerSnapshot<TRow>> {
-  const initial = options();
-  const adapter = initial.scrollAdapter ?? elementScrollAdapter;
+  resolveScrollElement: ResolveScrollElement,
+): Accessor<CreateZeroVirtualizerResult<TRow>> {
   // The constructor is pure (no DOM / listeners / timers), so eager
   // construction during setup is safe.
   const core = new ZeroVirtualizer<TListContextParams, TRow, TStartRow>(
-    initial,
-    adapter,
+    options(),
+    resolveScrollElement,
   );
 
   // Bridge core-driven changes (scroll, timers, transitions) into Solid's
@@ -126,7 +128,44 @@ export function createZeroVirtualizer<TListContextParams, TRow, TStartRow>(
     setItems(reconcile(snapshot().items as VirtualRow<TRow>[], {key: 'key'})),
   );
 
-  return createMemo(() => ({...snapshot(), items}));
+  // Memoizing each member first (memos only propagate on `!==`) keeps the
+  // options bag's identity stable while the members' identities are.
+  const getScrollElement = createMemo(() => options().getScrollElement);
+  const observeRect = createMemo(() => options().observeElementRect);
+  const observeOffset = createMemo(() => options().observeElementOffset);
+  const resultOptions = createMemo(() => ({
+    getScrollElement: getScrollElement(),
+    observeElementRect: observeRect(),
+    observeElementOffset: observeOffset(),
+  }));
+
+  return createMemo(() =>
+    virtualizerResult(
+      {...snapshot(), items},
+      resultOptions(),
+      resolveScrollElement,
+    ),
+  );
+}
+
+/**
+ * Virtualized, infinitely-paginated list that scrolls inside an overflow
+ * element. `getScrollElement` returns that element (which is also where the
+ * rows are rendered).
+ */
+export function createZeroVirtualizer<TListContextParams, TRow, TStartRow>(
+  options: Accessor<
+    CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>
+  >,
+): Accessor<CreateZeroVirtualizerResult<TRow>> {
+  return createZeroVirtualizerImpl(() => {
+    const o = options();
+    return {
+      ...o,
+      observeElementRect: o.observeElementRect ?? observeElementRect,
+      observeElementOffset: o.observeElementOffset ?? observeElementOffset,
+    };
+  }, resolveElementScrollElement);
 }
 
 /**
@@ -142,9 +181,13 @@ export function createZeroWindowVirtualizer<
   options: Accessor<
     CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>
   >,
-): Accessor<VirtualizerSnapshot<TRow>> {
-  return createZeroVirtualizer(() => ({
-    scrollAdapter: windowScrollAdapter,
-    ...options(),
-  }));
+): Accessor<CreateZeroVirtualizerResult<TRow>> {
+  return createZeroVirtualizerImpl(() => {
+    const o = options();
+    return {
+      ...o,
+      observeElementRect: o.observeElementRect ?? observeWindowRect,
+      observeElementOffset: o.observeElementOffset ?? observeWindowOffset,
+    };
+  }, resolveWindowScrollElement);
 }

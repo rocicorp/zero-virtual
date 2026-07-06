@@ -2,7 +2,6 @@ import {
   type AnchoringMode,
   type GetPageQueryOptions,
   type GetSingleQueryOptions,
-  type VirtualRow,
 } from '@rocicorp/zero-virtual/react';
 import {useCallback, useMemo, useState} from 'react';
 import {
@@ -132,18 +131,4 @@ export function useDemoControls() {
     follow,
     setFollow,
   };
-}
-
-/**
- * A signal that changes whenever the loaded window / spacers grow, so the
- * follow-edge hooks re-pin after the content settles.
- */
-export function contentTickOf(
-  items: ReadonlyArray<VirtualRow<Item>>,
-  spaceBefore: number,
-  spaceAfter: number,
-): string {
-  return `${items.length}:${items[0]?.key ?? ''}:${
-    items[items.length - 1]?.key ?? ''
-  }:${spaceBefore}:${spaceAfter}`;
 }

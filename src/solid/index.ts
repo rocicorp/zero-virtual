@@ -8,11 +8,17 @@ export type {
   QueryResult,
 } from '../core/types.ts';
 export {
-  elementScrollAdapter,
-  windowScrollAdapter,
-  type ScrollAdapter,
+  observeElementOffset,
+  observeElementRect,
+  observeWindowOffset,
+  observeWindowRect,
+  type ObserveElementOffset,
+  type ObserveElementRect,
+  type ResolvedScrollOptions,
+  type ScrollObserverInstance,
   type ScrollRect,
-} from '../core/scroll-adapter.ts';
+  type VirtualizerScrollOptions,
+} from '../core/scroll.ts';
 export {rowAttributes} from '../core/dom.ts';
 export type {
   AnchoringMode,
@@ -26,9 +32,10 @@ export type {
 } from '../core/virtualizer.ts';
 export {createHistoryScrollState} from './create-history-scroll-state.ts';
 export {createStickToBottom} from './create-stick-to-bottom.ts';
-export type {StickOptions} from './types.ts';
+export type {StickOptions} from '../core/stick-to-bottom.ts';
 export {
   createZeroVirtualizer,
   createZeroWindowVirtualizer,
+  type CreateZeroVirtualizerResult,
   type CreateZeroVirtualizerOptions,
 } from './create-zero-virtualizer.ts';

@@ -8,12 +8,20 @@ import {
   VROW_KEY_ATTR,
 } from './dom.ts';
 import type {RowsQueryInputs, RowsSnapshot} from './rows.ts';
-import type {ScrollAdapter, ScrollRect} from './scroll-adapter.ts';
+import type {
+  ObserveElementOffset,
+  ObserveElementRect,
+  ResolvedScrollOptions,
+  ResolveScrollElement,
+  ScrollRect,
+  VirtualizerScrollOptions,
+} from './scroll.ts';
 import type {
   Anchor,
   AnchoringMode,
   RowKey,
   ScrollHistoryState,
+  VirtualizerQueryOptions,
   VirtualRow,
 } from './types.ts';
 
@@ -97,9 +105,9 @@ function permalinkPagingState<TListContextParams, TStartRow>(
 
 /**
  * Framework-free options of {@linkcode ZeroVirtualizer}. The framework
- * wrappers add their own fields on top (`getScrollElement`, the query
- * functions, `scrollAdapter`) — those never reach the core: elements arrive
- * via {@linkcode ZeroVirtualizer.attach} and query results via
+ * wrappers add `getScrollElement` and the query functions on top — those
+ * never reach the core: elements arrive via
+ * {@linkcode ZeroVirtualizer.attach} and query results via
  * {@linkcode ZeroVirtualizer.setRows}.
  */
 export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
@@ -116,6 +124,13 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
     | ((state: ScrollHistoryState<TStartRow>) => void)
     | undefined;
   onSettled?: (() => void) | undefined;
+  /**
+   * The scroll observers, TanStack Virtual style. Required here; the
+   * framework bindings make them optional and default them per entry-point
+   * variant (element vs window).
+   */
+  observeElementRect: ObserveElementRect;
+  observeElementOffset: ObserveElementOffset;
 };
 
 /** What {@linkcode ZeroVirtualizer.getSnapshot} returns — see the react hook's
@@ -133,6 +148,51 @@ export type VirtualizerSnapshot<TRow> = {
   total: number | undefined;
   settled: boolean;
 };
+
+/**
+ * The full options the framework bindings accept: the core options plus the
+ * scroll wiring ({@linkcode VirtualizerScrollOptions}, which also makes the
+ * observers optional — the bindings default them per entry-point variant)
+ * and the query functions ({@linkcode VirtualizerQueryOptions}).
+ */
+export type VirtualizerBindingOptions<TListContextParams, TRow, TStartRow> =
+  Omit<
+    VirtualizerOptions<TListContextParams, TRow, TStartRow>,
+    'observeElementRect' | 'observeElementOffset'
+  > &
+    VirtualizerScrollOptions &
+    VirtualizerQueryOptions<TRow, TStartRow>;
+
+/**
+ * What the framework bindings return: the snapshot plus, TanStack-style, the
+ * resolved scroll wiring (`options`) and the current scrolling element
+ * (`scrollElement` — `null` until the container is mounted).
+ */
+export type VirtualizerResult<TRow> = VirtualizerSnapshot<TRow> & {
+  readonly options: ResolvedScrollOptions;
+  readonly scrollElement: HTMLElement | null;
+};
+
+/**
+ * Builds the binding result from a snapshot and the resolved scroll wiring.
+ * `scrollElement` is a live getter — it resolves at read time, so it is
+ * already correct in the effect that mounts the container — and it stays
+ * current for any holder of the result object.
+ */
+export function virtualizerResult<TRow>(
+  snapshot: VirtualizerSnapshot<TRow>,
+  options: ResolvedScrollOptions,
+  resolveScrollElement: ResolveScrollElement,
+): VirtualizerResult<TRow> {
+  return {
+    ...snapshot,
+    options,
+    get scrollElement() {
+      const el = options.getScrollElement();
+      return el && resolveScrollElement(el);
+    },
+  };
+}
 
 const EMPTY_ROWS: RowsSnapshot<unknown> = {
   rowAt: () => undefined,
@@ -166,7 +226,7 @@ const EMPTY_ROWS: RowsSnapshot<unknown> = {
  * `./solid` entry points are the stable surfaces.
  */
 export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
-  readonly #adapter: ScrollAdapter;
+  readonly #resolveScrollElement: ResolveScrollElement;
   #options: VirtualizerOptions<TListContextParams, TRow, TStartRow>;
   #rows: RowsSnapshot<TRow> = EMPTY_ROWS as RowsSnapshot<TRow>;
 
@@ -194,7 +254,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // ---- scroll / anchoring machine (all imperative) --------------------------
   #el: HTMLElement | null = null;
-  #unsubscribe: (() => void) | null = null;
+  #scrollElement: HTMLElement | null = null;
+  #scrollRect: ScrollRect = {width: 0, height: 0};
+  #unsubscribeRect: (() => void) | null = null;
+  #unsubscribeOffset: (() => void) | null = null;
+  #unsubscribeScrollEnd: (() => void) | null = null;
   #prevOverflowAnchor = '';
   #detachTouch: (() => void) | null = null;
   #resizeObserver: ResizeObserver | null = null;
@@ -243,9 +307,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   constructor(
     options: VirtualizerOptions<TListContextParams, TRow, TStartRow>,
-    adapter: ScrollAdapter,
+    resolveScrollElement: ResolveScrollElement = el => el,
   ) {
-    this.#adapter = adapter;
+    this.#resolveScrollElement = resolveScrollElement;
     this.#options = options;
     // Initialize paging directly from the restorable state so the first
     // render already queries the right window (this also survives React
@@ -326,15 +390,21 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // can't fight our compensation) in manual mode, on in native mode. Set on
     // the scroll element; spacers keep their own `overflow-anchor: none` so
     // native mode still anchors to a real row, not a resizing spacer.
-    const scroller = this.#adapter.scrollElement(el);
+    const scroller = this.#resolveScrollElement(el);
+    this.#scrollElement = scroller;
     this.#prevOverflowAnchor = scroller.style.overflowAnchor;
     scroller.style.overflowAnchor = this.#manual() ? 'none' : 'auto';
 
-    this.#unsubscribe = this.#adapter.subscribe(
-      el,
-      this.#onScroll,
-      this.#onScrollEnd,
-    );
+    const instance = {scrollElement: scroller};
+    this.#unsubscribeRect =
+      this.#options.observeElementRect(instance, rect => {
+        this.#scrollRect = rect;
+        this.#withNotify(() => this.#evaluate());
+      }) ?? null;
+    this.#unsubscribeOffset =
+      this.#options.observeElementOffset(instance, this.#onScrollOffset) ??
+      null;
+    this.#unsubscribeScrollEnd = this.#listenScrollEnd(scroller);
     // Touch events bubble, so the scroll element hears every touch inside it.
     // The touch/scrollend machinery only drives manual mode.
     if (this.#manual()) {
@@ -359,8 +429,12 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #detachEl(): void {
     const el = this.#el;
     if (!el) return;
-    this.#unsubscribe?.();
-    this.#unsubscribe = null;
+    this.#unsubscribeRect?.();
+    this.#unsubscribeRect = null;
+    this.#unsubscribeOffset?.();
+    this.#unsubscribeOffset = null;
+    this.#unsubscribeScrollEnd?.();
+    this.#unsubscribeScrollEnd = null;
     this.#detachTouch?.();
     this.#detachTouch = null;
     this.#resizeObserver?.disconnect();
@@ -368,8 +442,12 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.#observedItems = null;
     clearTimeout(this.#settleTimer);
     clearTimeout(this.#persistTimer);
-    this.#adapter.scrollElement(el).style.overflowAnchor =
-      this.#prevOverflowAnchor;
+    this.#scrollElement?.style.setProperty(
+      'overflow-anchor',
+      this.#prevOverflowAnchor,
+    );
+    this.#scrollElement = null;
+    this.#scrollRect = {width: 0, height: 0};
     this.#el = null;
   }
 
@@ -594,12 +672,33 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // ---- scroll geometry -------------------------------------------------------
 
+  #listenScrollEnd(scroller: HTMLElement): () => void {
+    const target: HTMLElement | Window =
+      scroller === document.scrollingElement ? window : scroller;
+    target.addEventListener('scrollend', this.#onScrollEnd);
+    return () => target.removeEventListener('scrollend', this.#onScrollEnd);
+  }
+
+  #scroller(el: HTMLElement): HTMLElement {
+    return this.#scrollElement ?? this.#resolveScrollElement(el);
+  }
+
+  #viewportTop(el: HTMLElement): number {
+    const scroller = this.#scroller(el);
+    return scroller === document.scrollingElement
+      ? 0
+      : scroller.getBoundingClientRect().top;
+  }
+
   #scrollOffset(el: HTMLElement): number {
-    return this.#adapter.scrollElement(el).scrollTop;
+    return this.#scroller(el).scrollTop;
   }
 
   #viewportRect(el: HTMLElement): ScrollRect {
-    const se = this.#adapter.scrollElement(el);
+    if (this.#scrollRect.width > 0 || this.#scrollRect.height > 0) {
+      return this.#scrollRect;
+    }
+    const se = this.#scroller(el);
     return {width: se.clientWidth, height: se.clientHeight};
   }
 
@@ -609,7 +708,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     const el = this.#el;
     if (el && Math.round(this.#scrollOffset(el)) !== Math.round(top)) {
       this.#programmaticScroll = true;
-      this.#adapter.scrollElement(el).scrollTop = top;
+      this.#scroller(el).scrollTop = top;
       return true;
     }
     return false;
@@ -648,15 +747,13 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // A row rect's top offset from the viewport top, the held margin folded out.
   #anchorOffsetOf(el: HTMLElement, rect: DOMRect): number {
-    return (
-      rect.top - this.#adapter.viewportTop(el) + this.#anchorState.pendingJump
-    );
+    return rect.top - this.#viewportTop(el) + this.#anchorState.pendingJump;
   }
 
   #refreshAnchor(): void {
     const el = this.#el;
     if (!el) return;
-    const vTop = this.#adapter.viewportTop(el);
+    const vTop = this.#viewportTop(el);
     // Top-most visible row (first whose bottom is below the viewport top), the
     // same reference the browser's native scroll anchoring would pick.
     let ref: HTMLElement | null = null;
@@ -776,7 +873,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // touch state: a gesture never ends while a finger is down, and a tap that
   // never scrolled ends at touchend (no scrolling → no scrollend).
 
-  #onScroll = (): void => {
+  #onScrollOffset = (): void => {
     const programmatic = this.#programmaticScroll;
     this.#programmaticScroll = false;
     // Manual anchoring only: a user / momentum scroll (not our own
@@ -952,7 +1049,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       const targetEl = el ? findRow(el, permalinkID) : null;
       let targetVisible = false;
       if (el && targetEl) {
-        const vTop = this.#adapter.viewportTop(el);
+        const vTop = this.#viewportTop(el);
         targetVisible = rectInViewport(
           targetEl.getBoundingClientRect(),
           vTop,
@@ -1011,8 +1108,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // to the real scroll offset, not a shifted layout.
     this.#flushHold();
     const before = this.#scrollOffset(el);
-    const delta =
-      target.getBoundingClientRect().top - this.#adapter.viewportTop(el);
+    const delta = target.getBoundingClientRect().top - this.#viewportTop(el);
     if (Math.abs(delta) <= 1) {
       this.#pendingPermalinkScroll = null; // reached the top
       return;
@@ -1063,7 +1159,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
     // Which loaded rows are currently visible (by data-index)? Rows are in
     // DOM order, so once one starts below the viewport bottom the rest do too.
-    const elTop = this.#adapter.viewportTop(el);
+    const elTop = this.#viewportTop(el);
     const elBottom = elTop + this.#viewportRect(el).height;
     let firstVisible = Infinity;
     let lastVisible = -Infinity;
