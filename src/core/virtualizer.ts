@@ -341,7 +341,20 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   setOptions(
     options: VirtualizerOptions<TListContextParams, TRow, TStartRow>,
   ): void {
+    const prev = this.#options;
     this.#options = options;
+    // The snapshot cache is keyed on #version, so invalidate it when an
+    // option it derives from changed: `count` feeds `total`/`estimatedTotal`/
+    // `rowsEmpty`, `estimateSize` the space estimates, `getRowKey` the item
+    // keys. Still silent (no notify) — the caller is mid-render and reads
+    // the rebuilt snapshot in the same pass.
+    if (
+      prev.count !== options.count ||
+      prev.estimateSize !== options.estimateSize ||
+      prev.getRowKey !== options.getRowKey
+    ) {
+      this.#version++;
+    }
   }
 
   /** Silent rows ingestion — safe to call during render. */
@@ -423,7 +436,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
         t.removeEventListener('touchcancel', this.#onTouchEnd);
       };
     }
-    this.#resetSettleTimer();
+    // Wrapped so a settled → false flip on re-attach reaches listeners (same
+    // reasoning as in #onScrollOffset).
+    this.#withNotify(() => this.#resetSettleTimer());
   }
 
   /** Remove all listeners/observers/timers. State survives (Strict Mode). */
@@ -915,8 +930,13 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       this.#gestureScrolled = true;
       this.#refreshAnchor();
     }
-    this.#resetSettleTimer();
-    this.#withNotify(() => this.#evaluate());
+    // Inside #withNotify so the settled → false version bump is part of the
+    // baseline diff — otherwise a scroll that changes nothing else would
+    // leave listeners rendering (and querying with) a stale `settled: true`.
+    this.#withNotify(() => {
+      this.#resetSettleTimer();
+      this.#evaluate();
+    });
   };
 
   #onScrollEnd = (): void => {

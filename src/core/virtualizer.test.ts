@@ -213,6 +213,83 @@ describe('ZeroVirtualizer snapshot — items, space and total', () => {
 });
 
 describe('ZeroVirtualizer wrapper contract', () => {
+  test('changing count invalidates the cached snapshot', () => {
+    const opts = makeOptions();
+    const v = new ZeroVirtualizer(opts);
+    v.setRows(
+      makeRows({
+        rowsLength: 20,
+        complete: false,
+        rowsEmpty: false,
+        atStart: true,
+        atEnd: false,
+        firstRowIndex: 0,
+      }),
+    );
+    const a = v.getSnapshot();
+    expect(a.total).toBe(undefined);
+
+    // Same option identities → cache holds.
+    v.setOptions(opts);
+    expect(v.getSnapshot()).toBe(a);
+
+    // A live count query updating `count` must reach the next snapshot even
+    // though the rows didn't change.
+    v.setOptions({...opts, count: 42});
+    const b = v.getSnapshot();
+    expect(b).not.toBe(a);
+    expect(b.total).toBe(42);
+    expect(b.estimatedTotal).toBe(42);
+  });
+
+  test('changing estimateSize invalidates the cached snapshot', () => {
+    const rows = {
+      rowsLength: 20,
+      complete: true,
+      rowsEmpty: false,
+      atStart: false,
+      atEnd: false,
+      firstRowIndex: 5,
+    };
+    const v = makeVirtualizer(rows);
+    expect(v.getSnapshot().spaceBefore).toBe(5 * EST);
+
+    v.setOptions(makeOptions({estimateSize: () => 10}));
+    expect(v.getSnapshot().spaceBefore).toBe(5 * 10);
+  });
+
+  test('scrolling notifies the settled → false transition', () => {
+    vi.useFakeTimers();
+    try {
+      let offsetCb: ((offset: number) => void) | undefined;
+      const v = new ZeroVirtualizer(
+        makeOptions({
+          observeElementRect: () => {},
+          observeElementOffset: (_instance, cb) => {
+            offsetCb = cb;
+          },
+        }),
+      );
+      v.attach(document.createElement('div'));
+
+      // Idle for settleTime → settled.
+      vi.advanceTimersByTime(2000);
+      expect(v.getSnapshot().settled).toBe(true);
+
+      // A scroll flips settled back to false; listeners must hear about it
+      // even when nothing else (paging, page size) changed.
+      const listener = vi.fn();
+      v.subscribe(listener);
+      offsetCb!(100);
+      expect(listener).toHaveBeenCalled();
+      expect(v.getSnapshot().settled).toBe(false);
+
+      v.detach();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('snapshot identity is cached until state changes', () => {
     const v = makeVirtualizer({
       rowsLength: 3,
