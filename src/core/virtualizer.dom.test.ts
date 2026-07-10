@@ -262,6 +262,10 @@ afterEach(() => {
   while (harnesses.length) harnesses.pop()!.destroy();
 });
 
+/** [start, end] inclusive. */
+const range = (start: number, end: number) =>
+  Array.from({length: end - start + 1}, (_, i) => start + i);
+
 describe('paging against a real (fake-geometry) scroll container', () => {
   test('initial load anchors at the top and fills one page', () => {
     const h = harness({rowCount: 500});
@@ -272,7 +276,7 @@ describe('paging against a real (fake-geometry) scroll container', () => {
     expect(snapshot.items).toHaveLength(100);
     expect(snapshot.items[0].row).toEqual({id: 'r0'});
     expect(snapshot.spaceBefore).toBe(0);
-    expect(h.visibleIndexes()[0]).toBe(0);
+    expect(h.visibleIndexes()).toEqual(range(0, 19));
   });
 
   test('scrolling near the window end advances the forward anchor', () => {
@@ -280,22 +284,23 @@ describe('paging against a real (fake-geometry) scroll container', () => {
     h.settle();
 
     // Rows are 20px in a 400px viewport: scrollTop 1500 shows rows 75-94 of
-    // the loaded 0-99 window — within threshold of the end.
+    // the loaded 0-99 window — 5 rows from the end, within the threshold of
+    // 10 (pageSize 100 / 10). Paging re-anchors forward at
+    // firstVisible − 2·threshold = 55, loading the window 56-155.
     h.userScroll(1500);
     h.settle();
 
     const snapshot = h.core.getSnapshot();
-    const first = snapshot.items[0].index;
-    expect(first).toBeGreaterThan(0);
-    expect(snapshot.spaceBefore).toBe(first * 20);
+    expect(snapshot.items[0].index).toBe(56);
+    expect(snapshot.items).toHaveLength(100);
+    expect(snapshot.spaceBefore).toBe(56 * 20);
     // The loaded window is contiguous and correctly labeled: item at virtual
     // index i is dataset row i.
     for (const item of snapshot.items) {
       expect(item.row).toEqual({id: `r${item.index}`});
     }
     // The viewport still shows the same rows — paging must not move content.
-    expect(h.visibleIndexes()).toContain(75);
-    expect(h.visibleIndexes()).toContain(94);
+    expect(h.visibleIndexes()).toEqual(range(75, 94));
   });
 
   test('scrolling back near the window start pages backward', () => {
@@ -303,21 +308,26 @@ describe('paging against a real (fake-geometry) scroll container', () => {
     h.settle();
     h.userScroll(1500);
     h.settle();
-    const firstAfterForward = h.core.getSnapshot().items[0].index;
-    expect(firstAfterForward).toBeGreaterThan(0);
+    expect(h.core.getSnapshot().items[0].index).toBe(56);
 
-    // Scroll up until the first loaded row is within threshold of the
-    // viewport: the backward branch of assembleRows must extend the window
-    // upward without disturbing the visible rows.
-    h.userScroll(firstAfterForward * 20 + 20);
+    // Scroll up until the first loaded row (56) is one row above the
+    // viewport: within threshold, so the backward branch of assembleRows
+    // extends the window upward. The backward anchor lands at
+    // lastVisible + 2·threshold = 96 with only 96 rows before it, so the
+    // window reaches the very start: rows 0-95.
+    h.userScroll(1140);
     const visibleBefore = h.visibleIndexes();
+    expect(visibleBefore).toEqual(range(57, 76));
     h.settle();
 
     const snapshot = h.core.getSnapshot();
-    expect(snapshot.items[0].index).toBeLessThan(firstAfterForward);
+    expect(snapshot.items[0].index).toBe(0);
+    expect(snapshot.items).toHaveLength(96);
+    expect(snapshot.spaceBefore).toBe(0);
     for (const item of snapshot.items) {
       expect(item.row).toEqual({id: `r${item.index}`});
     }
+    // The visible rows must not move while the window grows upward.
     expect(h.visibleIndexes()).toEqual(visibleBefore);
   });
 
@@ -327,15 +337,19 @@ describe('paging against a real (fake-geometry) scroll container', () => {
     expect(h.core.getSnapshot().spaceAfter).toBe((500 - 100) * 20);
 
     // Jump deep into the wrapper padding: no loaded row is visible, so the
-    // edge-distance logic has nothing to react to — the recovery branch must
-    // cascade pages toward the viewport.
+    // edge-distance logic has nothing to react to — the recovery branch
+    // cascades pages toward the viewport (100-199, 200-299, 300-399), and a
+    // final backward fill near the new window's start settles on 239-338.
     h.userScroll(6000);
     h.settle();
 
-    const visible = h.visibleIndexes();
-    expect(visible.length).toBeGreaterThan(0);
-    expect(visible[0]).toBe(6000 / 20);
-    for (const item of h.core.getSnapshot().items) {
+    expect(h.visibleIndexes()).toEqual(range(300, 319));
+    const snapshot = h.core.getSnapshot();
+    expect(snapshot.items[0].index).toBe(239);
+    expect(snapshot.items).toHaveLength(100);
+    expect(snapshot.spaceBefore).toBe(239 * 20);
+    expect(h.scroller.scrollTop).toBe(6000);
+    for (const item of snapshot.items) {
       expect(item.row).toEqual({id: `r${item.index}`});
     }
   });
@@ -345,15 +359,16 @@ describe('paging against a real (fake-geometry) scroll container', () => {
     h.settle();
     h.userScroll(6000);
     h.settle();
-    expect(h.core.getSnapshot().items[0].index).toBeGreaterThan(0);
+    expect(h.core.getSnapshot().items[0].index).toBe(239);
 
     h.userScroll(0);
     h.settle();
 
     const snapshot = h.core.getSnapshot();
     expect(snapshot.items[0].index).toBe(0);
+    expect(snapshot.items).toHaveLength(100);
     expect(snapshot.spaceBefore).toBe(0);
-    expect(h.visibleIndexes()[0]).toBe(0);
+    expect(h.visibleIndexes()).toEqual(range(0, 19));
   });
 });
 
