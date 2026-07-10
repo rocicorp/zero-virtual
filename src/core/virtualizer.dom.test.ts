@@ -4,11 +4,16 @@ import {VROW_INDEX_ATTR, VROW_KEY_ATTR} from './dom.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
 import type {Anchor} from './types.ts';
 
-// findRow uses CSS.escape; happy-dom may not provide it. Our keys are
-// alphanumeric, so an identity escape is sufficient.
-const cssGlobal = (globalThis as {CSS?: {escape?: (s: string) => string}}).CSS;
-if (cssGlobal && typeof cssGlobal.escape !== 'function') {
-  cssGlobal.escape = (s: string) => s;
+// findRow uses CSS.escape; a DOM shim may omit it — or the whole CSS global.
+// Our keys are alphanumeric, so an identity escape is sufficient (the created
+// object also gets a `supports` for detectNeedsManualAnchoring, which guards
+// on `typeof CSS` before calling it).
+const g = globalThis as {
+  CSS?: {escape?: (s: string) => string; supports?: () => boolean};
+};
+g.CSS ??= {supports: () => false};
+if (typeof g.CSS.escape !== 'function') {
+  g.CSS.escape = (s: string) => s;
 }
 
 type TestRow = {id: string};
