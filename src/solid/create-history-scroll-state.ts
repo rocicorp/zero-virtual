@@ -14,6 +14,12 @@ const DEFAULT_KEY = 'scrollState';
  * configurable key, so back/forward navigation restores scroll position and
  * pagination state automatically.
  *
+ * Built on the Navigation API, which requires Firefox 147+ (all supported
+ * Chromium and Safari versions have it). On older Firefox, skip this helper
+ * and wire `scrollState` / `onScrollStateChange` to a persistence mechanism
+ * of your own (e.g. `history.replaceState` or `sessionStorage`) — the
+ * options accept any implementation.
+ *
  * Call during component setup (uses `onCleanup`).
  *
  * @param key - The key to use in `history.state`. Defaults to `"scrollState"`.
@@ -47,7 +53,7 @@ export function createHistoryScrollState<TStartRow>(
   const setScrollState = (newState: ScrollHistoryState<TStartRow> | null) => {
     const state = getHistoryStateSnapshot();
     updateHistoryState({
-      ...((state as Record<string, unknown>) ?? {}),
+      ...(state as Record<string, unknown>),
       // Zero's Solid useQuery hands out store proxies, and the anchor's start
       // row is taken straight from a query row — so the state can contain a
       // proxy, which the Navigation API's structured clone rejects. Round-trip

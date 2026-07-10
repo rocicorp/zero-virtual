@@ -30,6 +30,14 @@ Features:
   the native `scrollend` event, which the manual anchoring relies on to
   reconcile momentum-time corrections at the end of a touch gesture (there is
   deliberately no timer-based fallback for older engines).
+- The provided history-state helpers (`useHistoryScrollState` /
+  `createHistoryScrollState`) additionally rely on the
+  [Navigation API](https://developer.mozilla.org/en-US/docs/Web/API/Navigation_API),
+  which needs **Firefox 147+** (the Chromium and Safari floors above already
+  include it). Older Firefox runs the rest of the library fine — just wire
+  `scrollState` / `onScrollStateChange` to a persistence mechanism of your
+  own (e.g. `history.replaceState` or `sessionStorage`) instead of using the
+  helpers.
 - In `native` anchoring mode, relies on the browser's CSS `overflow-anchor`
   (Chromium and Firefox; Safari implements it but doesn't enable it by default
   as of July 2026). The default `auto` mode feature-detects and falls back to
@@ -390,6 +398,14 @@ const [scrollState, onScrollStateChange] =
 
 The Solid mirror is `createHistoryScrollState` — same key parameter, with the
 state returned as an accessor.
+
+Both helpers are built on the Navigation API
+(`navigation.updateCurrentEntry`), which requires **Firefox 147+**; every
+Chromium and Safari version this library supports already has it. On older
+Firefox they throw at first use, but nothing else in the library depends on
+them: `scrollState` / `onScrollStateChange` accept any implementation, so you
+can persist the state through `history.replaceState`, `sessionStorage`, a
+router's location state, or anything else that survives navigation.
 
 For a complete working example including sorting, permalinks, and scroll-position persistence, see [demo/react/App.tsx](demo/react/App.tsx) — or its Solid twin, [demo/solid/App.tsx](demo/solid/App.tsx).
 
