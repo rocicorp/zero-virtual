@@ -308,6 +308,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #lastPersistKey = '';
   // Settle-timer reset on list-context change (the old effect's dep).
   #lastSettleContext: TListContextParams;
+  // One-shot guard for the identity-churn warning below.
+  #warnedListContextChurn = false;
 
   constructor(
     options: VirtualizerOptions<TListContextParams, TRow, TStartRow>,
@@ -1035,6 +1037,27 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     }
   }
 
+  // listContextParams is compared by identity: a new reference means "new
+  // context" and resets the list. A reference that changed while its content
+  // did not is the signature of an un-memoized inline literal (e.g.
+  // `listContextParams: {}` recreated every render) — the reset then fires on
+  // every commit and pagination can never advance. Warn once so the bug is
+  // diagnosable instead of just "the list keeps jumping to the top".
+  #warnOnListContextIdentityChurn(): void {
+    if (this.#warnedListContextChurn) return;
+    const prev = this.#paging.queryAnchor.listContextParams;
+    const next = this.#options.listContextParams;
+    if (JSON.stringify(prev) === JSON.stringify(next)) {
+      this.#warnedListContextChurn = true;
+      console.warn(
+        'zero-virtual: listContextParams changed identity without changing ' +
+          'content. It is compared by identity (===) and every change ' +
+          'resets the list, so pass a stable reference (a module constant ' +
+          'or a memo) instead of recreating the object each render.',
+      );
+    }
+  }
+
   // The restore / context-reset / permalink-navigation block. Runs only when
   // its inputs changed (the old effect's dependency semantics): a new
   // persisted state, a new permalinkID, or a context mismatch.
@@ -1058,6 +1081,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // suppress it until the new data loads, so we don't adopt or pin a stale
     // reference row from the outgoing list.
     if (!this.#isListContextCurrent()) {
+      this.#warnOnListContextIdentityChurn();
       this.#anchorKey = null;
       this.#anchorSuppressed = true;
     }

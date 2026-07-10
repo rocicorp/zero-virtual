@@ -266,6 +266,33 @@ describe('ZeroVirtualizer wrapper contract', () => {
     });
   });
 
+  test('warns once when listContextParams churns identity without content', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const v = new ZeroVirtualizer(
+        makeOptions({listContextParams: {sort: 'a'}}),
+      );
+
+      // A real context change (different content) never warns.
+      v.setOptions(makeOptions({listContextParams: {sort: 'b'}}));
+      v.afterDOMUpdate();
+      expect(warn).not.toHaveBeenCalled();
+
+      // The un-memoized inline-literal bug: fresh identity, same content —
+      // warn once, not per commit.
+      v.setOptions(makeOptions({listContextParams: {sort: 'b'}}));
+      v.afterDOMUpdate();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toMatch(/listContextParams/);
+
+      v.setOptions(makeOptions({listContextParams: {sort: 'b'}}));
+      v.afterDOMUpdate();
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   test('query inputs fall back to the new context after a context change', () => {
     const ctxA = {sort: 'a'};
     const v = new ZeroVirtualizer(makeOptions({listContextParams: ctxA}));
