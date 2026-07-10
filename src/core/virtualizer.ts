@@ -1047,14 +1047,29 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     if (this.#warnedListContextChurn) return;
     const prev = this.#paging.queryAnchor.listContextParams;
     const next = this.#options.listContextParams;
-    if (JSON.stringify(prev) === JSON.stringify(next)) {
+
+    let prevJSON: string | undefined;
+    let nextJSON: string | undefined;
+    try {
+      prevJSON = JSON.stringify(prev);
+      nextJSON = JSON.stringify(next);
+    } catch {
+      return;
+    }
+
+    // If either side can't be represented in JSON, don't attempt this heuristic.
+    if (prevJSON === undefined || nextJSON === undefined) return;
+
+    if (prevJSON === nextJSON) {
       this.#warnedListContextChurn = true;
-      console.warn(
-        'zero-virtual: listContextParams changed identity without changing ' +
-          'content. It is compared by identity (===) and every change ' +
-          'resets the list, so pass a stable reference (a module constant ' +
-          'or a memo) instead of recreating the object each render.',
-      );
+      if (typeof console !== 'undefined') {
+        console.warn(
+          'zero-virtual: listContextParams changed identity without changing ' +
+            'content. It is compared by identity (===) and every change ' +
+            'resets the list, so pass a stable reference (a module constant ' +
+            'or a memo) instead of recreating the object each render.',
+        );
+      }
     }
   }
 
