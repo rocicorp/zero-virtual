@@ -1,5 +1,5 @@
 import {act, renderHook} from '@testing-library/react';
-import {afterEach, beforeEach, expect, test} from 'vitest';
+import {beforeEach, expect, test} from 'vitest';
 import type {ScrollHistoryState} from '../core/types.ts';
 import {useHistoryScrollState} from './use-history-scroll-state.ts';
 
@@ -13,9 +13,8 @@ function installNavigationStub(): () => void {
       getState: () => state,
     },
     updateCurrentEntry({state: next}: {state: unknown}) {
-      // The real API structured-clones; a JSON round-trip is close enough
-      // for the plain data this module stores.
-      state = next === undefined ? undefined : JSON.parse(JSON.stringify(next));
+      // The real API structured-clones the state.
+      state = structuredClone(next);
       for (const listener of listeners) listener();
     },
     addEventListener(_type: string, listener: () => void) {
@@ -32,11 +31,8 @@ function installNavigationStub(): () => void {
   };
 }
 
-let uninstall: () => void;
-beforeEach(() => {
-  uninstall = installNavigationStub();
-});
-afterEach(() => uninstall());
+// The returned uninstaller doubles as the per-test cleanup.
+beforeEach(() => installNavigationStub());
 
 function fakeScrollState(scrollTop: number): ScrollHistoryState<unknown> {
   return {
@@ -52,6 +48,18 @@ function fakeScrollState(scrollTop: number): ScrollHistoryState<unknown> {
 test('missing key reads as null', () => {
   const {result} = renderHook(() => useHistoryScrollState('a'));
   expect(result.current[0]).toBeNull();
+});
+
+test('missing key in an existing state object reads as null', () => {
+  const {result} = renderHook(() => ({
+    a: useHistoryScrollState('a'),
+    b: useHistoryScrollState('b'),
+  }));
+
+  // history.state is now a non-empty object — key 'a' is simply absent.
+  act(() => result.current.b[1](fakeScrollState(9)));
+
+  expect(result.current.a[0]).toBeNull();
 });
 
 test('round-trips state under its key', () => {

@@ -54,7 +54,7 @@ export function useHistoryScrollState<TStartRow>(
       // Solid binding.)
       const current = getHistoryStateSnapshot();
       setState({
-        ...((current as Record<string, unknown>) ?? {}),
+        ...(current as Record<string, unknown>),
         [key]: newState,
       });
     },
