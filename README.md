@@ -134,12 +134,19 @@ function toStartRow(item: Item): ItemStart {
   return {id: item.id, created: item.created};
 }
 
+// listContextParams identifies the sort/filter context the list is showing.
+// It is compared by identity (===): a new reference means "new context" and
+// resets the list (anchor and scroll position). Pass a stable reference — a
+// module constant like this, or `useMemo` when it's derived from state —
+// never an inline object literal.
+const listContextParams = {};
+
 export function ItemList() {
   const parentRef = useRef<HTMLDivElement>(null);
   const [scrollState, onScrollStateChange] = useHistoryScrollState<ItemStart>();
 
   const {items, spaceBefore, spaceAfter} = useZeroVirtualizer({
-    listContextParams: {},
+    listContextParams,
     getScrollElement: useCallback(() => parentRef.current, []),
     estimateSize: useCallback(() => 48, []),
     getRowKey,
@@ -205,13 +212,18 @@ import {
   rowAttributes,
 } from '@rocicorp/zero-virtual/solid';
 
+// Compared by identity, exactly as in React (see above): keep the reference
+// stable — a module constant, or a memo when derived from signals — since the
+// options accessor re-runs on every reactive update.
+const listContextParams = {};
+
 export function ItemList() {
   let parentRef: HTMLDivElement | undefined;
   const [scrollState, onScrollStateChange] =
     createHistoryScrollState<ItemStart>();
 
   const snapshot = createZeroVirtualizer(() => ({
-    listContextParams: {},
+    listContextParams,
     getScrollElement: () => parentRef ?? null,
     estimateSize: () => 48,
     getRowKey,
