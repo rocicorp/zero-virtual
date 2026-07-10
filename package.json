@@ -16,10 +16,11 @@
   "files": [
     "dist/",
     "src/**/*.ts",
+    "!src/**/*.test.ts",
     "!*.tsbuildinfo"
   ],
   "type": "module",
-  "main": "index.js",
+  "sideEffects": false,
   "exports": {
     "./react": {
       "types": "./dist/react/index.d.ts",
@@ -45,9 +46,6 @@
     "test": "vitest run",
     "prepack": "rm -rf dist && pnpm run build"
   },
-  "dependencies": {
-    "@types/dom-navigation": "^1.0.7"
-  },
   "devDependencies": {
     "@rocicorp/zero": "1.7.0",
     "@testing-library/react": "^16.3.2",
@@ -65,7 +63,7 @@
     "vitest": "^4.1.2"
   },
   "peerDependencies": {
-    "@rocicorp/zero": "1.7.0",
+    "@rocicorp/zero": "^1.7.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "solid-js": "^1.9.4"

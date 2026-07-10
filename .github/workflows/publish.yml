@@ -27,16 +27,33 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      # Pinned: this runs with publish credentials in scope (OIDC id-token),
+      # so an unpinned npm@latest would execute an unreviewed release at the
+      # most privileged moment. 11.5.1 is the trusted-publishing minimum.
       - name: Upgrade npm for OIDC trusted publishing support
-        run: COREPACK_ENABLE_STRICT=0 npm install --global npm@latest
+        run: COREPACK_ENABLE_STRICT=0 npm install --global npm@11.5.1
 
       - name: Print tool versions
         run: |
           pnpm --version
           npm --version
 
+      - name: Verify tag matches package.json version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version v$version" >&2
+            exit 1
+          fi
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check types
+        run: pnpm run check-types
+
+      - name: Test
+        run: pnpm test
 
       - name: Build package
         run: pnpm run build
