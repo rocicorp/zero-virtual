@@ -12,6 +12,12 @@ const DEFAULT_KEY = 'scrollState';
  * `history.state`, so back/forward navigation restores scroll position
  * and pagination state automatically.
  *
+ * Built on the Navigation API, which requires Firefox 147+ (all supported
+ * Chromium and Safari versions have it). On older Firefox, skip this helper
+ * and wire `scrollState` / `onScrollStateChange` to a persistence mechanism
+ * of your own (e.g. `history.replaceState` or `sessionStorage`) — the
+ * options accept any implementation.
+ *
  * @typeParam TStartRow - The type of data needed to anchor pagination
  * @param key - The key to use in `history.state`. Defaults to `"scrollState"`.
  *   Use different keys if you have multiple virtualizers on the same page.

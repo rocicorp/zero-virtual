@@ -2,6 +2,10 @@
  * A framework-free external store over the Navigation API's current-entry
  * state: subscribe / snapshot / update. The React wrapper bridges it with
  * `useSyncExternalStore`; the Solid wrapper with a signal.
+ *
+ * The Navigation API needs Firefox 147+ (all supported Chromium and Safari
+ * versions have it) — see the history-state helpers' docs for the fallback
+ * story on older Firefox.
  */
 
 let currentSnapshot: unknown = null;
