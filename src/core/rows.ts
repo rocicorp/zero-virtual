@@ -31,6 +31,13 @@ export type RowsSnapshot<TRow> = {
   atEnd: boolean;
   firstRowIndex: number;
   permalinkNotFound: boolean;
+  /**
+   * The resolved permalink target row (the single-row lookup result), when the
+   * current anchor is a permalink and the row has loaded; `undefined`
+   * otherwise. Its `getRowKey` locates the DOM row to scroll to — the
+   * permalink id need not equal the row key.
+   */
+  permalinkRow: TRow | undefined;
 };
 
 /** The raw results of the (up to) three staged queries. */
@@ -211,6 +218,7 @@ export function assembleRows<TRow, TStartRow>(
         ? anchorIndex
         : anchorIndex - rowsBeforeSize,
       permalinkNotFound,
+      permalinkRow: singleRow,
     };
   }
 
@@ -226,6 +234,7 @@ export function assembleRows<TRow, TStartRow>(
       atEnd: mainComplete && !hasMoreRows,
       firstRowIndex: anchorIndex,
       permalinkNotFound,
+      permalinkRow: undefined,
     };
   }
 
@@ -241,5 +250,6 @@ export function assembleRows<TRow, TStartRow>(
     atEnd: false,
     firstRowIndex: anchorIndex - paginatedRowsLength,
     permalinkNotFound,
+    permalinkRow: undefined,
   };
 }

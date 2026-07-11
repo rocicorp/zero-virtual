@@ -17,6 +17,7 @@ function makeRows(
     atEnd: false,
     firstRowIndex: 0,
     permalinkNotFound: false,
+    permalinkRow: undefined,
     ...overrides,
   };
 }

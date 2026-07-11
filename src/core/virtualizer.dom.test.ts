@@ -506,3 +506,50 @@ describe('scroll-state restore when the container mounts lazily', () => {
     }
   });
 });
+
+describe('permalink scroll', () => {
+  test('scrolls the permalink row into view when its row key differs from the permalink id', () => {
+    // Deep-link by a human-friendly id (`r120`) while keying rows by something
+    // else (`key-r120`) — the common short-id-URL / uuid-key split. The scroll
+    // must still land, located via the resolved row's key, not the raw id.
+    const h = harness({
+      rowCount: 300,
+      options: {
+        permalinkID: 'r120',
+        getRowKey: row => `key-${row.id}`,
+      },
+    });
+    h.settle();
+
+    // The target row is scrolled into view near the top. Without the fix
+    // `findRow` looks up `r120` (the permalink id) against DOM rows keyed
+    // `key-r120`, never matches, and the row stays far below the viewport.
+    const top = h.rowTop('key-r120');
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(top).toBeLessThan(40); // within ~a row of the top
+  });
+});
+
+describe('persist timing', () => {
+  test('persists immediately on scrollend, before the debounce, so a fast navigation keeps the position', () => {
+    const persisted: Array<ScrollHistoryState<TestRow>> = [];
+    const h = harness({
+      rowCount: 100,
+      options: {
+        onScrollStateChange: s =>
+          persisted.push(s as ScrollHistoryState<TestRow>),
+      },
+    });
+    h.settle();
+    persisted.length = 0;
+
+    // Scroll, then the browser signals scrolling ended — without any debounce
+    // time elapsing. The position must already be persisted, so navigating
+    // away right now (e.g. clicking a row) doesn't lose it.
+    h.userScroll(300);
+    h.scroller.dispatchEvent(new Event('scrollend'));
+
+    expect(persisted.length).toBeGreaterThan(0);
+    expect(persisted.at(-1)!.scrollTop).toBe(300);
+  });
+});

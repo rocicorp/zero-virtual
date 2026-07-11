@@ -203,6 +203,7 @@ const EMPTY_ROWS: RowsSnapshot<unknown> = {
   atEnd: false,
   firstRowIndex: 0,
   permalinkNotFound: false,
+  permalinkRow: undefined,
 };
 
 /**
@@ -942,10 +943,18 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   };
 
   #onScrollEnd = (): void => {
-    if (!this.#manual()) return;
-    if (!this.#fingerDown) {
+    if (this.#manual()) {
+      // A gesture still under an active finger hasn't really ended.
+      if (this.#fingerDown) return;
       this.#withNotify(() => this.#endScrolling());
     }
+    // Flush the position the moment scrolling ends, cancelling the pending
+    // debounce. The debounce coalesces mid-scroll writes (and keeps us under
+    // history-API rate limits), but on its own it loses the position when the
+    // user navigates within the debounce window right after stopping — e.g.
+    // scrolling a list then clicking a row. `scrollend` is that "stopped"
+    // signal, so persist synchronously here.
+    this.#persistNow();
   };
 
   #onTouchStart = (): void => {
@@ -1196,7 +1205,14 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     }
     const el = this.#el;
     if (!el) return;
-    const target = findRow(el, pending);
+    // The DOM row is keyed by `getRowKey`, which need not equal `permalinkID`:
+    // apps routinely deep-link by a human-friendly id (a short id / slug) while
+    // keying rows by something else (a uuid). Locate the row by the resolved
+    // target row's key, falling back to the permalink id itself until it loads.
+    const targetRow = this.#rows.permalinkRow;
+    const targetKey =
+      targetRow !== undefined ? this.#options.getRowKey(targetRow) : pending;
+    const target = findRow(el, targetKey);
     if (!target) {
       // Not rendered yet — keep the request open and retry once it loads,
       // unless the row genuinely doesn't exist.
@@ -1374,29 +1390,41 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       return;
     }
     this.#lastPersistKey = key;
-    // Capture at schedule time (matches the old effect's closure semantics).
-    const anchor = this.#paging.queryAnchor.anchor;
-    const estimatedTotal = this.#effectiveEstimatedTotal();
-    const {hasReachedStart, hasReachedEnd} = this.#paging;
-    const {listContextParams} = this.#options;
     clearTimeout(this.#persistTimer);
     this.#persistTimer = setTimeout(() => {
-      const el = this.#el;
-      // The element can detach during the debounce (unmount). Skip rather than
-      // persist a spurious scrollTop: 0 over the saved position.
-      if (!el) return;
-      onScrollStateChange({
-        anchor,
-        // The logical committed offset: if a gesture is mid-flight with an
-        // owed jump held in the wrapper margin, fold it in so restore lands
-        // right.
-        scrollTop: this.#scrollOffset(el) + this.#anchorState.pendingJump,
-        estimatedTotal,
-        hasReachedStart,
-        hasReachedEnd,
-        listContextParams,
-      });
+      this.#persistTimer = undefined;
+      this.#writeScrollState();
     }, PERSIST_DEBOUNCE_MS);
+  }
+
+  // Persist the current scroll state immediately, cancelling any pending
+  // debounced persist. Called when scrolling ends (`scrollend`): a navigation
+  // in the debounce window right after the user stops scrolling must not lose
+  // the position.
+  #persistNow(): void {
+    clearTimeout(this.#persistTimer);
+    this.#persistTimer = undefined;
+    this.#lastPersistKey = this.#persistKey();
+    this.#writeScrollState();
+  }
+
+  // The single persist write. Reads the live position at call time; skips when
+  // detached (the element can go away between schedule and fire) — a write
+  // then would clobber the saved position with a spurious scrollTop: 0.
+  #writeScrollState(): void {
+    const {onScrollStateChange, listContextParams} = this.#options;
+    const el = this.#el;
+    if (!el || !this.#isListContextCurrent() || !onScrollStateChange) return;
+    onScrollStateChange({
+      anchor: this.#paging.queryAnchor.anchor,
+      // The logical committed offset: if a gesture is mid-flight with an owed
+      // jump held in the wrapper margin, fold it in so restore lands right.
+      scrollTop: this.#scrollOffset(el) + this.#anchorState.pendingJump,
+      estimatedTotal: this.#effectiveEstimatedTotal(),
+      hasReachedStart: this.#paging.hasReachedStart,
+      hasReachedEnd: this.#paging.hasReachedEnd,
+      listContextParams,
+    });
   }
 }
 
