@@ -30,6 +30,7 @@ function makeUseRowsResult(
     atEnd: false,
     firstRowIndex: 0,
     permalinkNotFound: false,
+    permalinkRow: undefined,
     ...overrides,
   };
 }
