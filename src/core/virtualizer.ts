@@ -1101,6 +1101,19 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     const {permalinkID, listContextParams} = this.#options;
     const scrollStateChanged = eff !== this.#appliedScrollState;
     const permalinkChanged = permalinkID !== this.#appliedPermalinkID;
+
+    // Restoring a scroll position or resolving a permalink both need the scroll
+    // element attached — to write scrollTop, or to locate the target row. If it
+    // isn't attached yet (a host that mounts its scroll container lazily, e.g.
+    // after measuring available space, attaches it on a later commit), defer
+    // *without* recording this state as applied: otherwise the write silently
+    // no-ops against the missing element, yet the state counts as applied, so
+    // the commit that finally attaches skips the restore as already done. Bail
+    // instead, so that later commit actually performs it.
+    if ((eff || permalinkID) && !this.#el) {
+      return;
+    }
+
     this.#appliedScrollState = eff;
     this.#appliedPermalinkID = permalinkID;
 
@@ -1351,7 +1364,15 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   #schedulePersist(key = this.#persistKey()): void {
     const {onScrollStateChange} = this.#options;
-    if (!this.#isListContextCurrent() || !onScrollStateChange) return;
+    // With no attached scroll element there is no live scroll position to
+    // persist. Skip without recording the key, so the persist still fires once
+    // the container attaches. Persisting here would write a spurious
+    // scrollTop: 0 over a saved position during the window before a
+    // lazily-mounted container attaches — the exact value restore is trying to
+    // bring back.
+    if (!this.#el || !this.#isListContextCurrent() || !onScrollStateChange) {
+      return;
+    }
     this.#lastPersistKey = key;
     // Capture at schedule time (matches the old effect's closure semantics).
     const anchor = this.#paging.queryAnchor.anchor;
@@ -1361,14 +1382,15 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     clearTimeout(this.#persistTimer);
     this.#persistTimer = setTimeout(() => {
       const el = this.#el;
+      // The element can detach during the debounce (unmount). Skip rather than
+      // persist a spurious scrollTop: 0 over the saved position.
+      if (!el) return;
       onScrollStateChange({
         anchor,
         // The logical committed offset: if a gesture is mid-flight with an
         // owed jump held in the wrapper margin, fold it in so restore lands
         // right.
-        scrollTop: el
-          ? this.#scrollOffset(el) + this.#anchorState.pendingJump
-          : 0,
+        scrollTop: this.#scrollOffset(el) + this.#anchorState.pendingJump,
         estimatedTotal,
         hasReachedStart,
         hasReachedEnd,

@@ -1,8 +1,8 @@
-import {afterEach, describe, expect, test} from 'vitest';
+import {afterEach, describe, expect, test, vi} from 'vitest';
 import {assembleRows, type RowsQueryInputs} from './rows.ts';
 import {VROW_INDEX_ATTR, VROW_KEY_ATTR} from './dom.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
-import type {Anchor} from './types.ts';
+import type {Anchor, ScrollHistoryState} from './types.ts';
 
 type TestRow = {id: string};
 
@@ -208,6 +208,15 @@ function createHarness({
     deliverScroll();
   };
 
+  // A commit before the scroll container is mounted: rows are staged but the
+  // element isn't attached yet (a host that renders its scroll container
+  // lazily — e.g. after measuring available space — attaches on a later tick).
+  const tickDetached = () => {
+    core.setRows(answerQueries(core.getQueryInputs()));
+    core.attach(null);
+    core.afterDOMUpdate();
+  };
+
   const settle = (maxTicks = 20) => {
     for (let i = 0; i < maxTicks; i++) {
       const before = JSON.stringify(core.getQueryInputs().anchor);
@@ -235,6 +244,7 @@ function createHarness({
     scroller,
     wrapper,
     tick,
+    tickDetached,
     settle,
     userScroll,
     deliverScroll,
@@ -432,5 +442,67 @@ describe('manual scroll anchoring against a real (fake-geometry) container', () 
 
     expect(h.scroller.scrollTop).toBe(1000);
     expect(h.rowTop('r50')).toBe(0);
+  });
+});
+
+describe('scroll-state restore when the container mounts lazily', () => {
+  const savedState = (scrollTop: number): ScrollHistoryState<TestRow> => ({
+    anchor: {kind: 'forward', index: 0},
+    scrollTop,
+    estimatedTotal: 100,
+    hasReachedStart: true,
+    hasReachedEnd: false,
+    listContextParams: 'ctx',
+  });
+
+  test('restores the saved scrollTop when the element attaches on a later commit', () => {
+    const h = harness({
+      rowCount: 100,
+      options: {scrollState: savedState(300)},
+    });
+
+    // The host renders (and thus attaches) the scroll container only after a
+    // couple of commits — e.g. once it has measured available space.
+    h.tickDetached();
+    h.tickDetached();
+    // Nothing to restore against yet: no element, no scroll applied.
+    expect(h.scroller.scrollTop).toBe(0);
+
+    // The container mounts and attaches; the restore must now actually run
+    // rather than treat the (never-performed) detached restore as done.
+    h.settle();
+    expect(h.scroller.scrollTop).toBe(300);
+  });
+
+  test('does not persist a spurious scrollTop:0 while detached, clobbering the saved position', () => {
+    vi.useFakeTimers();
+    try {
+      const persisted: Array<ScrollHistoryState<TestRow>> = [];
+      const h = harness({
+        rowCount: 100,
+        options: {
+          scrollState: savedState(300),
+          onScrollStateChange: s =>
+            persisted.push(s as ScrollHistoryState<TestRow>),
+        },
+      });
+
+      h.tickDetached();
+      h.tickDetached();
+      // Fire any pending persist debounce: nothing should have been written
+      // while detached (a write here would be a scrollTop:0 over the saved 300).
+      vi.advanceTimersByTime(1000);
+      expect(persisted).toEqual([]);
+
+      h.settle();
+      vi.advanceTimersByTime(1000);
+      // Once attached, the restored position is persisted — and never a
+      // spurious 0.
+      expect(persisted.length).toBeGreaterThan(0);
+      expect(persisted.map(s => s.scrollTop)).not.toContain(0);
+      expect(h.scroller.scrollTop).toBe(300);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
