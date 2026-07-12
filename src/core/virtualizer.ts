@@ -153,15 +153,22 @@ export type VirtualizerSnapshot<TRow> = {
  * The full options the framework bindings accept: the core options plus the
  * scroll wiring ({@linkcode VirtualizerScrollOptions}, which also makes the
  * observers optional — the bindings default them per entry-point variant)
- * and the query functions ({@linkcode VirtualizerQueryOptions}).
+ * and the query functions ({@linkcode VirtualizerQueryOptions}, whose query
+ * types are opaque to the core — the bindings instantiate them with their
+ * data layer's query type).
  */
-export type VirtualizerBindingOptions<TListContextParams, TRow, TStartRow> =
-  Omit<
-    VirtualizerOptions<TListContextParams, TRow, TStartRow>,
-    'observeElementRect' | 'observeElementOffset'
-  > &
-    VirtualizerScrollOptions &
-    VirtualizerQueryOptions<TRow, TStartRow>;
+export type VirtualizerBindingOptions<
+  TListContextParams,
+  TRow,
+  TStartRow,
+  TPageQuery,
+  TSingleQuery,
+> = Omit<
+  VirtualizerOptions<TListContextParams, TRow, TStartRow>,
+  'observeElementRect' | 'observeElementOffset'
+> &
+  VirtualizerScrollOptions &
+  VirtualizerQueryOptions<TRow, TStartRow, TPageQuery, TSingleQuery>;
 
 /**
  * What the framework bindings return: the snapshot plus, TanStack-style, the

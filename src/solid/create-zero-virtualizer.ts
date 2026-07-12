@@ -21,9 +21,9 @@ import type {VirtualRow} from '../core/types.ts';
 import {
   virtualizerResult,
   ZeroVirtualizer,
-  type VirtualizerBindingOptions,
   type VirtualizerResult,
 } from '../core/virtualizer.ts';
+import type {VirtualizerBindingOptions} from '../zero-types.ts';
 import {createRows} from './create-rows.ts';
 
 /**

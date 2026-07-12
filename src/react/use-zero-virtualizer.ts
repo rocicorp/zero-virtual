@@ -12,9 +12,9 @@ import {
 import {
   virtualizerResult,
   ZeroVirtualizer,
-  type VirtualizerBindingOptions,
   type VirtualizerResult,
 } from '../core/virtualizer.ts';
+import type {VirtualizerBindingOptions} from '../zero-types.ts';
 import {useRows} from './use-rows.ts';
 
 /**

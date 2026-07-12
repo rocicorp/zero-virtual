@@ -9,7 +9,7 @@ import {
   type RowsQueryInputs,
   type RowsSnapshot,
 } from '../core/rows.ts';
-import type {GetPageQuery, GetSingleQuery} from '../core/types.ts';
+import type {GetPageQuery, GetSingleQuery} from '../zero-types.ts';
 
 /**
  * Binds the virtualizer's staged queries to Zero's Solid bindings. All

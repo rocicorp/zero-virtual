@@ -13,15 +13,17 @@ export {
 } from '../core/scroll.ts';
 export type {
   AnchoringMode,
-  GetPageQuery,
   GetPageQueryOptions,
-  GetQueryReturnType,
-  GetSingleQuery,
   GetSingleQueryOptions,
-  QueryResult,
   ScrollHistoryState,
   VirtualRow,
 } from '../core/types.ts';
+export type {
+  GetPageQuery,
+  GetQueryReturnType,
+  GetSingleQuery,
+  QueryResult,
+} from '../zero-types.ts';
 export {useHistoryScrollState} from './use-history-scroll-state.ts';
 export {useStickToBottom, type StickOptions} from './use-stick-to-edge.ts';
 export {
