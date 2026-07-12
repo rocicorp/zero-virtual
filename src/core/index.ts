@@ -1,5 +1,7 @@
 /**
- * Framework-agnostic core of `@rocicorp/zero-virtual`.
+ * Framework- and library-agnostic core of `@rocicorp/zero-virtual`. Nothing
+ * here depends on `@rocicorp/zero`: the query types are opaque generics, so
+ * wrappers can bind the core to any fetching library.
  *
  * @experimental This entry point is public but UNSTABLE: it exists so
  * framework wrappers (react, solid, yours) can share one implementation, and
@@ -67,7 +69,6 @@ export type {
   AnchoringMode,
   GetPageQuery,
   GetPageQueryOptions,
-  GetQueryReturnType,
   GetSingleQuery,
   GetSingleQueryOptions,
   QueryOptions,
