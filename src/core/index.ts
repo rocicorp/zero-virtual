@@ -71,10 +71,8 @@ export type {
   GetPageQueryOptions,
   GetSingleQuery,
   GetSingleQueryOptions,
-  QueryOptions,
   QueryResult,
   RowKey,
   ScrollHistoryState,
-  TTL,
   VirtualRow,
 } from './types.ts';

@@ -23,6 +23,7 @@ export type {
   GetQueryReturnType,
   GetSingleQuery,
   QueryResult,
+  QueryOptions,
 } from '../zero-types.ts';
 export {useHistoryScrollState} from './use-history-scroll-state.ts';
 export {useStickToBottom, type StickOptions} from './use-stick-to-edge.ts';

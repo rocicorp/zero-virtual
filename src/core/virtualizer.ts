@@ -162,13 +162,22 @@ export type VirtualizerBindingOptions<
   TRow,
   TStartRow,
   TPageQuery,
+  TPageOptions,
   TSingleQuery,
+  TSingleOptions,
 > = Omit<
   VirtualizerOptions<TListContextParams, TRow, TStartRow>,
   'observeElementRect' | 'observeElementOffset'
 > &
   VirtualizerScrollOptions &
-  VirtualizerQueryOptions<TRow, TStartRow, TPageQuery, TSingleQuery>;
+  VirtualizerQueryOptions<
+    TRow,
+    TStartRow,
+    TPageQuery,
+    TPageOptions,
+    TSingleQuery,
+    TSingleOptions
+  >;
 
 /**
  * What the framework bindings return: the snapshot plus, TanStack-style, the

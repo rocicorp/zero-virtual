@@ -63,10 +63,10 @@ function isPermalink<TStartRow>(
  * Stage 1: the single-row lookup (permalink anchors only; null otherwise so
  * wrappers can keep a stable query slot).
  */
-export function buildSingleQuery<TQuery, TStartRow>(
+export function buildSingleQuery<TQuery, TOptions, TStartRow>(
   inputs: RowsQueryInputs<TStartRow>,
-  getSingleQuery: GetSingleQuery<TQuery>,
-): QueryResult<TQuery> | null {
+  getSingleQuery: GetSingleQuery<TQuery, TOptions>,
+): QueryResult<TQuery, TOptions> | null {
   return isPermalink(inputs.anchor)
     ? getSingleQuery({id: inputs.anchor.id, settled: inputs.settled})
     : null;
@@ -76,12 +76,12 @@ export function buildSingleQuery<TQuery, TStartRow>(
  * Stage 2: the main page query — page-before rows for a permalink (depends on
  * stage 1's result), or the whole page for forward/backward anchors.
  */
-export function buildMainQuery<TQuery, TStartRow>(
+export function buildMainQuery<TQuery, TOptions, TStartRow>(
   inputs: RowsQueryInputs<TStartRow>,
-  getPageQuery: GetPageQuery<TQuery, TStartRow>,
+  getPageQuery: GetPageQuery<TQuery, TOptions, TStartRow>,
   singleStart: TStartRow | null,
   permalinkNotFound: boolean,
-): QueryResult<TQuery> | null {
+): QueryResult<TQuery, TOptions> | null {
   const {anchor, pageSize, settled} = inputs;
   if (isPermalink(anchor)) {
     assert(pageSize % 2 === 0);
@@ -106,12 +106,12 @@ export function buildMainQuery<TQuery, TStartRow>(
  * Stage 3: the page-after query (permalink anchors only; depends on stage 1's
  * result).
  */
-export function buildAfterQuery<TQuery, TStartRow>(
+export function buildAfterQuery<TQuery, TOptions, TStartRow>(
   inputs: RowsQueryInputs<TStartRow>,
-  getPageQuery: GetPageQuery<TQuery, TStartRow>,
+  getPageQuery: GetPageQuery<TQuery, TOptions, TStartRow>,
   singleStart: TStartRow | null,
   permalinkNotFound: boolean,
-): QueryResult<TQuery> | null {
+): QueryResult<TQuery, TOptions> | null {
   const {anchor, pageSize, settled} = inputs;
   if (!isPermalink(anchor)) return null;
   assert(pageSize % 2 === 0);
