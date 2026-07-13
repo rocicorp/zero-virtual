@@ -389,8 +389,8 @@ getPageQuery: ({limit, start, dir, settled}) => ({
 
 The `limit` passed to `getPageQuery` comes from the page size: about three
 viewports' worth of rows at `estimateSize`, but never below the `minPageSize`
-floor (default 100). The floor is sized for short rows; for tall rows (cards,
-comments) 100 rows is many viewports of content, so the floor dominates the
+floor (default 50). The floor is sized for short rows; for tall rows (cards,
+comments) 50 rows is many viewports of content, so the floor dominates the
 formula and each page load renders far more DOM than needed — showing up as
 long tasks when a page lands mid-scroll. Lower it so page size tracks the
 viewport again:

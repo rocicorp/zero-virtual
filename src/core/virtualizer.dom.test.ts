@@ -110,6 +110,10 @@ function createHarness({
     getRowKey: row => row.id,
     listContextParams: 'ctx',
     anchoring: 'native',
+    // Pinned so the paging expectations below (page lengths, anchor indices,
+    // spaceBefore) stay fixed to a 100-row page rather than tracking the
+    // minPageSize default.
+    minPageSize: 100,
     observeElementRect: (_instance, cb) => {
       cb({width: 300, height: viewportHeight});
     },

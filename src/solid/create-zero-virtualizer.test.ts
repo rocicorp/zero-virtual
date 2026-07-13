@@ -163,7 +163,7 @@ describe('createZeroVirtualizer (solid wrapper wiring)', () => {
         kind: 'forward',
         startRow: undefined,
       });
-      expect(inputs().pageSize).toBeGreaterThanOrEqual(100);
+      expect(inputs().pageSize).toBeGreaterThanOrEqual(50);
       expect(inputs().settled).toBe(false);
       dispose();
     });

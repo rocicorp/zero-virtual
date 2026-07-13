@@ -26,7 +26,7 @@ import type {
 } from './types.ts';
 
 // Make sure this is even since we half it for scroll state loading
-const MIN_PAGE_SIZE = 100;
+const MIN_PAGE_SIZE = 50;
 
 const NUM_ROWS_FOR_LOADING_SKELETON = 1;
 
