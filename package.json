@@ -47,7 +47,7 @@
     "prepack": "rm -rf dist && pnpm run build"
   },
   "devDependencies": {
-    "@rocicorp/zero": "1.8.0-canary.7",
+    "@rocicorp/zero": "1.8.0",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
