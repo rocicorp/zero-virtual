@@ -11,6 +11,27 @@ import type {
 import type {VirtualizerBindingOptions as CoreVirtualizerBindingOptions} from './core/virtualizer.ts';
 
 /**
+ * Zero's query time-to-live. Replicated structurally (`@rocicorp/zero` doesn't
+ * export it from its root entry, and this package's core must stay
+ * framework- and library-free) — assignable to the `ttl` of both the react
+ * and solid `UseQueryOptions`.
+ */
+export type TTL =
+  | `${number}${'s' | 'm' | 'h' | 'd' | 'y'}`
+  | 'forever'
+  | 'none'
+  | number;
+
+/**
+ * Per-query options, framework-free. Structurally assignable to the
+ * `UseQueryOptions` of both `@rocicorp/zero/react` and `@rocicorp/zero/solid`.
+ */
+export type QueryOptions = {
+  enabled?: boolean | undefined;
+  ttl?: TTL | undefined;
+};
+
+/**
  * The Zero instantiations of the core's query-agnostic types, shared by the
  * `./react` and `./solid` entry points. The core itself is library-agnostic
  * (its query types are opaque generics); this module pins them to Zero
@@ -40,7 +61,10 @@ export type GetQueryReturnType<TReturn> = QueryOrQueryRequest<
  *
  * @typeParam TReturn - The type of the query return value
  */
-export type QueryResult<TReturn> = CoreQueryResult<GetQueryReturnType<TReturn>>;
+export type QueryResult<TReturn> = CoreQueryResult<
+  GetQueryReturnType<TReturn>,
+  QueryOptions
+>;
 
 /**
  * Function that returns a Zero query for fetching a page of rows.
@@ -50,6 +74,7 @@ export type QueryResult<TReturn> = CoreQueryResult<GetQueryReturnType<TReturn>>;
  */
 export type GetPageQuery<TRow, TStartRow> = CoreGetPageQuery<
   GetQueryReturnType<TRow>,
+  QueryOptions,
   TStartRow
 >;
 
@@ -59,7 +84,8 @@ export type GetPageQuery<TRow, TStartRow> = CoreGetPageQuery<
  * @typeParam TRow - The type of row data returned from queries
  */
 export type GetSingleQuery<TRow> = CoreGetSingleQuery<
-  GetQueryReturnType<TRow | undefined>
+  GetQueryReturnType<TRow | undefined>,
+  QueryOptions
 >;
 
 /**
@@ -76,5 +102,7 @@ export type VirtualizerBindingOptions<TListContextParams, TRow, TStartRow> =
     TRow,
     TStartRow,
     GetQueryReturnType<TRow>,
-    GetQueryReturnType<TRow | undefined>
+    QueryOptions,
+    GetQueryReturnType<TRow | undefined>,
+    QueryOptions
   >;
