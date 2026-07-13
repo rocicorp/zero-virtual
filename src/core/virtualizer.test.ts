@@ -409,3 +409,20 @@ describe('ZeroVirtualizer wrapper contract', () => {
     });
   });
 });
+
+describe('minPageSize', () => {
+  test('defaults the query page size to 100', () => {
+    const v = new ZeroVirtualizer(makeOptions());
+    expect(v.getQueryInputs().pageSize).toBe(100);
+  });
+
+  test('lowers the floor for tall rows', () => {
+    const v = new ZeroVirtualizer(makeOptions({minPageSize: 20}));
+    expect(v.getQueryInputs().pageSize).toBe(20);
+  });
+
+  test('is rounded up to an even number (paging halves pages)', () => {
+    const v = new ZeroVirtualizer(makeOptions({minPageSize: 15}));
+    expect(v.getQueryInputs().pageSize).toBe(16);
+  });
+});

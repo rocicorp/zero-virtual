@@ -119,6 +119,14 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
   count?: number | undefined;
   permalinkID?: string | null | undefined;
   settleTime?: number | undefined;
+  /**
+   * Floor for the query page size. The page size is derived from the viewport
+   * (about three viewports' worth of rows at `estimateSize`), but never drops
+   * below this floor. Defaults to 100 — sized for short rows; lower it for
+   * tall rows (cards, comments) where 100 rows is many viewports of content.
+   * Rounded up to an even number (paging halves pages around permalinks).
+   */
+  minPageSize?: number | undefined;
   scrollState?: ScrollHistoryState<TStartRow> | null | undefined;
   onScrollStateChange?:
     | ((state: ScrollHistoryState<TStartRow>) => void)
@@ -233,7 +241,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // ---- paging state ---------------------------------------------------------
   #paging: PagingState<TListContextParams, TStartRow>;
-  #pageSize = MIN_PAGE_SIZE;
+  // Assigned from #minPageSize() in the constructor (field initializers run
+  // before #options is set); grows monotonically in #updatePageSize.
+  #pageSize: number;
   #settled = false;
 
   // ---- change propagation ---------------------------------------------------
@@ -318,6 +328,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   ) {
     this.#resolveScrollElement = resolveScrollElement;
     this.#options = options;
+    this.#pageSize = this.#minPageSize();
     // Initialize paging directly from the restorable state so the first
     // render already queries the right window (this also survives React
     // Strict Mode's double construction — the constructor is pure).
@@ -1003,16 +1014,21 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // ---- rows/options-driven transitions (afterDOMUpdate) -----------------------
 
+  // The configured page-size floor: `minPageSize` (evened — paging halves
+  // pages around permalinks), defaulting to MIN_PAGE_SIZE.
+  #minPageSize(): number {
+    const min = this.#options.minPageSize;
+    return min === undefined ? MIN_PAGE_SIZE : makeEven(Math.max(2, min));
+  }
+
   #updatePageSize(): void {
+    const min = this.#minPageSize();
     const el = this.#el;
     const height = el ? this.#viewportRect(el).height : 0;
     const newPageSize =
       height > 0
-        ? Math.max(
-            MIN_PAGE_SIZE,
-            makeEven(Math.ceil(height / this.#rowEstimate()) * 3),
-          )
-        : MIN_PAGE_SIZE;
+        ? Math.max(min, makeEven(Math.ceil(height / this.#rowEstimate()) * 3))
+        : min;
     if (newPageSize > this.#pageSize) {
       this.#pageSize = newPageSize;
       this.#version++;
