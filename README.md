@@ -385,6 +385,28 @@ getPageQuery: ({limit, start, dir, settled}) => ({
 }),
 ```
 
+### Page size
+
+The `limit` passed to `getPageQuery` comes from the page size: about three
+viewports' worth of rows at `estimateSize`, but never below the `minPageSize`
+floor (default 100). The floor is sized for short rows; for tall rows (cards,
+comments) 100 rows is many viewports of content, so the floor dominates the
+formula and each page load renders far more DOM than needed — showing up as
+long tasks when a page lands mid-scroll. Lower it so page size tracks the
+viewport again:
+
+```ts
+useZeroVirtualizer({
+  estimateSize: () => 200, // tall cards
+  minPageSize: 20,
+  // ...
+});
+```
+
+Smaller pages trade a few more query round trips for smaller, smoother
+per-page render bursts. The page size never shrinks once grown, and is rounded
+up to an even number (paging splits pages in half around permalinks).
+
 ### Scroll settling
 
 `useZeroVirtualizer` tracks whether the user has stopped scrolling:
