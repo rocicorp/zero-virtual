@@ -8,10 +8,10 @@
     "test:e2e": "node --env-file=../shared/.env ./node_modules/@playwright/test/cli.js test"
   },
   "dependencies": {
-    "@rocicorp/zero": "1.7.0",
+    "@rocicorp/zero": "1.8.0-canary.7",
     "@rocicorp/zero-virtual": "workspace:*",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.11",
