@@ -55,6 +55,28 @@ const createPermalinkAnchor = (id: string) =>
     kind: 'permalink',
   }) as const;
 
+// Whether two anchors select the same query window: same kind and index, and
+// the same start cursor. The cursor — `startRow` for forward/backward
+// (`undefined` for the top anchor), `id` for permalink — is compared by
+// reference. The core deliberately does not compare rows by value: only the
+// data layer knows a row's sort order (Zero has a comparator), and the cursor
+// is the sort columns, not the row key — a key match with different sort
+// values would be a *different* cursor, so a key/value guess could wrongly
+// skip a real re-anchor. Reference equality is the safe conservative signal:
+// unchanged query results hand back the same row object (so a genuine no-op —
+// e.g. re-selecting the top anchor — is caught), and anything else re-anchors.
+function anchorsEqual<TStartRow>(
+  a: Anchor<TStartRow>,
+  b: Anchor<TStartRow>,
+): boolean {
+  if (a === b) return true;
+  if (a.kind !== b.kind || a.index !== b.index) return false;
+  if (a.kind === 'permalink') {
+    return a.id === (b as {id: string}).id;
+  }
+  return a.startRow === (b as {startRow?: TStartRow}).startRow;
+}
+
 /**
  * Pairs the paging anchor with the list-context params (sort/filter) it was
  * created under, so the two can only change together. While they disagree with
@@ -127,6 +149,14 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    * Rounded up to an even number (paging halves pages around permalinks).
    */
   minPageSize?: number | undefined;
+  /**
+   * Persisted scroll/paging state to restore (e.g. on back/forward). Compared
+   * by reference: pass a **referentially stable** value that changes identity
+   * only when its content changes — otherwise restore re-applies every commit
+   * and paging can't settle. The `useHistoryScrollState` / `createHistoryScrollState`
+   * helpers guarantee this (they memoize by serialized content); a custom
+   * persistence layer must memoize the same way.
+   */
   scrollState?: ScrollHistoryState<TStartRow> | null | undefined;
   onScrollStateChange?:
     | ((state: ScrollHistoryState<TStartRow>) => void)
@@ -719,6 +749,16 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // the relabel, so the visible content stays put.
   #setAnchor(anchor: Anchor<TStartRow>, totalDelta = 0): void {
     const s = this.#paging;
+    // Skip a re-anchor that changes nothing. #setPaging only guards by object
+    // identity and this always builds a fresh paging object, so without this a
+    // redundant re-anchor bumps the version → notifies → re-renders → runs
+    // afterDOMUpdate → re-anchors again, an infinite loop. #evaluatePaging hits
+    // this when the loaded rows sit entirely below the viewport at scroll
+    // offset 0 (a window-scrolled list rendered below other page content, at
+    // the top of the page): it re-selects the top anchor every commit.
+    if (totalDelta === 0 && anchorsEqual(s.queryAnchor.anchor, anchor)) {
+      return;
+    }
     this.#setPaging({
       ...s,
       estimatedTotal: s.estimatedTotal + totalDelta,
