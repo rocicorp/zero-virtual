@@ -41,7 +41,7 @@ async function waitForScrollStatePersisted(page: Page) {
 
 // The virtual list renders only the visible rows. Scrolling causes new pages
 // to be fetched and new rows to be inserted into the DOM. With 200 items and a
-// min page size of 100, there are at least 2 pages to load.
+// min page size of 50, there are at least 2 pages to load.
 
 test.describe('Scroll / paging', () => {
   test.beforeEach(async ({page}) => {
@@ -50,7 +50,7 @@ test.describe('Scroll / paging', () => {
 
   test('initial render shows the correct item count', async ({page}) => {
     // The virtualizer lazy-loads pages, so the initial count is an estimate
-    // based on the first page only (e.g. "(~100)"). Verify a count appears.
+    // based on the first page only (e.g. "(~50)"). Verify a count appears.
     await expect(page.getByText(/\(~?\d+\)/)).toBeVisible({timeout: TIMEOUT});
   });
 
@@ -61,14 +61,17 @@ test.describe('Scroll / paging', () => {
 
     // The virtualizer lazy-loads pages, so we need to scroll to the bottom
     // repeatedly — each scroll triggers loading the next page, which extends
-    // the scrollable area.
+    // the scrollable area. The per-attempt check is kept short so the retry
+    // loop gets enough scroll rounds to walk every page (200 items over a
+    // 50-row min page size), rather than burning the budget on a few long
+    // waits.
     await expect(async () => {
       await viewportEl.evaluate(el => {
         el.scrollTop = el.scrollHeight;
       });
       await expect(
         page.locator(`a[href="#${TEST_ITEMS[TEST_ITEMS.length - 1].id}"]`),
-      ).toBeVisible();
+      ).toBeVisible({timeout: 1_000});
     }).toPass({timeout: TIMEOUT});
   });
 

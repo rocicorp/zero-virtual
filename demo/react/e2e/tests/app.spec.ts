@@ -14,7 +14,7 @@ test.describe('App', () => {
 
   test('shows the correct item count', async ({page}) => {
     // The virtualizer lazy-loads pages, so the initial count may be an
-    // estimate of the first page only (e.g. "(~100)"). Just verify that
+    // estimate of the first page only (e.g. "(~50)"). Just verify that
     // some item count is displayed in the heading.
     await expect(page.getByText(/\(~?\d+\)/)).toBeVisible({timeout: 15_000});
   });
