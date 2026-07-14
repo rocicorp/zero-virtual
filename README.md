@@ -54,8 +54,10 @@ Features:
   `createHistoryScrollState`, `createStickToBottom`. Same options and
   snapshot shape as React, with accessors in the reactive slots (query
   functions are bound via `@rocicorp/zero/solid`).
-- **`@rocicorp/zero-virtual/core`** — the framework-agnostic
-  `ZeroVirtualizer` the wrappers share. **Experimental: this entry point is
+- **`@rocicorp/zero-virtual/core`** — the framework- and library-agnostic
+  `ZeroVirtualizer` the wrappers share. It has no dependency on
+  `@rocicorp/zero` — the query types are opaque generics — so bindings can
+  pair it with any fetching library. **Experimental: this entry point is
   public so you can build bindings for other frameworks, but its API may
   change in breaking ways in any release while it settles.**
 

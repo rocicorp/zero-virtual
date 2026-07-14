@@ -1,12 +1,14 @@
 export type {
-  GetPageQuery,
   GetPageQueryOptions,
+  GetSingleQueryOptions,
+} from '../core/types.ts';
+export type {
+  GetPageQuery,
   GetQueryReturnType,
   GetSingleQuery,
-  GetSingleQueryOptions,
-  QueryOptions,
   QueryResult,
-} from '../core/types.ts';
+  QueryOptions,
+} from '../zero-types.ts';
 export {
   observeElementOffset,
   observeElementRect,

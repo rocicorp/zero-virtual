@@ -1,21 +1,3 @@
-import type {
-  DefaultContext,
-  DefaultSchema,
-  QueryOrQueryRequest,
-} from '@rocicorp/zero';
-
-/**
- * Zero's query time-to-live. Replicated structurally (`@rocicorp/zero` doesn't
- * export it from its root entry, and this package's core must stay
- * framework-free) — assignable to the `ttl` of both the react and solid
- * `UseQueryOptions`.
- */
-export type TTL =
-  | `${number}${'s' | 'm' | 'h' | 'd' | 'y'}`
-  | 'forever'
-  | 'none'
-  | number;
-
 /**
  * Stable per-row key (row id when loaded, index-derived otherwise). Kept
  * framework-free — assignable to React's `Key` and usable directly in Solid.
@@ -45,18 +27,18 @@ export type Anchor<TStartRow> =
     }>;
 
 /**
- * Per-query options, framework-free. Structurally assignable to the
- * `UseQueryOptions` of both `@rocicorp/zero/react` and `@rocicorp/zero/solid`.
+ * Result returned by query functions: a query plus optional per-query options.
+ *
+ * The query is opaque to the core — `TQuery` is whatever query/request type
+ * the consumer's fetching library uses. The `./react` and `./solid` entry
+ * points instantiate it with a Zero query (see `zero-types.ts`); a custom
+ * wrapper can use any other library's type.
+ *
+ * @typeParam TQuery - The query type consumed by the wrapper's data layer
  */
-export type QueryOptions = {
-  enabled?: boolean | undefined;
-  ttl?: TTL | undefined;
-};
-
-/** Result returned by query functions: a query plus optional per-query options. */
-export type QueryResult<TReturn> = {
-  query: GetQueryReturnType<TReturn>;
-  options?: QueryOptions;
+export type QueryResult<TQuery, TOptions> = {
+  query: TQuery;
+  options?: TOptions;
 };
 
 /**
@@ -78,12 +60,13 @@ export type GetPageQueryOptions<TStartRow> = {
 /**
  * Function that returns a query for fetching a page of rows.
  *
- * @typeParam TRow - The type of row data returned from queries
+ * @typeParam TQuery - The query type consumed by the wrapper's data layer
+ *   (opaque to the core; see {@link QueryResult})
  * @typeParam TStartRow - The type of data needed to anchor pagination
  */
-export type GetPageQuery<TRow, TStartRow> = (
+export type GetPageQuery<TQuery, TOptions, TStartRow> = (
   options: GetPageQueryOptions<TStartRow>,
-) => QueryResult<TRow>;
+) => QueryResult<TQuery, TOptions>;
 
 /**
  * Options passed to {@link GetSingleQuery}.
@@ -98,44 +81,40 @@ export type GetSingleQueryOptions = {
 /**
  * Function that returns a query for fetching a single row by ID.
  *
- * @typeParam TRow - The type of row data returned from queries
+ * @typeParam TQuery - The query type consumed by the wrapper's data layer
+ *   (opaque to the core; see {@link QueryResult})
  */
-export type GetSingleQuery<TRow> = (
+export type GetSingleQuery<TQuery, TOptions> = (
   options: GetSingleQueryOptions,
-) => QueryResult<TRow | undefined>;
+) => QueryResult<TQuery, TOptions>;
 
 /**
- * The query wiring the framework bindings add on top of the core options
- * (the query functions are bound via `@rocicorp/zero/react` or
- * `@rocicorp/zero/solid`).
+ * The query wiring the framework bindings add on top of the core options.
+ * The query types are opaque here — the `./react` and `./solid` entry points
+ * instantiate them with Zero queries (bound via `@rocicorp/zero/react` or
+ * `@rocicorp/zero/solid`); a custom wrapper can use any other library's
+ * query type.
  *
  * @typeParam TRow - The type of row data returned from queries
  * @typeParam TStartRow - The type of data needed to anchor pagination
+ * @typeParam TPageQuery - The query type returned by `getPageQuery`
+ * @typeParam TSingleQuery - The query type returned by `getSingleQuery`
  */
-export type VirtualizerQueryOptions<TRow, TStartRow> = {
+export type VirtualizerQueryOptions<
+  TRow,
+  TStartRow,
+  TPageQuery,
+  TPageOptions,
+  TSingleQuery,
+  TSingleOptions,
+> = {
   /** Function that returns a query for fetching a page of rows */
-  getPageQuery: GetPageQuery<TRow, TStartRow>;
+  getPageQuery: GetPageQuery<TPageQuery, TPageOptions, TStartRow>;
   /** Function that returns a query for fetching a single row by ID */
-  getSingleQuery: GetSingleQuery<TRow>;
+  getSingleQuery: GetSingleQuery<TSingleQuery, TSingleOptions>;
   /** Function to extract the start row data from a full row (for pagination anchoring) */
   toStartRow: (row: TRow) => TStartRow;
 };
-
-/**
- * Return type of a Zero query or query request.
- *
- * @typeParam TReturn - The type of the query return value
- */
-export type GetQueryReturnType<TReturn> = QueryOrQueryRequest<
-  keyof DefaultSchema['tables'] & string,
-  // oxlint-disable-next-line no-explicit-any
-  any, // input
-  // oxlint-disable-next-line no-explicit-any
-  any, // output
-  DefaultSchema,
-  TReturn,
-  DefaultContext
->;
 
 /**
  * A single item to render. Rows are rendered in normal document flow (no
