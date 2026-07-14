@@ -411,9 +411,9 @@ describe('ZeroVirtualizer wrapper contract', () => {
 });
 
 describe('minPageSize', () => {
-  test('defaults the query page size to 100', () => {
+  test('defaults the query page size to 50', () => {
     const v = new ZeroVirtualizer(makeOptions());
-    expect(v.getQueryInputs().pageSize).toBe(100);
+    expect(v.getQueryInputs().pageSize).toBe(50);
   });
 
   test('lowers the floor for tall rows', () => {

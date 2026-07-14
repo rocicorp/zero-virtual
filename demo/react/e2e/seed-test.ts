@@ -24,7 +24,7 @@ export type TestItem = {
 //   created  ASC            → Test Item 011  (created  = BASE−190H, lowest)
 //
 // The 200 items also give the virtualizer enough rows to exercise paging
-// (the min page size in the demo is 100).
+// (the min page size in the demo is 50).
 const NAMED: TestItem[] = [
   {
     id: 'tstitem001',
