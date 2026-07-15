@@ -32,8 +32,9 @@ export function firstRow(el: HTMLElement): HTMLElement | null {
 
 /**
  * The rows' content wrapper: the parent of the first rendered row — the
- * element carrying the `spaceBefore`/`spaceAfter` padding, whose border-box
- * grows and shrinks with the content. Null until rows render.
+ * element that contains the loaded rows (and any spacer elements rendered from
+ * `spaceBefore`/`spaceAfter`), whose border-box grows and shrinks with the
+ * content. Null until rows render.
  */
 export function contentWrapper(el: HTMLElement): HTMLElement | null {
   return firstRow(el)?.parentElement ?? null;
