@@ -557,3 +557,31 @@ describe('persist timing', () => {
     expect(persisted.at(-1)!.scrollTop).toBe(300);
   });
 });
+
+describe('no-op re-anchor does not spin the render loop', () => {
+  test('loaded rows entirely below the viewport at scroll-top stay put (window list under other page content)', () => {
+    // Fully loaded, at rest, anchored at the top.
+    const h = harness({rowCount: 5});
+    h.settle();
+    expect(h.core.getSnapshot().complete).toBe(true);
+
+    // Simulate other page content above the list (e.g. zbugs' issue detail
+    // above the window-scrolled comments): every rendered row now sits below
+    // the viewport, and the page is scrolled to the very top (offset 0).
+    h.wrapper.style.marginTop = '1000px';
+
+    // Each commit runs afterDOMUpdate → #evaluatePaging, which finds no row in
+    // the viewport and re-selects the top anchor. That anchor is already the
+    // current one, so it must be a no-op: before the fix it bumped the version
+    // and notified on every commit, which the React binding turns into an
+    // infinite re-render ("Maximum update depth exceeded").
+    let notifies = 0;
+    const unsub = h.core.subscribe(() => notifies++);
+    h.core.afterDOMUpdate();
+    h.core.afterDOMUpdate();
+    h.core.afterDOMUpdate();
+    unsub();
+
+    expect(notifies).toBe(0);
+  });
+});
