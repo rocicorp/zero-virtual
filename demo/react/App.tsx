@@ -82,11 +82,12 @@ export function App(): React.ReactNode {
           onToggleSortDirection={toggleSortDirection}
         />
         {/* Scrollable viewport. Rows render in normal flow inside a content
-            wrapper whose padding stands in for the unloaded rows above and
-            below (padding, not margin, so it always contributes to the
-            scrollable extent). */}
+            wrapper. `spaceBefore` / `spaceAfter` stand in for the unloaded rows
+            above and below, rendered as spacer elements so scroll anchoring
+            keeps the viewport stable across paging. */}
         <div ref={parentRef} className={styles.viewport}>
-          <div style={{paddingTop: spaceBefore, paddingBottom: spaceAfter}}>
+          <div>
+            <div style={{height: spaceBefore}} />
             {items.map(item => (
               <ItemRow
                 key={item.key}
@@ -96,6 +97,7 @@ export function App(): React.ReactNode {
                 permalinkID={permalinkID}
               />
             ))}
+            <div style={{height: spaceAfter}} />
           </div>
         </div>
       </div>

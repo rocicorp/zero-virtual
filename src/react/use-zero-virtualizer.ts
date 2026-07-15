@@ -33,7 +33,9 @@ export type UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> =
 
 /**
  * Result object returned by the useZeroVirtualizer hook: the loaded rows to
- * render inside a content wrapper padded by `spaceBefore` / `spaceAfter`,
+ * render inside a content wrapper, with `spaceBefore` / `spaceAfter` standing
+ * in for the unloaded rows above and below — rendered as spacer elements (see
+ * {@linkcode VirtualizerResult}),
  * plus load/paging status, the resolved scroll
  * wiring (`options`), and the current scrolling element (`scrollElement`).
  * See {@linkcode VirtualizerResult} for field semantics. The object identity

@@ -86,13 +86,12 @@ export function WindowList(): React.ReactNode {
         />
       </div>
 
-      {/* The rows element doubles as the content wrapper: its padding stands
-          in for the unloaded rows above and below (it isn't the scroll
-          container — the window is — so padding on it is safe). */}
-      <div
-        ref={rowsRef}
-        style={{paddingTop: spaceBefore, paddingBottom: spaceAfter}}
-      >
+      {/* The rows element is the content wrapper. `spaceBefore` / `spaceAfter`
+          stand in for the unloaded rows above and below, rendered as spacer
+          elements so scroll anchoring keeps the viewport stable across
+          paging. */}
+      <div ref={rowsRef}>
+        <div style={{height: spaceBefore}} />
         {items.map(item => (
           <ItemRow
             key={item.key}
@@ -102,6 +101,7 @@ export function WindowList(): React.ReactNode {
             permalinkID={permalinkID}
           />
         ))}
+        <div style={{height: spaceAfter}} />
       </div>
       <DevPanel
         getScrollElement={getScrollElement}
