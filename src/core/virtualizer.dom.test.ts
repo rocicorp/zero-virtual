@@ -585,3 +585,24 @@ describe('no-op re-anchor does not spin the render loop', () => {
     expect(notifies).toBe(0);
   });
 });
+
+describe('below-viewport window at the start of the list', () => {
+  test('scrolling while the loaded rows sit below the viewport does not empty them', () => {
+    // Fully-loaded-from-the-top list, complete and at the start.
+    const h = harness({rowCount: 300});
+    h.settle();
+    expect(h.core.getSnapshot().items.length).toBeGreaterThan(0);
+
+    // Other page content above the list: every loaded row renders below the
+    // viewport (a window-scrolled list under a tall header/detail).
+    h.wrapper.style.marginTop = '1000px';
+
+    // The user scrolls down through that content — offset > 0, but the rows are
+    // still below the viewport. #evaluatePaging must NOT page backward from the
+    // start (there is nothing before row 0; that page is empty and would clear
+    // the list). The loaded top-of-list rows must survive.
+    h.userScroll(150);
+    h.settle();
+    expect(h.core.getSnapshot().items.length).toBeGreaterThan(0);
+  });
+});

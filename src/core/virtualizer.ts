@@ -1404,8 +1404,15 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       const first = firstRow(el);
       if (!first) return;
       if (first.getBoundingClientRect().top >= elBottom) {
-        // The window is below the viewport — the jump went up.
-        if (this.#scrollOffset(el) <= 0) {
+        // The loaded window is entirely below the viewport. Two ways to get
+        // here: we're at the start of the list, which renders below other page
+        // content (a window-scrolled list under a header/detail) and the user
+        // hasn't scrolled down to it yet — there is nothing to page, the rows
+        // are already loaded and the user scrolls into them; or the viewport
+        // jumped up into the padding above a mid-list window, which pages
+        // backward toward the viewport. Paging backward at the start would
+        // anchor before row 0 and load an empty page, emptying the list.
+        if (this.#scrollOffset(el) <= 0 || rows.atStart) {
           this.#setAnchor(TOP_ANCHOR as Anchor<TStartRow>);
         } else {
           updateAnchorForEdge(rows.firstRowIndex, 'backward', 0);
