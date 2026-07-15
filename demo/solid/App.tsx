@@ -85,15 +85,11 @@ export function App() {
           onToggleSortDirection={toggleSortDirection}
         />
         <div ref={parentRef} class={styles.viewport}>
-          {/* Content wrapper: its padding stands in for the unloaded rows
-              above and below (padding, not margin, so it always contributes
-              to the scrollable extent). */}
-          <div
-            style={{
-              'padding-top': `${virtualizer().spaceBefore}px`,
-              'padding-bottom': `${virtualizer().spaceAfter}px`,
-            }}
-          >
+          {/* Content wrapper. `spaceBefore` / `spaceAfter` stand in for the
+              unloaded rows above and below, rendered as spacer elements so
+              scroll anchoring keeps the viewport stable across paging. */}
+          <div>
+            <div style={{height: `${virtualizer().spaceBefore}px`}} />
             {/* Plain <For> is safe here: the binding exposes items as a store
                 reconciled by row key, so a row's VirtualRow instance — and
                 with it the DOM node scroll anchoring measures against —
@@ -108,6 +104,7 @@ export function App() {
                 />
               )}
             </For>
+            <div style={{height: `${virtualizer().spaceAfter}px`}} />
           </div>
         </div>
       </div>

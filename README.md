@@ -169,19 +169,21 @@ export function ItemList() {
     onScrollStateChange,
   });
 
-  // Rows render in normal document flow inside a content wrapper whose
-  // padding stands in for the not-yet-loaded rows above and below (padding
-  // rather than margin so it always contributes to the scrollable extent).
-  // The hook manages `overflow-anchor` on the scroll container per the
-  // anchoring mode.
+  // Rows render in normal document flow inside a content wrapper. The
+  // not-yet-loaded rows above and below are stood in for by spacer elements
+  // sized `spaceBefore` / `spaceAfter`, so scroll anchoring keeps the viewport
+  // stable across paging. The hook manages `overflow-anchor` on the scroll
+  // container per the anchoring mode.
   return (
     <div ref={parentRef} style={{overflow: 'auto', height: '100vh'}}>
-      <div style={{paddingTop: spaceBefore, paddingBottom: spaceAfter}}>
+      <div>
+        <div style={{height: spaceBefore}} />
         {items.map(({index, key, row}) => (
           <div key={key} {...rowAttributes(index, key)}>
             {row ? row.title : 'Loading...'}
           </div>
         ))}
+        <div style={{height: spaceAfter}} />
       </div>
     </div>
   );

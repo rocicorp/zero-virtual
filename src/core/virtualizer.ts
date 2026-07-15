@@ -146,6 +146,12 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
  * actually changed. */
 export type VirtualizerSnapshot<TRow> = {
   items: ReadonlyArray<VirtualRow<TRow>>;
+  /**
+   * Pixel extent of the unloaded rows above (`spaceBefore`) and below
+   * (`spaceAfter`) the loaded window. Render each as a spacer element
+   * (`<div style={{height: spaceBefore}} />`) inside the content wrapper, so
+   * scroll anchoring keeps the viewport stable as paging changes the space.
+   */
   spaceBefore: number;
   spaceAfter: number;
   rowAt: (index: number) => TRow | undefined;

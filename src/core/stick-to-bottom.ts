@@ -36,7 +36,7 @@ export type StickToBottomController = {
  * content grows, which is the whole trick), and snap back to the bottom on
  * growth only while stuck. Growth is detected with two ResizeObservers — one
  * on the rows' content wrapper (anything that changes the scrollable extent:
- * rows added, the space estimates re-rendered as padding, a row streaming in
+ * rows added, the space-estimate spacer elements resized, a row streaming in
  * taller) and one on the scroll container (viewport resizes; the window
  * `resize` event when the document itself scrolls). Both fire post-layout,
  * pre-paint, so the re-pin never flickers. No content change notifications
