@@ -11,7 +11,7 @@
     "seed": "node --env-file=.env seed.ts"
   },
   "dependencies": {
-    "@rocicorp/zero": "1.8.0",
+    "@rocicorp/zero": "1.9.0-canary.10",
     "hono": "^4.12.9",
     "pg": "^8.20.0"
   },
