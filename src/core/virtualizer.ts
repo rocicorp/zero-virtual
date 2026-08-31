@@ -327,6 +327,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #resizeObserver: ResizeObserver | null = null;
   #observedItems: ReadonlyArray<VirtualRow<TRow>> | null = null;
   #programmaticScroll = false;
+  // The last two window placements tried by the padding-recovery branch of
+  // #evaluatePaging, as "side:firstRowIndex" keys. A recovery that lands on
+  // a placement already in here is not converging — see that branch.
+  #paddingRecovery: [string | null, string | null] = [null, null];
   #anchorKey: RowKey | null = null;
   // The reference row's top position in content (document) coordinates, in
   // the settled (hold-free) frame. Content above the row changing size moves
@@ -1403,7 +1407,32 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       // to an arbitrary index).
       const first = firstRow(el);
       if (!first) return;
-      if (first.getBoundingClientRect().top >= elBottom) {
+      const windowBelow = first.getBoundingClientRect().top >= elBottom;
+      // The cascade replaces the window a page at a time and re-checks the
+      // viewport against ESTIMATED extents, and the estimate can leave a
+      // dead band: real rows shorter than the estimate shrink a placement
+      // by up to a page's worth of pixels, so a viewport parked in that
+      // band sits below one placement and above the other. The two then
+      // alternate forever — #setPaging only guards an anchor against its
+      // immediate predecessor, never a two-step cycle — and a React host
+      // kills the tree with "Maximum update depth exceeded". A placement
+      // this recovery already tried means it is not converging: stop
+      // paging and scroll the viewport to the near edge of the rows that
+      // actually exist, which is where the pixels the user aimed for
+      // really are.
+      const placement = `${windowBelow ? 'below' : 'above'}:${rows.firstRowIndex}`;
+      if (this.#paddingRecovery.includes(placement)) {
+        this.#paddingRecovery = [null, null];
+        const rowEls = [...queryRows(el)];
+        const lastEl = rowEls[rowEls.length - 1] ?? first;
+        const delta = windowBelow
+          ? first.getBoundingClientRect().top - elTop
+          : lastEl.getBoundingClientRect().bottom - elBottom;
+        this.#setScrollTop(this.#scrollOffset(el) + delta);
+        return;
+      }
+      this.#paddingRecovery = [this.#paddingRecovery[1], placement];
+      if (windowBelow) {
         // The loaded window is entirely below the viewport. Two ways to get
         // here: we're at the start of the list, which renders below other page
         // content (a window-scrolled list under a header/detail) and the user
@@ -1427,6 +1456,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       }
       return;
     }
+    this.#paddingRecovery = [null, null];
 
     if (rows.atStart && rows.firstRowIndex !== 0) {
       this.#setAnchor(TOP_ANCHOR as Anchor<TStartRow>);

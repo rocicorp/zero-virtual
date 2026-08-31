@@ -606,3 +606,42 @@ describe('below-viewport window at the start of the list', () => {
     expect(h.core.getSnapshot().items.length).toBeGreaterThan(0);
   });
 });
+
+describe('padding recovery when real rows are shorter than the estimate', () => {
+  test('a jump into the estimate dead band settles at the loaded rows instead of oscillating', () => {
+    // Real rows half the estimated size: every placement the recovery
+    // cascade tries occupies half the pixels its indices are priced at, so
+    // consecutive placements do not tile the scroll range. Window 400-499
+    // really spans 8,000-9,000 while window 500-599 starts at its estimated
+    // 10,000 — the band between them belongs to no placement. A jump into
+    // it alternated between the two placements forever — below one, above
+    // the other, and the no-op re-anchor guard never fires because the two
+    // anchors differ — which a React host surfaces as "Maximum update depth
+    // exceeded".
+    //
+    // Manual anchoring, because that is what makes this the ONE undamped
+    // cycle. While a row is visible, a placement shift is compensated —
+    // by #measureAndCompensate here, by the browser's own scroll anchoring
+    // in native mode (which this harness does not emulate) — so the
+    // visible-row paging rules cannot cycle. With the viewport parked in
+    // the padding there is no row to hold in either mode, and nothing
+    // stops the flip.
+    const h = harness({
+      rowCount: 1000,
+      options: {count: 1000, anchoring: 'manual'},
+    });
+    for (let i = 0; i < 1000; i++) h.setRowHeight(`r${i}`, 10);
+    h.settle();
+
+    h.userScroll(9500);
+    h.settle();
+
+    // The recovery noticed the repeated placement and scrolled to the near
+    // edge of the rows that exist instead of re-anchoring again: the
+    // viewport shows real, correctly-labeled rows and paging is quiet.
+    expect(h.visibleIndexes().length).toBeGreaterThan(0);
+    for (const item of h.core.getSnapshot().items) {
+      expect(item.row).toEqual({id: `r${item.index}`});
+    }
+  });
+});
