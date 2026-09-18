@@ -1035,7 +1035,6 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // a number would silently inset by that many *pixels*.
   #scrollPadding(el: HTMLElement): {top: number; bottom: number} {
     const scroller = this.#scroller(el);
-    if (typeof getComputedStyle !== 'function') return {top: 0, bottom: 0};
     const style = getComputedStyle(scroller);
     return {
       top: pixels(style.scrollPaddingTop),
@@ -1046,7 +1045,6 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // The target row's CSS `scroll-margin-top` / `-bottom`, in px: the space it
   // asks to keep around itself when scrolled into view.
   #scrollMargin(target: HTMLElement): {top: number; bottom: number} {
-    if (typeof getComputedStyle !== 'function') return {top: 0, bottom: 0};
     const style = getComputedStyle(target);
     return {
       top: pixels(style.scrollMarginTop),
