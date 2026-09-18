@@ -321,7 +321,9 @@ The result carries a `scrollToItem(id, options?)` for bringing a specific row
 into view — a "jump to item" button, a search hit, a notification:
 
 ```ts
-const virtualizer = useZeroVirtualizer({/* ... */});
+const virtualizer = useZeroVirtualizer({
+  /* ... */
+});
 
 virtualizer.scrollToItem('item-123'); // scrolls the least amount needed
 virtualizer.scrollToItem('item-123', {align: 'center'});
