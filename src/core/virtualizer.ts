@@ -297,11 +297,17 @@ const OWN_SCROLL_STATES = 4;
 
 /**
  * How long after a jump a scroll state the core wrote itself is still treated
- * as an echo rather than a restore (see `#isOwnScrollState`). Outside this
- * window an incoming state is taken at face value, so a back/forward
- * navigation to a position this virtualizer once persisted still restores.
+ * as an echo rather than a restore (see `#isOwnScrollState`).
+ *
+ * The core persists on a debounce and the host stores it and re-renders, so
+ * the position captured just *before* a jump can come back well after it — on
+ * a cold cache the jump's own pages can take seconds to arrive, and the echo
+ * trails them. Long enough to cover that; short enough that a back/forward
+ * navigation, which is a deliberate act seconds later at the earliest, is
+ * taken at face value. Only states this virtualizer wrote are affected either
+ * way.
  */
-const JUMP_ECHO_WINDOW_MS = 1000;
+const JUMP_ECHO_WINDOW_MS = 4000;
 
 /**
  * How many commits in a row a permalink target has to be reported missing
@@ -372,6 +378,7 @@ const EMPTY_ROWS: RowsSnapshot<unknown> = {
   firstRowIndex: 0,
   permalinkNotFound: false,
   permalinkRow: undefined,
+  permalinkID: null,
   probeRow: undefined,
   probeComplete: false,
 };
@@ -752,11 +759,16 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       this.#pendingScroll = request;
       return;
     }
-    // A newer request supersedes whatever the last one was still doing. If
-    // that one had already re-anchored, the window on screen is its
-    // half-loaded one rather than a list worth protecting, so this request
-    // skips the lookup and re-anchors straight away.
-    const jumping = this.#pendingScroll !== null || this.#probe !== null;
+    // A newer request supersedes whatever the last one was still doing. What
+    // matters for the lookup below is not whether a jump is in flight but
+    // whether the window on screen is one: a previous jump that has already
+    // re-anchored left a half-loaded permalink window, which is not a list
+    // worth protecting, so this request re-anchors straight away. A jump that
+    // is still looking its own target up hasn't touched the window yet, so
+    // this one goes through the lookup as usual — and replaces that probe.
+    const onJumpWindow =
+      this.#paging.queryAnchor.anchor.kind === 'permalink' &&
+      this.#isListContextCurrent();
     this.#pendingScroll = null;
     // Loading the target's page means re-anchoring on it, which empties the
     // loaded window until the new one arrives — so when there is a list on
@@ -765,7 +777,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // at all. With no rows loaded there is nothing to protect, so skip
     // straight to the anchor (this is the deep-link path: one lookup plus the
     // two page queries, not three plus a discarded first page).
-    if (!jumping && !this.#rows.rowsEmpty && this.#isListContextCurrent()) {
+    if (
+      !onJumpWindow &&
+      !this.#rows.rowsEmpty &&
+      this.#isListContextCurrent()
+    ) {
       this.#probe = request;
       this.#version++;
       return;
@@ -825,14 +841,24 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // lookup resolved it to, or — for a permalink anchor, whose own lookup
   // answers separately — by that row's key.
   #findTarget(el: HTMLElement, request: PendingScroll): HTMLElement | null {
-    const permalinkRow = this.#rows.permalinkRow;
     return (
       findRow(el, request.id) ??
-      (request.rowKey !== undefined ? findRow(el, request.rowKey) : null) ??
-      (permalinkRow !== undefined
-        ? findRow(el, this.#options.getRowKey(permalinkRow))
-        : null)
+      (request.rowKey !== undefined ? findRow(el, request.rowKey) : null)
     );
+  }
+
+  /**
+   * The key of the row the current permalink lookup resolved, when it can be
+   * trusted for `id`: the anchor is on that id, and its three queries have all
+   * finished — which rules out the window where the snapshot still carries the
+   * *previous* target's row, whose key would scroll to the wrong row and
+   * retire the request as landed.
+   */
+  #resolvedRowKey(id: string): RowKey | undefined {
+    const {permalinkRow, permalinkID, complete} = this.#rows;
+    return permalinkRow !== undefined && permalinkID === id && complete
+      ? this.#options.getRowKey(permalinkRow)
+      : undefined;
   }
 
   #afterDOMUpdate(): void {
@@ -1638,10 +1664,15 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // deleted / mistyped id on a cold load); every jump made over a list that
   // was already on screen is probed first and never gets this far.
   #recoverFromMissingPermalink(): void {
+    const {anchor} = this.#paging.queryAnchor;
     if (
       !this.#rows.permalinkNotFound ||
       !this.#isListContextCurrent() ||
-      this.#paging.queryAnchor.anchor.kind !== 'permalink'
+      anchor.kind !== 'permalink' ||
+      // The verdict is about whichever id the lookup ran for. Right after a
+      // re-anchor that is still the previous one, and giving up on the list
+      // for it would throw away the jump that is on its way in.
+      this.#rows.permalinkID !== anchor.id
     ) {
       this.#permalinkMissingCommits = 0;
       return;
@@ -1736,14 +1767,24 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // apps routinely deep-link by a human-friendly id (a short id / slug) while
     // keying rows by something else (a uuid). See #findTarget for the keys
     // this tries.
-    const target = this.#findTarget(el, pending);
+    let target = this.#findTarget(el, pending);
+    if (target === null && pending.rowKey === undefined) {
+      // Rows are keyed by `getRowKey`, which need not equal the id: adopt the
+      // key the lookup resolved, once it is safe to (see #resolvedRowKey).
+      const rowKey = this.#resolvedRowKey(pending.id);
+      if (rowKey !== undefined) {
+        this.#pendingScroll = {...pending, rowKey};
+        target = findRow(el, rowKey);
+      }
+    }
     if (!target) {
       // Not rendered yet — keep the request open and retry once it loads,
       // unless the row genuinely doesn't exist, or the list has finished
       // loading with the query no longer hunting for it. Leaving the request
       // pending forever would stand paging and anchoring down for good.
       if (
-        this.#rows.permalinkNotFound ||
+        (this.#rows.permalinkNotFound &&
+          this.#rows.permalinkID === pending.id) ||
         (this.#rows.complete && !this.#isTargeting(pending.id))
       ) {
         this.#pendingScroll = null;

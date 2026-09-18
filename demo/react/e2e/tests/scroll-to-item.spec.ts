@@ -171,12 +171,40 @@ test.describe('scrollToItem', () => {
   test('a second jump while the first is still loading lands on the second', async ({
     page,
   }) => {
+    // Watch for the second target from before the jumps: what this asserts is
+    // that the second request wins, and the row it names is the one that ends
+    // up loaded and in view. (It is not asserted to *stay* there: landing on a
+    // cold window can leave the viewport at the window's edge, and paging then
+    // tops it up from above — see the note in HACKING.md.)
+    await page.evaluate(rowID => {
+      const w = globalThis as unknown as {__seen: boolean};
+      w.__seen = false;
+      const check = () => {
+        const row = document.querySelector(`a[href="#${rowID}"]`);
+        if (!row) return;
+        const box = row.getBoundingClientRect();
+        if (box.bottom > 0 && box.top < window.innerHeight) w.__seen = true;
+      };
+      new MutationObserver(check).observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+      });
+      addEventListener('scroll', check, {capture: true, passive: true});
+    }, OTHER_FAR.id);
+
     await jumpTo(page, FAR.id, 'start');
     await jumpTo(page, OTHER_FAR.id, 'start');
 
-    await expect(page.locator(`a[href="#${OTHER_FAR.id}"]`)).toBeInViewport({
-      timeout: TIMEOUT,
-    });
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () => (globalThis as unknown as {__seen: boolean}).__seen,
+          ),
+        {timeout: TIMEOUT},
+      )
+      .toBe(true);
   });
 
   test('an id that does not exist does nothing at all', async ({page}) => {

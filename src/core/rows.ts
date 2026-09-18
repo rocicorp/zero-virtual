@@ -56,6 +56,13 @@ export type RowsSnapshot<TRow> = {
    * permalink id need not equal the row key.
    */
   permalinkRow: TRow | undefined;
+  /**
+   * The id {@linkcode permalinkRow} and {@linkcode permalinkNotFound} are
+   * about, or null under a page anchor. A snapshot can lag a re-anchor by a
+   * commit or two, so a reader has to check this before trusting either of
+   * them for a particular id — they may still be answering the previous one.
+   */
+  permalinkID: string | null;
 };
 
 /** The raw results of the (up to) four staged queries. */
@@ -264,6 +271,7 @@ export function assembleRows<TRow, TStartRow>(
         : anchorIndex - rowsBeforeSize,
       permalinkNotFound,
       permalinkRow: singleRow,
+      permalinkID: anchor.id,
       ...probe,
     };
   }
@@ -281,6 +289,7 @@ export function assembleRows<TRow, TStartRow>(
       firstRowIndex: anchorIndex,
       permalinkNotFound,
       permalinkRow: undefined,
+      permalinkID: null,
       ...probe,
     };
   }
@@ -298,6 +307,7 @@ export function assembleRows<TRow, TStartRow>(
     firstRowIndex: anchorIndex - paginatedRowsLength,
     permalinkNotFound,
     permalinkRow: undefined,
+    permalinkID: null,
     ...probe,
   };
 }
