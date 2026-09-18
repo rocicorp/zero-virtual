@@ -813,6 +813,29 @@ describe('scrollToItem', () => {
     expect(h.core.getSnapshot().items[0].index).toBe(56);
   });
 
+  test('a loaded row keyed differently from its id is scrolled to, not re-fetched', () => {
+    // Address rows by a short id while keying them by something else. r50 is
+    // already loaded — under `key-r50`, which the id alone can't find — so the
+    // lookup that confirms the id exists also says which row it is, and the
+    // jump scrolls to it instead of throwing the window away to re-fetch it.
+    const h = harness({
+      rowCount: 500,
+      options: {anchoring: 'manual', getRowKey: row => `key-${row.id}`},
+    });
+    h.settle();
+
+    h.core.scrollToItem('r50', {align: 'start'});
+    const anchorKinds: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      h.tick();
+      anchorKinds.push(h.core.getQueryInputs().anchor.kind);
+    }
+
+    expect(h.rowTop('key-r50')).toBe(0);
+    // Never re-anchored: the window that was already on screen served it.
+    expect(anchorKinds).not.toContain('permalink');
+  });
+
   test('a repeat jump to a row keyed differently from its id still lands', () => {
     // Deep-link by a short id while keying rows by something else: `findRow`
     // can't see the target under the id, so a repeat call lands on the "the

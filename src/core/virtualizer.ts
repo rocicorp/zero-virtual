@@ -93,6 +93,13 @@ type PendingScroll = {
   readonly id: string;
   readonly align: ScrollAlignment;
   readonly source: 'option' | 'imperative';
+  /**
+   * The DOM key of the row the id resolved to, once a lookup has answered.
+   * Apps routinely address rows by a short id or slug while keying them by
+   * something else (a uuid), so this is what actually finds the row in the
+   * DOM — `id` alone would miss it.
+   */
+  readonly rowKey?: RowKey | undefined;
 };
 
 /**
@@ -795,16 +802,37 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       return;
     }
     this.#probe = null;
-    // The row exists. It may even have rendered while we were looking it up
-    // (paging loaded its page meanwhile) — then just scroll. Otherwise
-    // re-anchor: going back through #startOrScroll would only probe again.
+    // The row exists, and the lookup told us which row it is — so carry its
+    // DOM key with the request from here on, for the id-isn't-the-key case.
+    const request: PendingScroll = {
+      ...probe,
+      rowKey: this.#options.getRowKey(this.#rows.probeRow),
+    };
+    // It may even be rendered already — the window it belongs to was loaded
+    // while we were looking it up, or (keyed by something other than the id)
+    // it was there all along. Then just scroll: re-anchoring would throw the
+    // loaded window away to fetch rows that are already on screen.
     const el = this.#el;
-    if (el !== null && findRow(el, probe.id) !== null) {
-      this.#pendingScroll = probe;
+    if (el !== null && this.#findTarget(el, request) !== null) {
+      this.#pendingScroll = request;
       this.#retryPendingScroll();
       return;
     }
-    this.#anchorOn(probe);
+    this.#anchorOn(request);
+  }
+
+  // The request's row in the DOM: by the id it was made with, by the key the
+  // lookup resolved it to, or — for a permalink anchor, whose own lookup
+  // answers separately — by that row's key.
+  #findTarget(el: HTMLElement, request: PendingScroll): HTMLElement | null {
+    const permalinkRow = this.#rows.permalinkRow;
+    return (
+      findRow(el, request.id) ??
+      (request.rowKey !== undefined ? findRow(el, request.rowKey) : null) ??
+      (permalinkRow !== undefined
+        ? findRow(el, this.#options.getRowKey(permalinkRow))
+        : null)
+    );
   }
 
   #afterDOMUpdate(): void {
@@ -1706,15 +1734,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     if (!el) return;
     // The DOM row is keyed by `getRowKey`, which need not equal the target id:
     // apps routinely deep-link by a human-friendly id (a short id / slug) while
-    // keying rows by something else (a uuid). Try the id directly first (the
-    // common case, and the only option for a row already loaded under a
-    // non-permalink anchor), then the resolved target row's key.
-    const targetRow = this.#rows.permalinkRow;
-    const target =
-      findRow(el, pending.id) ??
-      (targetRow !== undefined
-        ? findRow(el, this.#options.getRowKey(targetRow))
-        : null);
+    // keying rows by something else (a uuid). See #findTarget for the keys
+    // this tries.
+    const target = this.#findTarget(el, pending);
     if (!target) {
       // Not rendered yet — keep the request open and retry once it loads,
       // unless the row genuinely doesn't exist, or the list has finished

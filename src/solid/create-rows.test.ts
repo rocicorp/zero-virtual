@@ -67,8 +67,8 @@ describe('createRows (solid staging over the core builders)', () => {
 
     expect(slots).toHaveLength(4);
     // Slot order follows the staging order: single (1), probe (4), main (2),
-    // after (3) — the probe is staged early because it can be the slot
-    // carrying the lookup that 2 and 3 depend on.
+    // after (3). Queries 2 and 3 wait on query 1's result; the probe depends
+    // on nothing and nothing depends on it, so its position is free.
     // Slot 1 (permalink single-row) stays null for a forward anchor, as does
     // the probe slot with no probeID.
     expect(slots[0].querySignal()).toBeNull();
