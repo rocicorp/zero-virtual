@@ -862,6 +862,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   #afterDOMUpdate(): void {
+    // Whether a jump was in flight when this commit began — the commit it
+    // lands on retires it before the echo window is refreshed below.
+    const wasJumping = this.#pendingScroll !== null || this.#probe !== null;
+
     // The settle clock restarts when the list context changes (new sort /
     // filter = a fresh, un-settled list).
     if (this.#options.listContextParams !== this.#lastSettleContext) {
@@ -892,8 +896,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
     // The echo window covers the jump plus a moment after it lands, by which
     // time the host has been handed — and handed back — the position it ended
-    // on.
-    if (this.#pendingScroll !== null || this.#probe !== null) {
+    // on. `wasJumping` is what makes the landing commit count: the request is
+    // retired earlier in this pass, and a jump whose pages took longer than
+    // the window to arrive would otherwise land with it already expired.
+    if (wasJumping || this.#pendingScroll !== null || this.#probe !== null) {
       this.#jumpEchoUntil = Date.now() + JUMP_ECHO_WINDOW_MS;
     }
   }

@@ -569,6 +569,46 @@ describe('permalink scroll', () => {
 });
 
 describe('scroll-state restore of a position we wrote ourselves', () => {
+  test('a jump that took a long time to load still outranks the echo', () => {
+    // The echo window is refreshed while a jump is in flight — but the commit
+    // it lands on retires the request first, so that one has to count too.
+    // Otherwise a jump whose pages took longer than the window to arrive (a
+    // cold cache) lands with the window already expired, and the pre-jump
+    // position the host is still holding comes back as a restore and undoes
+    // it.
+    const persisted: Array<ScrollHistoryState<TestRow>> = [];
+    const h = harness({
+      rowCount: 500,
+      options: {
+        anchoring: 'manual',
+        onScrollStateChange: s =>
+          persisted.push(s as ScrollHistoryState<TestRow>),
+      },
+    });
+    h.settle();
+    h.userScroll(400);
+    h.scroller.dispatchEvent(new Event('scrollend'));
+    const preJump = persisted.at(-1)!;
+
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.tick(); // the lookup answers and paging re-anchors
+
+    // …and then the pages take their time.
+    const realNow = Date.now;
+    Date.now = () => realNow() + 60_000;
+    try {
+      h.tick(); // they arrive: the jump lands, and the request is retired here
+
+      // The host hands back the position from before the jump.
+      h.core.setOptions({...h.coreOptions, scrollState: {...preJump}});
+      h.tick();
+    } finally {
+      Date.now = realNow;
+    }
+
+    expect(h.rowTop('r400')).toBe(0);
+  });
+
   test('a later navigation back to it still restores', () => {
     // The core ignores its own position coming straight back to it (the host
     // echoes what was just persisted). That must not extend to a real
