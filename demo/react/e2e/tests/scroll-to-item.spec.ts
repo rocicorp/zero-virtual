@@ -225,6 +225,44 @@ test.describe('scrollToItem', () => {
   });
 });
 
+test.describe('window scrolling', () => {
+  test('lands the row below the sticky header, not under it', async ({
+    page,
+  }) => {
+    // The window-scrolled demo pins its header and declares the covered strip
+    // with `scroll-padding-top`. A top-aligned jump has to respect that: the
+    // row lands at the header's bottom edge, and is the first row you can
+    // actually see. Without it the row lands at window top — behind the
+    // header — and the list reads as scrolled one row too far.
+    await page.goto('/?scroller=window');
+    await expect(page.locator(`a[href="#${ALPHA.id}"]`)).toBeVisible({
+      timeout: TIMEOUT,
+    });
+
+    await page.getByLabel('scrollToItem align').selectOption('start');
+    await page.getByLabel('scrollToItem id').fill(FAR.id);
+    await page.getByRole('button', {name: 'Jump'}).click();
+    await expect(page.locator(`a[href="#${FAR.id}"]`)).toBeInViewport({
+      timeout: TIMEOUT,
+    });
+
+    await expect(async () => {
+      const landing = await page.evaluate(rowID => {
+        const bar = document.querySelector('[class*="stickyBar"]')!;
+        const row = document.querySelector(`a[href="#${rowID}"]`);
+        return row
+          ? Math.round(
+              row.getBoundingClientRect().top -
+                bar.getBoundingClientRect().bottom,
+            )
+          : null;
+      }, FAR.id);
+      expect(landing).not.toBeNull();
+      expect(Math.abs(landing!)).toBeLessThan(4);
+    }).toPass({timeout: TIMEOUT});
+  });
+});
+
 test.describe('permalink to an id that does not exist', () => {
   test('leaves a list that is already on screen alone', async ({page}) => {
     await gotoHomeAndWaitForRows(page, TIMEOUT);

@@ -731,6 +731,19 @@ describe('scrollToItem', () => {
     });
   });
 
+  test('aligns below the container\'s scroll-padding (a sticky header)', () => {
+    const h = harness({rowCount: 500});
+    h.settle();
+    // A sticky header covering the top 60px of the scrollport, declared the
+    // way `scrollIntoView` reads it.
+    h.scroller.style.scrollPaddingTop = '60px';
+
+    h.core.scrollToItem('r50', {align: 'start'});
+
+    // Top-aligned means the top of what can actually be seen.
+    expect(h.rowTop('r50')).toBe(60);
+  });
+
   test('a clamped jump still releases the request, so paging keeps working', () => {
     const h = harness({rowCount: 500});
     h.settle();

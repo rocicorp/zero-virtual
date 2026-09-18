@@ -998,6 +998,18 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     return this.#scroller(el).scrollTop;
   }
 
+  // The scroll container's CSS `scroll-padding-top` / `-bottom`, in px. Any
+  // other value (`auto`, a percentage the container can't resolve) reads as 0.
+  #scrollPadding(el: HTMLElement): {top: number; bottom: number} {
+    const scroller = this.#scroller(el);
+    if (typeof getComputedStyle !== 'function') return {top: 0, bottom: 0};
+    const style = getComputedStyle(scroller);
+    return {
+      top: Number.parseFloat(style.scrollPaddingTop) || 0,
+      bottom: Number.parseFloat(style.scrollPaddingBottom) || 0,
+    };
+  }
+
   #viewportRect(el: HTMLElement): ScrollRect {
     if (this.#scrollRect.width > 0 || this.#scrollRect.height > 0) {
       return this.#scrollRect;
@@ -1550,8 +1562,14 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // scroll offset. The container clamps the resulting write, so a row near
   // either end of the list lands as close to the requested alignment as it can.
   #alignDelta(el: HTMLElement, rect: DOMRect, align: ScrollAlignment): number {
-    const top = this.#viewportTop(el);
-    const bottom = top + this.#viewportRect(el).height;
+    // The scrollport, inset by the container's CSS `scroll-padding` — the
+    // standard way to say "this strip is covered" (a sticky header over a
+    // window-scrolled list, most often). Native `scrollIntoView` honours it,
+    // and a jump that didn't would land the row underneath the header.
+    const {top: padTop, bottom: padBottom} = this.#scrollPadding(el);
+    const top = this.#viewportTop(el) + padTop;
+    const bottom =
+      this.#viewportTop(el) + this.#viewportRect(el).height - padBottom;
     switch (align) {
       case 'start':
         return rect.top - top;

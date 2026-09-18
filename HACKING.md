@@ -56,6 +56,9 @@ field falls back to the hash when left empty.)
   the top.
 - After a jump that clamps (e.g. `center` on the first row), scrolling should
   still page normally — a stuck request would stand paging down.
+- Switch the container to `Window scroll` and jump with `start`: the row must
+  land just below the sticky header, not behind it (the demo keeps
+  `scroll-padding-top` on the document in sync with the header's height).
 
 ## Releasing
 
