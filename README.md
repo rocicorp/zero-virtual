@@ -346,12 +346,15 @@ scrolls the minimum needed to bring the row into view and does nothing when it
 is already fully visible, or `'start'` / `'center'` / `'end'` to place it at the
 top, middle or bottom. Every alignment is clamped by the scroll container.
 
-Alignment is measured against the part of the scroll container you can
-actually see: the row lands below anything the container's CSS
-`scroll-padding-top` declares as covered (a sticky header over a
-window-scrolled list, typically), exactly as native `scrollIntoView` does. See
-[demo/react/WindowList.tsx](demo/react/WindowList.tsx) for one way to keep that
-in sync with the header's height.
+Alignment follows the same contract as native `scrollIntoView`, from both
+sides: the scrollport is inset by the scroll container's CSS `scroll-padding`
+(how a sticky header is normally declared — "this strip of me is covered"), and
+the row is outset by its own `scroll-margin` ("keep this much space around
+me"). Either keeps a top-aligned row out from under a sticky header; the
+container-side one is usually what you want, since it is a single declaration
+rather than one per row. See
+[demo/react/WindowList.tsx](demo/react/WindowList.tsx) for one way to keep it in
+sync with the header's height.
 
 Unlike `permalinkID` — which is declarative and edge-triggered, so the same id
 twice does nothing — `scrollToItem` always scrolls. There is no

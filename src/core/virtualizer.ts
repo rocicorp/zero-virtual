@@ -1043,6 +1043,17 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     };
   }
 
+  // The target row's CSS `scroll-margin-top` / `-bottom`, in px: the space it
+  // asks to keep around itself when scrolled into view.
+  #scrollMargin(target: HTMLElement): {top: number; bottom: number} {
+    if (typeof getComputedStyle !== 'function') return {top: 0, bottom: 0};
+    const style = getComputedStyle(target);
+    return {
+      top: pixels(style.scrollMarginTop),
+      bottom: pixels(style.scrollMarginBottom),
+    };
+  }
+
   #viewportRect(el: HTMLElement): ScrollRect {
     if (this.#scrollRect.width > 0 || this.#scrollRect.height > 0) {
       return this.#scrollRect;
@@ -1600,27 +1611,42 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // Where the target row should end up, as a delta to add to the current
   // scroll offset. The container clamps the resulting write, so a row near
   // either end of the list lands as close to the requested alignment as it can.
-  #alignDelta(el: HTMLElement, rect: DOMRect, align: ScrollAlignment): number {
-    // The scrollport, inset by the container's CSS `scroll-padding` — the
-    // standard way to say "this strip is covered" (a sticky header over a
-    // window-scrolled list, most often). Native `scrollIntoView` honours it,
-    // and a jump that didn't would land the row underneath the header.
+  #alignDelta(
+    el: HTMLElement,
+    target: HTMLElement,
+    align: ScrollAlignment,
+  ): number {
+    // Both halves of the platform's scroll-into-view contract, which
+    // `scrollIntoView` reads and a jump has to match:
+    //
+    // - the scrollport, inset by the *container's* `scroll-padding` — "this
+    //   strip of me is covered", how a sticky header is normally declared;
+    // - the target, outset by its own `scroll-margin` — "keep this much space
+    //   around me", the per-row way to say the same thing.
     const {top: padTop, bottom: padBottom} = this.#scrollPadding(el);
     const top = this.#viewportTop(el) + padTop;
     const bottom =
       this.#viewportTop(el) + this.#viewportRect(el).height - padBottom;
+
+    const margin = this.#scrollMargin(target);
+    const box = target.getBoundingClientRect();
+    const rectTop = box.top - margin.top;
+    const rectBottom = box.bottom + margin.bottom;
+
     switch (align) {
       case 'start':
-        return rect.top - top;
+        return rectTop - top;
       case 'end':
-        return rect.bottom - bottom;
+        return rectBottom - bottom;
       case 'center':
-        return (rect.top + rect.bottom) / 2 - (top + bottom) / 2;
+        return (rectTop + rectBottom) / 2 - (top + bottom) / 2;
       case 'auto':
         // A row taller than the viewport can never be fully visible; top-align
         // it, as `scrollIntoView({block: 'nearest'})` does.
-        if (rect.height > bottom - top || rect.top < top) return rect.top - top;
-        if (rect.bottom > bottom) return rect.bottom - bottom;
+        if (rectBottom - rectTop > bottom - top || rectTop < top) {
+          return rectTop - top;
+        }
+        if (rectBottom > bottom) return rectBottom - bottom;
         return 0;
       default:
         unreachable(align);
@@ -1674,11 +1700,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // to the real scroll offset, not a shifted layout.
     this.#flushHold();
     const before = this.#scrollOffset(el);
-    const delta = this.#alignDelta(
-      el,
-      target.getBoundingClientRect(),
-      pending.align,
-    );
+    const delta = this.#alignDelta(el, target, pending.align);
     if (Math.abs(delta) <= 1) {
       this.#pendingScroll = null; // in place
       return;

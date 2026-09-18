@@ -281,6 +281,13 @@ function createHarness({
     deliverScroll,
     visibleIndexes,
     setRowHeight: (key: string, px: number) => heights.set(key, px),
+    rowElement: (key: string) => {
+      const el = wrapper.querySelector<HTMLElement>(
+        `[${VROW_KEY_ATTR}="${key}"]`,
+      );
+      if (!el) throw new Error(`row ${key} not rendered`);
+      return el;
+    },
     rowTop: (key: string) => {
       const el = wrapper.querySelector(`[${VROW_KEY_ATTR}="${key}"]`);
       if (!el) throw new Error(`row ${key} not rendered`);
@@ -775,6 +782,18 @@ describe('scrollToItem', () => {
 
     // Top-aligned means the top of what can actually be seen.
     expect(h.rowTop('r50')).toBe(60);
+  });
+
+  test("keeps the space the target row's scroll-margin asks for", () => {
+    const h = harness({rowCount: 500});
+    h.settle();
+    // The per-row half of the same contract: the row asks for 30px above it
+    // rather than the container declaring the strip covered.
+    h.rowElement('r50').style.scrollMarginTop = '30px';
+
+    h.core.scrollToItem('r50', {align: 'start'});
+
+    expect(h.rowTop('r50')).toBe(30);
   });
 
   test('a clamped jump still releases the request, so paging keeps working', () => {
