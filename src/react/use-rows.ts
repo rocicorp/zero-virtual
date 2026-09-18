@@ -15,9 +15,10 @@ import type {GetPageQuery, GetSingleQuery} from '../zero-types.ts';
 /**
  * Internal hook that binds the virtualizer's staged queries to Zero's React
  * bindings. All windowing math lives in the framework-free core
- * ({@linkcode assembleRows}); this hook owns only the query staging — three
+ * ({@linkcode assembleRows}); this hook owns only the query staging — four
  * `useQuery` slots, called unconditionally in the same order every render
- * (queries 2 and 3 depend on query 1's result for permalink anchors).
+ * (queries 2 and 3 depend on query 1's result for permalink anchors; query 4,
+ * the id probe, is independent of all of them).
  */
 export function useRows<TRow, TStartRow>({
   pageSize,
