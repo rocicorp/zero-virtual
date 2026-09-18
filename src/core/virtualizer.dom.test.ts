@@ -74,6 +74,14 @@ function createHarness({
     },
   });
 
+  // The geometry a real scroll container reports, kept consistent with the
+  // clamping above: the core reads these to tell a clamped write of its own
+  // from the user scrolling somewhere else.
+  Object.defineProperty(scroller, 'scrollHeight', {
+    get: () => contentHeight(),
+  });
+  Object.defineProperty(scroller, 'clientHeight', {get: () => viewportHeight});
+
   const rect = (top: number, height: number): DOMRect =>
     ({
       top,
@@ -105,7 +113,7 @@ function createHarness({
   // The injected observers: rect reports immediately (like a ResizeObserver's
   // initial measurement); the offset callback is delivered by deliverScroll.
   let offsetCb: ((offset: number) => void) | null = null;
-  const core = new ZeroVirtualizer<unknown, TestRow, TestRow>({
+  const coreOptions: VirtualizerOptions<unknown, TestRow, TestRow> = {
     estimateSize: () => rowHeight,
     getRowKey: row => row.id,
     listContextParams: 'ctx',
@@ -124,7 +132,8 @@ function createHarness({
       };
     },
     ...options,
-  });
+  };
+  const core = new ZeroVirtualizer<unknown, TestRow, TestRow>(coreOptions);
 
   const deliverScroll = () => {
     if (scrollPending) {
@@ -153,9 +162,18 @@ function createHarness({
 
   const answerQueries = (inputs: RowsQueryInputs<TestRow>) => {
     const anchor: Anchor<TestRow> = inputs.anchor;
+    // Stage 4 — the existence check a jump runs before it re-anchors. Its own
+    // slot, so it answers under any anchor.
+    const probe = {
+      probeRow: inputs.probeID
+        ? data.find(r => r.id === inputs.probeID)
+        : undefined,
+      probeComplete: !!inputs.probeID,
+    };
     if (anchor.kind === 'permalink') {
       const singleRow = data.find(r => r.id === anchor.id);
       return assembleRows<TestRow, TestRow>(inputs, {
+        ...probe,
         singleRow,
         singleComplete: true,
         mainRows: singleRow
@@ -169,6 +187,7 @@ function createHarness({
       });
     }
     return assembleRows<TestRow, TestRow>(inputs, {
+      ...probe,
       singleRow: undefined,
       singleComplete: false,
       mainRows: page(anchor.startRow ?? null, anchor.kind, inputs.pageSize + 1),
@@ -221,11 +240,18 @@ function createHarness({
     core.afterDOMUpdate();
   };
 
+  // Settled = the queries stopped changing: the anchor holds still and no
+  // id lookup (`probeID`) is in flight.
+  const queryKey = () => {
+    const {anchor, probeID} = core.getQueryInputs();
+    return JSON.stringify({anchor, probeID});
+  };
+
   const settle = (maxTicks = 20) => {
     for (let i = 0; i < maxTicks; i++) {
-      const before = JSON.stringify(core.getQueryInputs().anchor);
+      const before = queryKey();
       tick();
-      if (JSON.stringify(core.getQueryInputs().anchor) === before) return;
+      if (queryKey() === before) return;
     }
     throw new Error('paging did not settle');
   };
@@ -245,6 +271,7 @@ function createHarness({
 
   return {
     core,
+    coreOptions,
     scroller,
     wrapper,
     tick,
@@ -604,5 +631,229 @@ describe('below-viewport window at the start of the list', () => {
     h.userScroll(150);
     h.settle();
     expect(h.core.getSnapshot().items.length).toBeGreaterThan(0);
+  });
+});
+
+describe('scrollToItem', () => {
+  test('a loaded row scrolls immediately, without re-anchoring', () => {
+    const h = harness({rowCount: 500});
+    h.settle();
+    const anchorBefore = h.core.getQueryInputs().anchor;
+
+    // r50 is loaded (window 0-99) but below the viewport (rows 0-19).
+    h.core.scrollToItem('r50', {align: 'start'});
+
+    expect(h.rowTop('r50')).toBe(0);
+    // No re-query: the row was already in the DOM.
+    expect(h.core.getQueryInputs().anchor).toEqual(anchorBefore);
+  });
+
+  test('an unloaded row re-anchors and the scroll lands once its page renders', () => {
+    // Manual anchoring: the permalink window's coordinate space is relabeled
+    // on the commit after the jump lands (phantom space appears above the
+    // loaded window), and compensating for that relabel is the anchoring's
+    // job. Under `native` the browser does it — which happy-dom does not
+    // emulate, so the row would end up one placeholder row low here.
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+
+    // r400 is far outside the loaded window, so the target's page has to load
+    // first; the scroll lands on a later commit.
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.settle();
+
+    expect(h.rowTop('r400')).toBe(0);
+  });
+
+  test('is level-triggered: the same id twice scrolls twice', () => {
+    const h = harness({rowCount: 500});
+    h.settle();
+
+    h.core.scrollToItem('r50', {align: 'start'});
+    expect(h.rowTop('r50')).toBe(0);
+
+    h.userScroll(0);
+    h.tick();
+    expect(h.rowTop('r50')).toBe(1000);
+
+    h.core.scrollToItem('r50', {align: 'start'});
+    expect(h.rowTop('r50')).toBe(0);
+  });
+
+  describe('align', () => {
+    test('defaults to auto: a row below the viewport scrolls just into view', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+
+      h.core.scrollToItem('r50');
+
+      // 400px viewport, 20px row: the row's bottom at the viewport's bottom.
+      expect(h.rowTop('r50')).toBe(380);
+    });
+
+    test('auto leaves an already-visible row where it is', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+      h.userScroll(500); // rows 25-44 visible
+      h.settle();
+      const before = h.scroller.scrollTop;
+
+      h.core.scrollToItem('r30', {align: 'auto'});
+
+      expect(h.scroller.scrollTop).toBe(before);
+    });
+
+    test('start puts the row at the top of the viewport', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+
+      h.core.scrollToItem('r50', {align: 'start'});
+
+      expect(h.rowTop('r50')).toBe(0);
+    });
+
+    test('center puts the row in the middle of the viewport', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+
+      h.core.scrollToItem('r50', {align: 'center'});
+
+      expect(h.rowTop('r50')).toBe(190);
+    });
+
+    test('end puts the row at the bottom of the viewport', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+
+      h.core.scrollToItem('r50', {align: 'end'});
+
+      expect(h.rowTop('r50')).toBe(380);
+    });
+  });
+
+  test('a clamped jump still releases the request, so paging keeps working', () => {
+    const h = harness({rowCount: 500});
+    h.settle();
+
+    // Centering a row at the very start of the list clamps at scrollTop 0, so
+    // the requested alignment is never reached. The request must still be
+    // released — a pending one stands down both paging and anchoring.
+    h.core.scrollToItem('r1', {align: 'center'});
+    h.settle();
+    expect(h.scroller.scrollTop).toBe(0);
+
+    // Paging still advances the window when the user scrolls near its end.
+    h.userScroll(1500);
+    h.settle();
+    expect(h.core.getSnapshot().items[0].index).toBe(56);
+  });
+
+  test('a second jump supersedes one that is still loading', () => {
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.core.scrollToItem('r200', {align: 'start'});
+    h.settle();
+
+    expect(h.rowTop('r200')).toBe(0);
+  });
+
+  describe('an id that does not exist', () => {
+    test('does nothing: the list and the scroll position are left alone', () => {
+      const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+      h.settle();
+      h.userScroll(500);
+      h.settle();
+      const itemsBefore = h.core.getSnapshot().items.length;
+      const firstBefore = h.core.getSnapshot().items[0].index;
+      const topBefore = h.rowTop('r30');
+      const scrollBefore = h.scroller.scrollTop;
+
+      // Before the existence check this re-anchored on the id and emptied the
+      // whole list, permanently — the loaded window was thrown away for a
+      // permalink page that never arrives.
+      h.core.scrollToItem('nope');
+      h.settle();
+
+      expect(h.core.getSnapshot().items.length).toBe(itemsBefore);
+      expect(h.core.getSnapshot().items[0].index).toBe(firstBefore);
+      expect(h.core.getSnapshot().rowsEmpty).toBe(false);
+      expect(h.rowTop('r30')).toBe(topBefore);
+      expect(h.scroller.scrollTop).toBe(scrollBefore);
+    });
+
+    test('leaves paging working afterwards', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+
+      h.core.scrollToItem('nope');
+      h.settle();
+
+      // Nothing is left pending: the window still advances as the user
+      // scrolls toward its end.
+      h.userScroll(1500);
+      h.settle();
+      expect(h.core.getSnapshot().items[0].index).toBe(56);
+    });
+
+    test('a later jump to a real id still lands', () => {
+      const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+      h.settle();
+
+      h.core.scrollToItem('nope');
+      h.settle();
+
+      h.core.scrollToItem('r400', {align: 'start'});
+      h.settle();
+
+      expect(h.rowTop('r400')).toBe(0);
+    });
+
+    test('the lookup does not disturb the list while it is in flight', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+      const firstBefore = h.core.getSnapshot().items[0].index;
+
+      // The commit that issues the lookup must not move the window: it is
+      // the current anchor's rows that stay on screen, not a loading state.
+      h.core.scrollToItem('r400');
+      h.tick();
+
+      expect(h.core.getSnapshot().items[0].index).toBe(firstBefore);
+      expect(h.core.getSnapshot().rowsEmpty).toBe(false);
+    });
+  });
+
+  test('a permalinkID that does not exist leaves a loaded list alone', () => {
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+    const itemsBefore = h.core.getSnapshot().items.length;
+
+    // An in-page navigation to a permalink that resolves to nothing: same
+    // rule as scrollToItem — the list that is already on screen survives.
+    h.core.setOptions({...h.coreOptions, permalinkID: 'nope'});
+    h.settle();
+
+    expect(h.core.getSnapshot().items.length).toBe(itemsBefore);
+    expect(h.core.getSnapshot().rowsEmpty).toBe(false);
+  });
+
+  test('a deep link to a permalinkID that does not exist falls back to the top of the list', () => {
+    // Nothing loaded yet (a cold load with the id already in the URL), so
+    // there is no list to protect and the anchor goes straight to the
+    // permalink. When the lookup comes back empty the list must still load —
+    // before, it sat empty forever.
+    const h = harness({rowCount: 500, options: {permalinkID: 'nope'}});
+    // The fallback waits for the not-found to hold for a few commits (a
+    // freshly re-anchored lookup can still be reporting the previous one), so
+    // run a few before settling.
+    h.tick();
+    h.tick();
+    h.settle();
+
+    expect(h.core.getSnapshot().rowsEmpty).toBe(false);
+    expect(h.core.getSnapshot().items[0].index).toBe(0);
+    expect(h.core.getSnapshot().items[0].row).toEqual({id: 'r0'});
   });
 });

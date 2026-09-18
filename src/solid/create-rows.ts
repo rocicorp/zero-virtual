@@ -4,6 +4,7 @@ import {
   assembleRows,
   buildAfterQuery,
   buildMainQuery,
+  buildProbeQuery,
   buildSingleQuery,
   permalinkMissing,
   type RowsQueryInputs,
@@ -34,6 +35,19 @@ export function createRows<TRow, TStartRow>(args: {
   );
   const typedSingleRow = () => singleRow() as TRow | undefined;
   const singleComplete = () => singleDetails().type === 'complete';
+  // Stage 4: the `probeID` existence check (see buildProbeQuery). Staged here,
+  // before queries 2 and 3, because it can be the slot carrying the lookup
+  // they depend on.
+  const q4 = createMemo(() =>
+    buildProbeQuery(args.inputs(), args.getSingleQuery()),
+  );
+  const [probeRow, probeDetails] = useQuery(
+    () => q4()?.query ?? null,
+    () => q4()?.options ?? {},
+  );
+  const typedProbeRow = () => probeRow() as TRow | undefined;
+  const probeComplete = () => probeDetails().type === 'complete';
+
   const notFound = () =>
     permalinkMissing(args.inputs(), typedSingleRow(), singleComplete());
   const singleStart = () => {
@@ -77,6 +91,8 @@ export function createRows<TRow, TStartRow>(args: {
       mainComplete: mainDetails().type === 'complete',
       afterRows: afterRows() as unknown as TRow[] | undefined,
       afterComplete: afterDetails().type === 'complete',
+      probeRow: typedProbeRow(),
+      probeComplete: probeComplete(),
     }),
   );
 }

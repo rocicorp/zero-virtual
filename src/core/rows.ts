@@ -16,6 +16,16 @@ export type RowsQueryInputs<TStartRow> = {
   pageSize: number;
   anchor: Anchor<TStartRow>;
   settled: boolean;
+  /**
+   * An id to look up *without* moving the query window: the single-row query
+   * runs for it while the anchor (and so the loaded rows) stays put. This is
+   * how `scrollToItem` — and an in-page permalink navigation over an already
+   * loaded list — checks that a row exists before re-anchoring on it, so an
+   * id that resolves to nothing leaves the list alone instead of emptying it.
+   * Null when the anchor is a permalink (which runs its own lookup) or when
+   * nothing is being probed.
+   */
+  probeID?: string | null | undefined;
 };
 
 /**
@@ -32,6 +42,14 @@ export type RowsSnapshot<TRow> = {
   firstRowIndex: number;
   permalinkNotFound: boolean;
   /**
+   * The row `probeID` resolved to, when the probe has completed and found
+   * one; `undefined` while it is loading, when it found nothing, or when
+   * nothing is being probed. Read together with {@linkcode probeComplete}.
+   */
+  probeRow: TRow | undefined;
+  /** Whether the `probeID` lookup has completed (false when not probing). */
+  probeComplete: boolean;
+  /**
    * The resolved permalink target row (the single-row lookup result), when the
    * current anchor is a permalink and the row has loaded; `undefined`
    * otherwise. Its `getRowKey` locates the DOM row to scroll to — the
@@ -40,7 +58,7 @@ export type RowsSnapshot<TRow> = {
   permalinkRow: TRow | undefined;
 };
 
-/** The raw results of the (up to) three staged queries. */
+/** The raw results of the (up to) four staged queries. */
 export type RowsQueryResults<TRow> = {
   /** Single-row permalink lookup result (undefined while loading). */
   singleRow: TRow | undefined;
@@ -51,6 +69,9 @@ export type RowsQueryResults<TRow> = {
   /** Page-after rows (permalink only). */
   afterRows: TRow[] | undefined;
   afterComplete: boolean;
+  /** The `probeID` lookup's result (undefined when not probing). */
+  probeRow?: TRow | undefined;
+  probeComplete?: boolean | undefined;
 };
 
 function isPermalink<TStartRow>(
@@ -69,6 +90,23 @@ export function buildSingleQuery<TQuery, TOptions, TStartRow>(
 ): QueryResult<TQuery, TOptions> | null {
   return isPermalink(inputs.anchor)
     ? getSingleQuery({id: inputs.anchor.id, settled: inputs.settled})
+    : null;
+}
+
+/**
+ * Stage 4: the `probeID` lookup — the existence check a jump runs before it
+ * re-anchors (see {@linkcode RowsQueryInputs.probeID}). Its own slot, so it
+ * answers whatever the anchor is: the jump keeps its place in the query
+ * staging without disturbing the window that is on screen. Null when nothing
+ * is being probed.
+ */
+export function buildProbeQuery<TQuery, TOptions, TStartRow>(
+  inputs: RowsQueryInputs<TStartRow>,
+  getSingleQuery: GetSingleQuery<TQuery, TOptions>,
+): QueryResult<TQuery, TOptions> | null {
+  const {probeID} = inputs;
+  return probeID
+    ? getSingleQuery({id: probeID, settled: inputs.settled})
     : null;
 }
 
@@ -159,6 +197,15 @@ export function assembleRows<TRow, TStartRow>(
 
   const permalinkNotFound = permalinkMissing(inputs, singleRow, singleComplete);
 
+  // The probe runs in its own query slot, so it reports independently of the
+  // anchor (see RowsQueryInputs.probeID).
+  // The probe has its own query slot, so it reports independently of the
+  // anchor (see RowsQueryInputs.probeID).
+  const probe = {
+    probeRow: inputs.probeID ? results.probeRow : undefined,
+    probeComplete: !!inputs.probeID && !!results.probeComplete,
+  };
+
   const rowsBeforeLength = mainRows?.length ?? 0;
   const rowsAfterLength = afterRows?.length ?? 0;
   const rowsBeforeSize = Math.min(rowsBeforeLength, halfPageSize);
@@ -219,6 +266,7 @@ export function assembleRows<TRow, TStartRow>(
         : anchorIndex - rowsBeforeSize,
       permalinkNotFound,
       permalinkRow: singleRow,
+      ...probe,
     };
   }
 
@@ -235,6 +283,7 @@ export function assembleRows<TRow, TStartRow>(
       firstRowIndex: anchorIndex,
       permalinkNotFound,
       permalinkRow: undefined,
+      ...probe,
     };
   }
 
@@ -251,5 +300,6 @@ export function assembleRows<TRow, TStartRow>(
     firstRowIndex: anchorIndex - paginatedRowsLength,
     permalinkNotFound,
     permalinkRow: undefined,
+    ...probe,
   };
 }

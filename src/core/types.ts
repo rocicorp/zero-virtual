@@ -166,3 +166,23 @@ export type ScrollHistoryState<
   /** The list context params active when this state was saved (used to invalidate stale state) */
   listContextParams: TListContextParams;
 }>;
+
+/**
+ * Where {@link ScrollToItemOptions.align} places the target row in the
+ * viewport. The same vocabulary TanStack Virtual's `scrollToIndex` uses:
+ * - `auto`: the minimum scroll that brings the row fully into view — no scroll
+ *   at all when it is already fully visible (the default).
+ * - `start`: the row's top at the viewport's top.
+ * - `center`: the row centered in the viewport.
+ * - `end`: the row's bottom at the viewport's bottom.
+ *
+ * Every alignment is clamped by the scroll container, so a row near either end
+ * of the list lands as close as the container allows.
+ */
+export type ScrollAlignment = 'auto' | 'start' | 'center' | 'end';
+
+/** Options for the `scrollToItem` method on the virtualizer result. */
+export type ScrollToItemOptions = {
+  /** Defaults to `'auto'`. */
+  align?: ScrollAlignment | undefined;
+};

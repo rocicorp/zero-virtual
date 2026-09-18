@@ -17,6 +17,7 @@ Features:
 - Element scrolling or window scrolling (`useZeroWindowVirtualizer`)
 - Native or manual (momentum-safe) scroll anchoring, auto-detected per platform
 - Permalink support (jump to and highlight a specific item by ID)
+- Imperative `scrollToItem(id, {align})`, loading the row's page if needed
 - State persistence (restore scroll position across navigation)
 - Exact `count` support for an accurate, stable scrollbar
 - Stick-to-bottom helper (`useStickToBottom`) for chat / log UIs
@@ -313,6 +314,43 @@ relabeling):
 Manual mode matches native semantics, including suppression at scroll offset 0
 — content prepended while you're at the very top is revealed, not compensated
 away.
+
+### Jumping to a row
+
+The result carries a `scrollToItem(id, options?)` for bringing a specific row
+into view — a "jump to item" button, a search hit, a notification:
+
+```ts
+const virtualizer = useZeroVirtualizer({/* ... */});
+
+virtualizer.scrollToItem('item-123'); // scrolls the least amount needed
+virtualizer.scrollToItem('item-123', {align: 'center'});
+```
+
+`id` is the same identifier the `permalinkID` option takes — whatever
+`getSingleQuery` resolves — which need not equal `getRowKey(row)`. A row that
+is already loaded is scrolled to immediately; anything else re-anchors paging
+on the target (exactly as a permalink navigation does) and the scroll lands
+once its page has loaded. An id that resolves to no row does nothing at all:
+the row is looked up before the list is re-anchored on it, so a stale or
+mistyped id leaves what is on screen exactly as it was.
+
+The same goes for `permalinkID` — pointing it at an id that doesn't exist
+leaves a loaded list alone. (On a cold load there is no list to keep, so it
+falls back to the top of the list.)
+
+`align` follows TanStack Virtual's `scrollToIndex`: `'auto'` (the default)
+scrolls the minimum needed to bring the row into view and does nothing when it
+is already fully visible, or `'start'` / `'center'` / `'end'` to place it at the
+top, middle or bottom. Every alignment is clamped by the scroll container.
+
+Unlike `permalinkID` — which is declarative and edge-triggered, so the same id
+twice does nothing — `scrollToItem` always scrolls. There is no
+`behavior: 'smooth'`: the scroll is re-applied on every commit while the
+target's page streams in, which a smooth animation would fight.
+
+The callback's identity is stable for the lifetime of the virtualizer, so it is
+safe in a dependency array.
 
 ### Exact row count
 

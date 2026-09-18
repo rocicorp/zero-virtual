@@ -73,6 +73,8 @@ export type {
   GetSingleQueryOptions,
   QueryResult,
   RowKey,
+  ScrollAlignment,
   ScrollHistoryState,
+  ScrollToItemOptions,
   VirtualRow,
 } from './types.ts';

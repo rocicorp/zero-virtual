@@ -4,6 +4,7 @@ import {
   assembleRows,
   buildAfterQuery,
   buildMainQuery,
+  buildProbeQuery,
   buildSingleQuery,
   permalinkMissing,
   type RowsSnapshot,
@@ -22,6 +23,7 @@ export function useRows<TRow, TStartRow>({
   pageSize,
   anchor,
   settled,
+  probeID,
   getPageQuery,
   getSingleQuery,
   toStartRow,
@@ -29,12 +31,13 @@ export function useRows<TRow, TStartRow>({
   pageSize: number;
   anchor: Anchor<TStartRow>;
   settled: boolean;
+  probeID: string | null;
 
   getPageQuery: GetPageQuery<TRow, TStartRow>;
   getSingleQuery: GetSingleQuery<TRow>;
   toStartRow: (row: TRow) => TStartRow;
 }): RowsSnapshot<TRow> {
-  const inputs = {pageSize, anchor, settled};
+  const inputs = {pageSize, anchor, settled, probeID};
 
   // Stage 1: single-item lookup (permalink only; null keeps the slot stable).
   const q1 = buildSingleQuery(inputs, getSingleQuery);
@@ -53,15 +56,21 @@ export function useRows<TRow, TStartRow>({
   const q3 = buildAfterQuery(inputs, getPageQuery, singleStart, notFound);
   const [afterRows, afterResult] = useQuery(q3?.query ?? null, q3?.options);
 
+  // Stage 4: the `probeID` existence check (see buildProbeQuery).
+  const q4 = buildProbeQuery(inputs, getSingleQuery);
+  const [probeRow, probeResult] = useQuery(q4?.query ?? null, q4?.options);
+
   const mainComplete = mainResult.type === 'complete';
   const afterComplete = afterResult.type === 'complete';
+  const typedProbeRow = probeRow as TRow | undefined;
+  const probeComplete = probeResult.type === 'complete';
 
   // Memoized so the snapshot (and its rowAt identity) is stable across
   // renders whose query results didn't change.
   return useMemo(
     () =>
       assembleRows(
-        {pageSize, anchor, settled},
+        {pageSize, anchor, settled, probeID},
         {
           singleRow: typedSingleRow,
           singleComplete,
@@ -69,18 +78,23 @@ export function useRows<TRow, TStartRow>({
           mainComplete,
           afterRows: afterRows as unknown as TRow[] | undefined,
           afterComplete,
+          probeRow: typedProbeRow,
+          probeComplete,
         },
       ),
     [
       pageSize,
       anchor,
       settled,
+      probeID,
       typedSingleRow,
       singleComplete,
       mainRows,
       mainComplete,
       afterRows,
       afterComplete,
+      typedProbeRow,
+      probeComplete,
     ],
   );
 }

@@ -69,7 +69,8 @@ export function WindowList(): React.ReactNode {
     scrollState,
     onScrollStateChange,
   });
-  const {items, spaceBefore, spaceAfter, estimatedTotal, total} = virtualizer;
+  const {items, spaceBefore, spaceAfter, estimatedTotal, total, scrollToItem} =
+    virtualizer;
 
   useStickToBottom(virtualizer, {enabled: follow === 'bottom'});
 
@@ -113,6 +114,7 @@ export function WindowList(): React.ReactNode {
         onAnchoringChange={setAnchoring}
         follow={follow}
         onFollowChange={setFollow}
+        scrollToItem={scrollToItem}
       />
     </div>
   );

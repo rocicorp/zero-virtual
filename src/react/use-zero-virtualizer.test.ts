@@ -300,6 +300,24 @@ describe('useZeroVirtualizer - result options', () => {
     expect(result.current).toBe(first);
     expect(result.current.options).toBe(first.options);
   });
+
+  test('scrollToItem identity survives a content change, so it is dep-array safe', () => {
+    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+
+    const options = makeOptions();
+    const {result, rerender} = renderHook(() => useZeroVirtualizer(options));
+
+    const first = result.current.scrollToItem;
+    expect(typeof first).toBe('function');
+
+    // A new rows result rebuilds the result object; the callback must not
+    // change with it, or every consumer's effect re-runs on every page.
+    mockUseRows.mockReturnValue(makeUseRowsResult({rowsLength: 3}));
+    rerender();
+
+    expect(result.current).not.toBe(first);
+    expect(result.current.scrollToItem).toBe(first);
+  });
 });
 
 describe('useStickToBottom over the virtualizer result', () => {

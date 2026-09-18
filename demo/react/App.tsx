@@ -66,7 +66,8 @@ export function App(): React.ReactNode {
       console.log('onSettled');
     }, []),
   });
-  const {items, spaceBefore, spaceAfter, estimatedTotal, total} = virtualizer;
+  const {items, spaceBefore, spaceAfter, estimatedTotal, total, scrollToItem} =
+    virtualizer;
 
   useStickToBottom(virtualizer, {enabled: follow === 'bottom'});
 
@@ -113,6 +114,7 @@ export function App(): React.ReactNode {
         onAnchoringChange={setAnchoring}
         follow={follow}
         onFollowChange={setFollow}
+        scrollToItem={scrollToItem}
       />
     </div>
   );

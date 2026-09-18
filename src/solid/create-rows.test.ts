@@ -65,13 +65,18 @@ describe('createRows (solid staging over the core builders)', () => {
     });
     const {rows, getPageQuery, dispose} = setup(inputs);
 
-    expect(slots).toHaveLength(3);
-    // Slot 1 (permalink single-row) stays null for a forward anchor.
+    expect(slots).toHaveLength(4);
+    // Slot order follows the staging order: single (1), probe (4), main (2),
+    // after (3) — the probe is staged early because it can be the slot
+    // carrying the lookup that 2 and 3 depend on.
+    // Slot 1 (permalink single-row) stays null for a forward anchor, as does
+    // the probe slot with no probeID.
     expect(slots[0].querySignal()).toBeNull();
-    // Slot 2 carries a *built* page query — i.e. the getPageQuery accessor was
-    // invoked and its result invoked with staged options (not passed along as
-    // a function).
-    const main = slots[1].querySignal() as {kind: string; opts: unknown};
+    expect(slots[1].querySignal()).toBeNull();
+    // The main slot carries a *built* page query — i.e. the getPageQuery
+    // accessor was invoked and its result invoked with staged options (not
+    // passed along as a function).
+    const main = slots[2].querySignal() as {kind: string; opts: unknown};
     expect(main.kind).toBe('page');
     expect(getPageQuery).toHaveBeenCalledWith({
       limit: 5, // pageSize + 1 (has-more sentinel)
@@ -79,12 +84,12 @@ describe('createRows (solid staging over the core builders)', () => {
       dir: 'forward',
       settled: false,
     });
-    // Slot 3 (page-after) is permalink-only.
-    expect(slots[2].querySignal()).toBeNull();
+    // The page-after slot is permalink-only.
+    expect(slots[3].querySignal()).toBeNull();
 
     // Feed 5 rows (pageSize + 1): window is 4 rows, more below.
-    slots[1].setData([{id: 'a'}, {id: 'b'}, {id: 'c'}, {id: 'd'}, {id: 'e'}]);
-    slots[1].setDetails({type: 'complete'});
+    slots[2].setData([{id: 'a'}, {id: 'b'}, {id: 'c'}, {id: 'd'}, {id: 'e'}]);
+    slots[2].setDetails({type: 'complete'});
     const snap = rows();
     expect(snap.rowsLength).toBe(4);
     expect(snap.complete).toBe(true);
@@ -106,15 +111,15 @@ describe('createRows (solid staging over the core builders)', () => {
     const single = slots[0].querySignal() as {kind: string};
     expect(single.kind).toBe('single');
     expect(getSingleQuery).toHaveBeenCalledWith({id: 'x', settled: false});
-    expect(slots[1].querySignal()).toBeNull();
     expect(slots[2].querySignal()).toBeNull();
+    expect(slots[3].querySignal()).toBeNull();
 
     // The single row arrives → the before/after page queries appear, anchored
     // on the row's start data.
     slots[0].setData({id: 'x'});
     slots[0].setDetails({type: 'complete'});
-    expect(slots[1].querySignal()).not.toBeNull();
     expect(slots[2].querySignal()).not.toBeNull();
+    expect(slots[3].querySignal()).not.toBeNull();
     expect(getPageQuery).toHaveBeenCalledWith({
       limit: 3, // halfPageSize + 1
       start: {id: 'x'},
@@ -128,10 +133,10 @@ describe('createRows (solid staging over the core builders)', () => {
       settled: false,
     });
 
-    slots[1].setData([{id: 'w'}]);
-    slots[1].setDetails({type: 'complete'});
-    slots[2].setData([{id: 'y'}]);
+    slots[2].setData([{id: 'w'}]);
     slots[2].setDetails({type: 'complete'});
+    slots[3].setData([{id: 'y'}]);
+    slots[3].setDetails({type: 'complete'});
     const snap = rows();
     expect(snap.rowAt(1)).toEqual({id: 'x'});
     expect(snap.rowAt(0)).toEqual({id: 'w'});
