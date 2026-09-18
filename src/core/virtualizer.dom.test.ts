@@ -849,6 +849,51 @@ describe('scrollToItem', () => {
     expect(h.core.getSnapshot().items.length).toBeGreaterThan(0);
   });
 
+  test('an empty id is a no-op, not a lookup that never answers', () => {
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+
+    // The lookup for an empty id is never issued, so a request waiting on one
+    // would wait forever — and a request in flight swallows `scrollState`
+    // restores and sends later jumps down the re-anchor path.
+    h.core.scrollToItem('');
+    h.tick();
+
+    expect(h.core.getQueryInputs().probeID).toBeNull();
+
+    // And a real jump afterwards still takes the ordinary route.
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.settle();
+    expect(h.rowTop('r400')).toBe(0);
+  });
+
+  test("a start row JSON can't represent does not break a restore", () => {
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+
+    // `startRow` is the app's own row data: a bigint column (an int64 id, say)
+    // survives the host's storage but not `JSON.stringify`. Recognising our
+    // own persisted state must not be the thing that throws.
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.settle();
+
+    const withBigint = {
+      anchor: {
+        kind: 'forward' as const,
+        index: 0,
+        startRow: {id: 'r1', rowid: 1n} as unknown as TestRow,
+      },
+      scrollTop: 200,
+      estimatedTotal: 500,
+      hasReachedStart: true,
+      hasReachedEnd: false,
+      listContextParams: 'ctx',
+    };
+    h.core.setOptions({...h.coreOptions, scrollState: withBigint});
+
+    expect(() => h.tick()).not.toThrow();
+  });
+
   test('a second jump supersedes one that is still loading', () => {
     const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
     h.settle();

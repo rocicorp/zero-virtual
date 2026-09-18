@@ -310,6 +310,36 @@ function pixels(value: string): number {
   return value.endsWith('px') ? Number.parseFloat(value) || 0 : 0;
 }
 
+/**
+ * An anchor, as a string that changes when the anchor does. `startRow` is the
+ * app's own row data, which JSON can't always represent — a bigint column, say
+ * — so fall back to the parts that are always primitives rather than throwing
+ * out of a commit. The cost of the fallback is only that two anchors differing
+ * solely in an unserializable start row read as unchanged.
+ */
+function anchorKey(anchor: unknown): string {
+  try {
+    return JSON.stringify(anchor) ?? '';
+  } catch {
+    const {kind, index} = anchor as {kind?: unknown; index?: unknown};
+    return `${String(kind)}:${String(index)}`;
+  }
+}
+
+/**
+ * Deep equality by serialization, for values that have been round-tripped
+ * through the host's storage. Anything JSON can't represent — a cycle, a
+ * bigint column in a start row — counts as "not equal": the only caller reads
+ * a false as "this state isn't one of ours", which is the conservative answer.
+ */
+function jsonEqual(a: unknown, b: unknown): boolean {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
 /** Content equality for scroll states — the host round-trips them. */
 function sameScrollState<TStartRow>(
   a: ScrollHistoryState<TStartRow>,
@@ -320,8 +350,8 @@ function sameScrollState<TStartRow>(
     a.estimatedTotal === b.estimatedTotal &&
     a.hasReachedStart === b.hasReachedStart &&
     a.hasReachedEnd === b.hasReachedEnd &&
-    JSON.stringify(a.anchor) === JSON.stringify(b.anchor) &&
-    JSON.stringify(a.listContextParams) === JSON.stringify(b.listContextParams)
+    jsonEqual(a.anchor, b.anchor) &&
+    jsonEqual(a.listContextParams, b.listContextParams)
   );
 }
 
@@ -673,6 +703,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
    * virtualizer and safe to put in a dependency array.
    */
   readonly scrollToItem = (id: string, options?: ScrollToItemOptions): void => {
+    // An empty id can't resolve to a row, and the lookup for it is never
+    // issued (an empty `probeID` reads as "not probing"), so a request for one
+    // would wait on an answer that never comes. Nothing to do.
+    if (id === '') return;
     this.#withNotify(() =>
       this.#startOrScroll({
         id,
@@ -1845,7 +1879,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   #persistKey(): string {
     const s = this.#paging;
-    return `${JSON.stringify(s.queryAnchor.anchor)}:${this.#effectiveEstimatedTotal()}:${s.hasReachedStart}:${s.hasReachedEnd}`;
+    return `${anchorKey(s.queryAnchor.anchor)}:${this.#effectiveEstimatedTotal()}:${s.hasReachedStart}:${s.hasReachedEnd}`;
   }
 
   // Schedule a persist when persist-relevant state changed since the last
