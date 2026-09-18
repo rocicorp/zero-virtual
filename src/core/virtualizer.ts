@@ -280,6 +280,38 @@ export function virtualizerResult<TRow>(
   };
 }
 
+/**
+ * How many of the scroll states the core itself wrote are remembered, so they
+ * can be recognised when the host hands them back (see `#isOwnScrollState`).
+ * A handful covers the round trip: the write is debounced, the host stores it
+ * and re-renders, and the one before it can still be in flight behind it.
+ */
+const OWN_SCROLL_STATES = 4;
+
+/**
+ * How many commits in a row a permalink target has to be reported missing
+ * before the list gives up on it (see `#recoverFromMissingPermalink`). More
+ * than one, because the commit that re-anchors on a new id can still be
+ * carrying the *previous* lookup's finished-and-empty result, and giving up on
+ * that would throw away a jump that is about to land.
+ */
+const PERMALINK_MISSING_COMMITS = 2;
+
+/** Content equality for scroll states — the host round-trips them. */
+function sameScrollState<TStartRow>(
+  a: ScrollHistoryState<TStartRow>,
+  b: ScrollHistoryState<TStartRow>,
+): boolean {
+  return (
+    a.scrollTop === b.scrollTop &&
+    a.estimatedTotal === b.estimatedTotal &&
+    a.hasReachedStart === b.hasReachedStart &&
+    a.hasReachedEnd === b.hasReachedEnd &&
+    JSON.stringify(a.anchor) === JSON.stringify(b.anchor) &&
+    JSON.stringify(a.listContextParams) === JSON.stringify(b.listContextParams)
+  );
+}
+
 const EMPTY_ROWS: RowsSnapshot<unknown> = {
   rowAt: () => undefined,
   rowsLength: 0,
@@ -395,6 +427,18 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // probe must not disturb the list: the anchor stays put, and paging and
   // anchoring keep running normally while it resolves. See #startOrScroll.
   #probe: PendingScroll | null = null;
+
+  // Consecutive commits the permalink anchor's target has been reported
+  // missing for (see #recoverFromMissingPermalink).
+  #permalinkMissingCommits = 0;
+
+  // The scroll states this virtualizer has written out, most recent first.
+  // What comes back as `scrollState` is usually one of them — the host stores
+  // what we persist and hands it straight back — and re-applying our own
+  // position is at best a no-op. At worst it is the position from *before* a
+  // jump arriving after it (the write is debounced and the host re-renders
+  // asynchronously), which would re-anchor the list out from under the jump.
+  #ownScrollStates: ScrollHistoryState<TStartRow>[] = [];
 
   // Restore/reset change tracking (the old effect's dependency semantics).
   #appliedScrollState: ScrollHistoryState<TStartRow> | null = null;
@@ -1365,12 +1409,21 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       return;
     }
 
-    // A `scrollToItem` owns the scroll position: swallow a restore that would
-    // yank the viewport back under it. Some of those restores are our own
-    // doing — the jump's re-anchor is persisted via `onScrollStateChange` and
-    // the host hands the state straight back — and some are the pre-jump
-    // position arriving late. Recording each as applied keeps it from
-    // re-firing afterwards.
+    // Our own position coming back to us is not a restore: what the host hands
+    // back as `scrollState` is usually what we just persisted, and re-applying
+    // it is a no-op at best. At worst it is the position from *before* a jump
+    // — persisted on a debounce, handed back a render or two later — and
+    // re-anchoring on it would undo the jump. Record it as applied so it can't
+    // fire again, and only fall through for a permalink that changed with it.
+    if (eff !== null && this.#isOwnScrollState(eff)) {
+      this.#appliedScrollState = eff;
+      this.#appliedPermalinkID = permalinkID;
+      if (!permalinkChanged) return;
+    }
+
+    // An in-flight `scrollToItem` owns the scroll position: swallow a restore
+    // that would yank the viewport back under it, recording it as applied so
+    // it doesn't re-fire once the jump lands.
     if (this.#pendingScroll?.source === 'imperative' || this.#probe !== null) {
       if (this.#isListContextCurrent() && !permalinkChanged) {
         this.#appliedScrollState = eff;
@@ -1463,8 +1516,16 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // deleted / mistyped id on a cold load); every jump made over a list that
   // was already on screen is probed first and never gets this far.
   #recoverFromMissingPermalink(): void {
-    if (!this.#rows.permalinkNotFound || !this.#isListContextCurrent()) return;
-    if (this.#paging.queryAnchor.anchor.kind !== 'permalink') return;
+    if (
+      !this.#rows.permalinkNotFound ||
+      !this.#isListContextCurrent() ||
+      this.#paging.queryAnchor.anchor.kind !== 'permalink'
+    ) {
+      this.#permalinkMissingCommits = 0;
+      return;
+    }
+    if (++this.#permalinkMissingCommits < PERMALINK_MISSING_COMMITS) return;
+    this.#permalinkMissingCommits = 0;
     this.#pendingScroll = null;
     this.#anchorKey = null;
     this.#setPaging({
@@ -1757,7 +1818,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     const {onScrollStateChange, listContextParams} = this.#options;
     const el = this.#el;
     if (!el || !this.#isListContextCurrent() || !onScrollStateChange) return;
-    onScrollStateChange({
+    const state: ScrollHistoryState<TStartRow> = {
       anchor: this.#paging.queryAnchor.anchor,
       // The logical committed offset: if a gesture is mid-flight with an owed
       // jump held in the wrapper margin, fold it in so restore lands right.
@@ -1766,7 +1827,19 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       hasReachedStart: this.#paging.hasReachedStart,
       hasReachedEnd: this.#paging.hasReachedEnd,
       listContextParams,
-    });
+    };
+    this.#ownScrollStates.unshift(state);
+    this.#ownScrollStates.length = Math.min(
+      this.#ownScrollStates.length,
+      OWN_SCROLL_STATES,
+    );
+    onScrollStateChange(state);
+  }
+
+  // Whether this state is one we wrote out ourselves and has simply come back
+  // to us (see #ownScrollStates).
+  #isOwnScrollState(state: ScrollHistoryState<TStartRow>): boolean {
+    return this.#ownScrollStates.some(own => sameScrollState(own, state));
   }
 }
 
