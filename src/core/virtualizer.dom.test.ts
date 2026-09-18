@@ -561,6 +561,39 @@ describe('permalink scroll', () => {
   });
 });
 
+describe('scroll-state restore of a position we wrote ourselves', () => {
+  test('a later navigation back to it still restores', () => {
+    // The core ignores its own position coming straight back to it (the host
+    // echoes what was just persisted). That must not extend to a real
+    // back/forward navigation to a position it persisted a while ago — with no
+    // permalink in play, nothing else would bring the viewport back.
+    const persisted: Array<ScrollHistoryState<TestRow>> = [];
+    const h = harness({
+      rowCount: 500,
+      options: {
+        onScrollStateChange: s =>
+          persisted.push(s as ScrollHistoryState<TestRow>),
+      },
+    });
+    h.settle();
+
+    h.userScroll(400);
+    h.scroller.dispatchEvent(new Event('scrollend'));
+    const earlier = persisted.at(-1)!;
+    expect(earlier.scrollTop).toBe(400);
+
+    h.userScroll(1200);
+    h.scroller.dispatchEvent(new Event('scrollend'));
+    h.settle();
+
+    // Back: the host hands the earlier entry's state back as a new object.
+    h.core.setOptions({...h.coreOptions, scrollState: {...earlier}});
+    h.tick();
+
+    expect(h.scroller.scrollTop).toBe(400);
+  });
+});
+
 describe('persist timing', () => {
   test('persists immediately on scrollend, before the debounce, so a fast navigation keeps the position', () => {
     const persisted: Array<ScrollHistoryState<TestRow>> = [];
@@ -731,7 +764,7 @@ describe('scrollToItem', () => {
     });
   });
 
-  test('aligns below the container\'s scroll-padding (a sticky header)', () => {
+  test("aligns below the container's scroll-padding (a sticky header)", () => {
     const h = harness({rowCount: 500});
     h.settle();
     // A sticky header covering the top 60px of the scrollport, declared the
@@ -759,6 +792,42 @@ describe('scrollToItem', () => {
     h.userScroll(1500);
     h.settle();
     expect(h.core.getSnapshot().items[0].index).toBe(56);
+  });
+
+  test('a repeat jump to a row keyed differently from its id still lands', () => {
+    // Deep-link by a short id while keying rows by something else: `findRow`
+    // can't see the target under the id, so a repeat call lands on the "the
+    // query is already hunting for this" path. It may only sit and wait there
+    // while that load is still running — once it has finished, no further
+    // commit is coming, and a request left pending stands paging and anchoring
+    // down for the rest of the session.
+    const h = harness({
+      rowCount: 500,
+      options: {anchoring: 'manual', getRowKey: row => `key-${row.id}`},
+    });
+    h.settle();
+
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.settle();
+    expect(h.rowTop('key-r400')).toBe(0);
+
+    // The repeat call has to schedule work — a re-query, a scroll, something
+    // that brings another commit. Sitting on the request instead would mean
+    // nothing ever lands it (no commit is coming; the load finished), and a
+    // request left pending stands paging and anchoring down from here on.
+    let notified = 0;
+    const unsubscribe = h.core.subscribe(() => notified++);
+    h.core.scrollToItem('r400', {align: 'center'});
+    unsubscribe();
+    expect(notified).toBeGreaterThan(0);
+
+    h.settle();
+    expect(h.rowTop('key-r400')).toBe(190);
+
+    // And paging still works afterwards.
+    h.userScroll(0);
+    h.settle();
+    expect(h.core.getSnapshot().items.length).toBeGreaterThan(0);
   });
 
   test('a second jump supersedes one that is still loading', () => {

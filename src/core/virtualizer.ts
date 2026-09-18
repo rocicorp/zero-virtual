@@ -289,6 +289,14 @@ export function virtualizerResult<TRow>(
 const OWN_SCROLL_STATES = 4;
 
 /**
+ * How long after a jump a scroll state the core wrote itself is still treated
+ * as an echo rather than a restore (see `#isOwnScrollState`). Outside this
+ * window an incoming state is taken at face value, so a back/forward
+ * navigation to a position this virtualizer once persisted still restores.
+ */
+const JUMP_ECHO_WINDOW_MS = 1000;
+
+/**
  * How many commits in a row a permalink target has to be reported missing
  * before the list gives up on it (see `#recoverFromMissingPermalink`). More
  * than one, because the commit that re-anchors on a new id can still be
@@ -296,6 +304,11 @@ const OWN_SCROLL_STATES = 4;
  * that would throw away a jump that is about to land.
  */
 const PERMALINK_MISSING_COMMITS = 2;
+
+/** A computed CSS length in px, or 0 for any other unit (`auto`, `%`). */
+function pixels(value: string): number {
+  return value.endsWith('px') ? Number.parseFloat(value) || 0 : 0;
+}
 
 /** Content equality for scroll states — the host round-trips them. */
 function sameScrollState<TStartRow>(
@@ -427,6 +440,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // probe must not disturb the list: the anchor stays put, and paging and
   // anchoring keep running normally while it resolves. See #startOrScroll.
   #probe: PendingScroll | null = null;
+
+  // Until when a scroll state of our own coming back counts as an echo of the
+  // jump rather than a restore (see JUMP_ECHO_WINDOW_MS).
+  #jumpEchoUntil = 0;
 
   // Consecutive commits the permalink anchor's target has been reported
   // missing for (see #recoverFromMissingPermalink).
@@ -669,6 +686,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // otherwise get its page loaded.
   #startOrScroll(request: PendingScroll): void {
     const {id} = request;
+    if (request.source === 'imperative') {
+      this.#jumpEchoUntil = Date.now() + JUMP_ECHO_WINDOW_MS;
+    }
     // A row that is already rendered can be scrolled to right now: no
     // re-query, and nothing for the wrapper to re-render, so there is no later
     // commit to land it on.
@@ -683,7 +703,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // reset the list under it — the commits that will land it are already
     // coming. Once that load has finished there are no more commits to wait
     // for, so a repeat call has to go around again rather than sit pending.
-    if (this.#isListContextCurrent() && this.#isTargeting(id)) {
+    if (
+      this.#isListContextCurrent() &&
+      this.#isTargeting(id) &&
+      !this.#rows.complete
+    ) {
       this.#pendingScroll = request;
       return;
     }
@@ -777,6 +801,13 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.#resolveProbe();
     this.#evaluatePaging();
     this.#schedulePersistIfChanged();
+
+    // The echo window covers the jump plus a moment after it lands, by which
+    // time the host has been handed — and handed back — the position it ended
+    // on.
+    if (this.#pendingScroll !== null || this.#probe !== null) {
+      this.#jumpEchoUntil = Date.now() + JUMP_ECHO_WINDOW_MS;
+    }
   }
 
   // ---- derived values --------------------------------------------------------
@@ -999,14 +1030,16 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   // The scroll container's CSS `scroll-padding-top` / `-bottom`, in px. Any
-  // other value (`auto`, a percentage the container can't resolve) reads as 0.
+  // other value reads as 0: `auto` because it means "let the browser decide",
+  // and a percentage because the computed value keeps the unit — parsing it as
+  // a number would silently inset by that many *pixels*.
   #scrollPadding(el: HTMLElement): {top: number; bottom: number} {
     const scroller = this.#scroller(el);
     if (typeof getComputedStyle !== 'function') return {top: 0, bottom: 0};
     const style = getComputedStyle(scroller);
     return {
-      top: Number.parseFloat(style.scrollPaddingTop) || 0,
-      bottom: Number.parseFloat(style.scrollPaddingBottom) || 0,
+      top: pixels(style.scrollPaddingTop),
+      bottom: pixels(style.scrollPaddingBottom),
     };
   }
 
@@ -1421,13 +1454,19 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       return;
     }
 
-    // Our own position coming back to us is not a restore: what the host hands
-    // back as `scrollState` is usually what we just persisted, and re-applying
-    // it is a no-op at best. At worst it is the position from *before* a jump
-    // — persisted on a debounce, handed back a render or two later — and
-    // re-anchoring on it would undo the jump. Record it as applied so it can't
-    // fire again, and only fall through for a permalink that changed with it.
-    if (eff !== null && this.#isOwnScrollState(eff)) {
+    // A jump's own position coming back to us is not a restore: the core
+    // persists on a debounce and the host hands the state back a render or two
+    // later, so what arrives just after a jump can be the position from just
+    // *before* it — and re-anchoring on that would undo the jump. Only within
+    // the echo window, and only for a state that changed: outside it an
+    // identical-looking state is a genuine navigation (back to a position this
+    // virtualizer once persisted) and has to restore.
+    if (
+      scrollStateChanged &&
+      eff !== null &&
+      Date.now() < this.#jumpEchoUntil &&
+      this.#isOwnScrollState(eff)
+    ) {
       this.#appliedScrollState = eff;
       this.#appliedPermalinkID = permalinkID;
       if (!permalinkChanged) return;

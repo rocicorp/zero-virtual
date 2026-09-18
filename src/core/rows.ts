@@ -199,8 +199,6 @@ export function assembleRows<TRow, TStartRow>(
 
   // The probe runs in its own query slot, so it reports independently of the
   // anchor (see RowsQueryInputs.probeID).
-  // The probe has its own query slot, so it reports independently of the
-  // anchor (see RowsQueryInputs.probeID).
   const probe = {
     probeRow: inputs.probeID ? results.probeRow : undefined,
     probeComplete: !!inputs.probeID && !!results.probeComplete,
