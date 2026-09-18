@@ -1,4 +1,7 @@
-import type {ScrollAlignment} from '@rocicorp/zero-virtual/react';
+import type {
+  ScrollAlignment,
+  ScrollToItemOptions,
+} from '@rocicorp/zero-virtual/react';
 import React, {useState} from 'react';
 import styles from '../shared/DevPanel.module.css';
 import {useHash} from './use-hash.ts';
@@ -15,7 +18,7 @@ const ALIGNMENTS: ScrollAlignment[] = ['auto', 'start', 'center', 'end'];
 export function JumpControls({
   scrollToItem,
 }: {
-  scrollToItem: (id: string, options?: {align?: ScrollAlignment}) => void;
+  scrollToItem: (id: string, options?: ScrollToItemOptions) => void;
 }): React.ReactNode {
   const [hash] = useHash();
   const [input, setInput] = useState('');

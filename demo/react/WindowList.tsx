@@ -3,7 +3,7 @@ import {
   useStickToBottom,
   useZeroWindowVirtualizer,
 } from '@rocicorp/zero-virtual/react';
-import React, {useCallback, useLayoutEffect, useRef} from 'react';
+import React, {useCallback, useRef} from 'react';
 import {DevPanel} from './DevPanel.tsx';
 import {ItemRow} from './ItemRow.tsx';
 import {ListHeader} from './ListHeader.tsx';
@@ -51,27 +51,6 @@ export function WindowList(): React.ReactNode {
   const rowsRef = useRef<HTMLDivElement>(null);
   const getScrollElement = useCallback(() => rowsRef.current, []);
 
-  // The header is sticky, so the top of the window is covered by it. Tell the
-  // scroll container how much with `scroll-padding-top` — the same thing
-  // native `scrollIntoView` reads, and what `scrollToItem` aligns against, so
-  // a row it jumps to lands below the header instead of under it.
-  const stickyRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const bar = stickyRef.current;
-    if (!bar) return undefined;
-    const {documentElement} = document;
-    const apply = () => {
-      documentElement.style.scrollPaddingTop = `${bar.offsetHeight}px`;
-    };
-    apply();
-    const observer = new ResizeObserver(apply);
-    observer.observe(bar);
-    return () => {
-      observer.disconnect();
-      documentElement.style.scrollPaddingTop = '';
-    };
-  }, []);
-
   const estimateSize = useEstimateSize(heightMode);
   const getPageQuery = useGetPageQuery(listContextParams);
   const [scrollState, onScrollStateChange] = useHistoryScrollState<ItemStart>();
@@ -97,7 +76,7 @@ export function WindowList(): React.ReactNode {
 
   return (
     <div className={styles.page}>
-      <div className={styles.stickyBar} ref={stickyRef}>
+      <div className={styles.stickyBar}>
         <ListHeader
           total={total}
           estimatedTotal={estimatedTotal}

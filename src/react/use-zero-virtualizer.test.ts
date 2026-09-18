@@ -307,16 +307,17 @@ describe('useZeroVirtualizer - result options', () => {
     const options = makeOptions();
     const {result, rerender} = renderHook(() => useZeroVirtualizer(options));
 
-    const first = result.current.scrollToItem;
-    expect(typeof first).toBe('function');
+    const firstResult = result.current;
+    const firstScrollToItem = firstResult.scrollToItem;
+    expect(typeof firstScrollToItem).toBe('function');
 
     // A new rows result rebuilds the result object; the callback must not
     // change with it, or every consumer's effect re-runs on every page.
     mockUseRows.mockReturnValue(makeUseRowsResult({rowsLength: 3}));
     rerender();
 
-    expect(result.current).not.toBe(first);
-    expect(result.current.scrollToItem).toBe(first);
+    expect(result.current).not.toBe(firstResult);
+    expect(result.current.scrollToItem).toBe(firstScrollToItem);
   });
 });
 

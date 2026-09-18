@@ -1,4 +1,4 @@
-import type {ScrollAlignment} from '@rocicorp/zero-virtual/react';
+import type {ScrollToItemOptions} from '@rocicorp/zero-virtual/react';
 import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {AddControls} from './AddControls.tsx';
 import styles from '../shared/DevPanel.module.css';
@@ -34,7 +34,7 @@ export function DevPanel({
   onAnchoringChange: (v: string) => void;
   follow: string;
   onFollowChange: (v: string) => void;
-  scrollToItem: (id: string, options?: {align?: ScrollAlignment}) => void;
+  scrollToItem: (id: string, options?: ScrollToItemOptions) => void;
 }): ReactNode {
   const [open, setOpen] = useState(true);
   // The scroll-container mode lives in the URL (it selects which demo renders).
