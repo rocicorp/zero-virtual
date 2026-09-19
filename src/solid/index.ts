@@ -25,7 +25,9 @@ export {rowAttributes} from '../core/dom.ts';
 export type {
   AnchoringMode,
   RowKey,
+  ScrollAlignment,
   ScrollHistoryState,
+  ScrollToItemOptions,
   VirtualRow,
 } from '../core/types.ts';
 export type {
