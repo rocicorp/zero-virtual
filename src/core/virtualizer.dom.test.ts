@@ -927,33 +927,6 @@ describe('scrollToItem', () => {
     expect(h.rowTop('r400')).toBe(0);
   });
 
-  test("a start row JSON can't represent does not break a restore", () => {
-    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
-    h.settle();
-
-    // `startRow` is the app's own row data: a bigint column (an int64 id, say)
-    // survives the host's storage but not `JSON.stringify`. Recognising our
-    // own persisted state must not be the thing that throws.
-    h.core.scrollToItem('r400', {align: 'start'});
-    h.settle();
-
-    const withBigint = {
-      anchor: {
-        kind: 'forward' as const,
-        index: 0,
-        startRow: {id: 'r1', rowid: 1n} as unknown as TestRow,
-      },
-      scrollTop: 200,
-      estimatedTotal: 500,
-      hasReachedStart: true,
-      hasReachedEnd: false,
-      listContextParams: 'ctx',
-    };
-    h.core.setOptions({...h.coreOptions, scrollState: withBigint});
-
-    expect(() => h.tick()).not.toThrow();
-  });
-
   test('a second jump to a rendered row supersedes a lookup still in flight', () => {
     // The first jump is off looking its target up; the second lands right
     // away because its row is already on screen. The stale lookup must not
@@ -968,31 +941,6 @@ describe('scrollToItem', () => {
     h.settle();
 
     expect(h.rowTop('r50')).toBe(0);
-  });
-
-  test("list-context params JSON can't represent do not break a restore", () => {
-    // The other half of the app's own data in a scroll state: the params are
-    // matched against the live ones on every commit — including in the
-    // constructor, before anything else runs — so an int64 filter id must not
-    // be what throws the list out.
-    const params = {orgID: 1n};
-    expect(() =>
-      harness({
-        rowCount: 500,
-        options: {
-          anchoring: 'manual',
-          listContextParams: params,
-          scrollState: {
-            anchor: {kind: 'forward', index: 0, startRow: undefined},
-            scrollTop: 200,
-            estimatedTotal: 500,
-            hasReachedStart: true,
-            hasReachedEnd: false,
-            listContextParams: params,
-          },
-        },
-      }),
-    ).not.toThrow();
   });
 
   test('a second jump supersedes one that is still loading', () => {

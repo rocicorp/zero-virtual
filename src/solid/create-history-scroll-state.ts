@@ -5,7 +5,6 @@ import {
   subscribeHistoryState,
   updateHistoryState,
 } from '../core/history-state.ts';
-import {valueKey} from '../core/value-key.ts';
 import type {ScrollHistoryState} from '../core/types.ts';
 
 const DEFAULT_KEY = 'scrollState';
@@ -45,8 +44,8 @@ export function createHistoryScrollState<TStartRow>(
     subscribeHistoryState(() => setRaw(() => getHistoryNavigationSnapshot())),
   );
 
-  // Memoized by value (matching the React hook), so an unrelated history-state
-  // change doesn't produce a new scroll-state reference.
+  // Memoized by JSON identity (matching the React hook), so an unrelated
+  // history-state change doesn't produce a new scroll-state reference.
   const scrollState = createMemo<ScrollHistoryState<TStartRow> | null>(
     () => {
       const state = raw();
@@ -55,7 +54,7 @@ export function createHistoryScrollState<TStartRow>(
         null) as ScrollHistoryState<TStartRow> | null;
     },
     null,
-    {equals: (a, b) => valueKey(a) === valueKey(b)},
+    {equals: (a, b) => JSON.stringify(a) === JSON.stringify(b)},
   );
 
   const setScrollState = (newState: ScrollHistoryState<TStartRow> | null) => {

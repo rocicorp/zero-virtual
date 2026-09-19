@@ -497,6 +497,11 @@ your own persistence layer instead, hold it to the same rule: feed
 `scrollState` a new value when the user navigated, not when
 `onScrollStateChange` fired.
 
+The state must be JSON-serializable, because it carries the paging anchor and
+the anchor carries whatever `toStartRow` returns. An int64 column read as a
+`bigint` is the one to watch for: narrow it in `toStartRow` (`Number(row.id)`,
+`String(row.id)`) and widen it again in `getPageQuery`.
+
 Both helpers are built on the Navigation API
 (`navigation.updateCurrentEntry`), which requires **Firefox 147+**; every
 Chromium and Safari version this library supports already has it. On older

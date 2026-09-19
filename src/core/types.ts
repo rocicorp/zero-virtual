@@ -112,7 +112,17 @@ export type VirtualizerQueryOptions<
   getPageQuery: GetPageQuery<TPageQuery, TPageOptions, TStartRow>;
   /** Function that returns a query for fetching a single row by ID */
   getSingleQuery: GetSingleQuery<TSingleQuery, TSingleOptions>;
-  /** Function to extract the start row data from a full row (for pagination anchoring) */
+  /**
+   * Function to extract the start row data from a full row (for pagination
+   * anchoring).
+   *
+   * The result must be **JSON-serializable**. It rides in the paging anchor,
+   * which is persisted through `onScrollStateChange` and compared by
+   * `JSON.stringify` on the way back, so a value JSON can't represent — a
+   * `bigint` from an int64 column is the one to watch for — throws rather
+   * than degrading. Narrow it here (`Number(row.id)`, `String(row.id)`) and
+   * widen it again in `getPageQuery`.
+   */
   toStartRow: (row: TRow) => TStartRow;
 };
 

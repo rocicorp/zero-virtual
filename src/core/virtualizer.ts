@@ -16,7 +16,6 @@ import type {
   ScrollRect,
   VirtualizerScrollOptions,
 } from './scroll.ts';
-import {valueKey} from './value-key.ts';
 import type {
   Anchor,
   AnchoringMode,
@@ -192,6 +191,9 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    * back/forward. The bundled helpers do exactly that; a custom layer should
    * too, and the core defends itself against a bounded amount of echo for the
    * ones that don't.
+   *
+   * Must be JSON-serializable, like the anchor it carries — see
+   * {@linkcode VirtualizerQueryOptions.toStartRow}.
    */
   scrollState?: ScrollHistoryState<TStartRow> | null | undefined;
   onScrollStateChange?:
@@ -338,13 +340,8 @@ function pixels(value: string): number {
  * Content equality for scroll states — the host round-trips them, so this
  * compares by value.
  *
- * Both the anchor and the list-context params go through `valueKey`, which
- * degrades to the parts it can read rather than throwing or answering "not
- * equal" for a value JSON can't represent (a bigint column in a start row).
- * Answering "not equal" would be the conservative direction for a comparison
- * in general, but not for this one: the caller reads a false as "not a state
- * of ours", which is what hands a jump's own stale position back to it as a
- * restore — exactly the app whose rows JSON can't serialize.
+ * The anchor and the list-context params are the app's own data, and both
+ * have to be JSON-serializable: see {@linkcode VirtualizerQueryOptions.toStartRow}.
  */
 function sameScrollState<TStartRow>(
   a: ScrollHistoryState<TStartRow>,
@@ -355,8 +352,8 @@ function sameScrollState<TStartRow>(
     a.estimatedTotal === b.estimatedTotal &&
     a.hasReachedStart === b.hasReachedStart &&
     a.hasReachedEnd === b.hasReachedEnd &&
-    valueKey(a.anchor) === valueKey(b.anchor) &&
-    valueKey(a.listContextParams) === valueKey(b.listContextParams)
+    JSON.stringify(a.anchor) === JSON.stringify(b.anchor) &&
+    JSON.stringify(a.listContextParams) === JSON.stringify(b.listContextParams)
   );
 }
 
@@ -930,9 +927,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   // Only restore from scrollState if its listContextParams matches the current
-  // context. Compared by value (state may come from serialized storage where
-  // object identity is not preserved) via `valueKey`, which survives params
-  // JSON can't represent; cached by input identities so it isn't
+  // context. JSON compare (state may come from serialized storage where object
+  // identity is not preserved), cached by input identities so it isn't
   // re-stringified per call.
   #effectiveScrollState(): ScrollHistoryState<TStartRow> | null {
     const {scrollState, listContextParams} = this.#options;
@@ -947,7 +943,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     let eff: ScrollHistoryState<TStartRow> | null = null;
     if (scrollState) {
       eff =
-        valueKey(scrollState.listContextParams) === valueKey(listContextParams)
+        JSON.stringify(scrollState.listContextParams) ===
+        JSON.stringify(listContextParams)
           ? scrollState
           : null;
     }
@@ -1963,7 +1960,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   #persistKey(): string {
     const s = this.#paging;
-    return `${valueKey(s.queryAnchor.anchor)}:${this.#effectiveEstimatedTotal()}:${s.hasReachedStart}:${s.hasReachedEnd}`;
+    return `${JSON.stringify(s.queryAnchor.anchor)}:${this.#effectiveEstimatedTotal()}:${s.hasReachedStart}:${s.hasReachedEnd}`;
   }
 
   // Schedule a persist when persist-relevant state changed since the last

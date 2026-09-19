@@ -130,22 +130,6 @@ test('a navigation does come back', () => {
   expect(result.current[0]).toEqual(s);
 });
 
-test('a start row JSON cannot represent survives the round trip', () => {
-  // The Navigation API structured-clones, so an int64 column read as a bigint
-  // stores and restores perfectly well — only a JSON comparison in the middle
-  // would throw over it, and that would take the whole store down on the next
-  // navigation rather than lose one field.
-  const {result} = renderHook(() => useHistoryScrollState('a'));
-  const s = {
-    ...fakeScrollState(7),
-    anchor: {index: 0, kind: 'forward' as const, startRow: {rowid: 1n}},
-  };
-
-  act(() => nav.navigate({a: s}));
-
-  expect(result.current[0]).toEqual(s);
-});
-
 test('traversing back to an entry restores the state written while there', () => {
   // The write is invisible while we stay on the entry, but it is still
   // *stored* — coming back to that entry later is a navigation, and this is
