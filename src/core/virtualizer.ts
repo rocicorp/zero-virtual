@@ -324,36 +324,34 @@ function pixels(value: string): number {
 }
 
 /**
- * An anchor, as a string that changes when the anchor does. `startRow` is the
- * app's own row data, which JSON can't always represent — a bigint column, say
- * — so fall back to the parts that are always primitives rather than throwing
- * out of a commit. The cost of the fallback is only that two anchors differing
- * solely in an unserializable start row read as unchanged.
+ * A value, as a string that changes when the value does. Used for anchors and
+ * for list-context params, both of which carry the app's own data — which JSON
+ * can't always represent (a bigint column in a start row, say) — so fall back
+ * to the parts that are always primitives rather than throwing out of a commit.
+ * The cost of the fallback is only that two anchors differing solely in an
+ * unserializable start row read as unchanged.
  */
-function anchorKey(anchor: unknown): string {
+function anchorKey(value: unknown): string {
   try {
-    return JSON.stringify(anchor) ?? '';
+    return JSON.stringify(value) ?? String(value);
   } catch {
-    const {kind, index} = anchor as {kind?: unknown; index?: unknown};
+    const {kind, index} = (value ?? {}) as {kind?: unknown; index?: unknown};
     return `${String(kind)}:${String(index)}`;
   }
 }
 
 /**
- * Deep equality by serialization, for values that have been round-tripped
- * through the host's storage. Anything JSON can't represent — a cycle, a
- * bigint column in a start row — counts as "not equal": the only caller reads
- * a false as "this state isn't one of ours", which is the conservative answer.
+ * Content equality for scroll states — the host round-trips them, so this
+ * compares by value.
+ *
+ * Both the anchor and the list-context params go through `anchorKey`, which
+ * degrades to the parts it can read rather than throwing or answering "not
+ * equal" for a value JSON can't represent (a bigint column in a start row).
+ * Answering "not equal" would be the conservative direction for a comparison
+ * in general, but not for this one: the caller reads a false as "not a state
+ * of ours", which is what hands a jump's own stale position back to it as a
+ * restore — exactly the app whose rows JSON can't serialize.
  */
-function jsonEqual(a: unknown, b: unknown): boolean {
-  try {
-    return JSON.stringify(a) === JSON.stringify(b);
-  } catch {
-    return false;
-  }
-}
-
-/** Content equality for scroll states — the host round-trips them. */
 function sameScrollState<TStartRow>(
   a: ScrollHistoryState<TStartRow>,
   b: ScrollHistoryState<TStartRow>,
@@ -363,8 +361,8 @@ function sameScrollState<TStartRow>(
     a.estimatedTotal === b.estimatedTotal &&
     a.hasReachedStart === b.hasReachedStart &&
     a.hasReachedEnd === b.hasReachedEnd &&
-    jsonEqual(a.anchor, b.anchor) &&
-    jsonEqual(a.listContextParams, b.listContextParams)
+    anchorKey(a.anchor) === anchorKey(b.anchor) &&
+    anchorKey(a.listContextParams) === anchorKey(b.listContextParams)
   );
 }
 
@@ -837,9 +835,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.#anchorOn(request);
   }
 
-  // The request's row in the DOM: by the id it was made with, by the key the
-  // lookup resolved it to, or — for a permalink anchor, whose own lookup
-  // answers separately — by that row's key.
+  // The request's row in the DOM: by the id it was made with, or by the key its
+  // lookup resolved it to. A request that has no key yet picks one up in
+  // #retryPendingScroll, once #resolvedRowKey can vouch for it.
   #findTarget(el: HTMLElement, request: PendingScroll): HTMLElement | null {
     return (
       findRow(el, request.id) ??

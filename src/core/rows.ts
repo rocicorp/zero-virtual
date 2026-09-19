@@ -109,9 +109,16 @@ export function buildSingleQuery<TQuery, TOptions, TStartRow>(
 function lookupID<TStartRow>(
   inputs: RowsQueryInputs<TStartRow>,
 ): string | null {
-  return isPermalink(inputs.anchor)
-    ? inputs.anchor.id
-    : (inputs.probeID ?? null);
+  const {anchor, probeID} = inputs;
+  if (!isPermalink(anchor)) return probeID ?? null;
+  // Both at once would mean one of them silently loses its query and waits on
+  // an answer that never comes, which nothing surfaces at runtime — so say so
+  // here rather than let a caller meet it as a list that stops responding.
+  assert(
+    !probeID,
+    'probeID must be null while the anchor is a permalink: they share a query slot',
+  );
+  return anchor.id;
 }
 
 /**
