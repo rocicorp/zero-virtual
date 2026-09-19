@@ -57,16 +57,6 @@ const createPermalinkAnchor = (id: string) =>
     kind: 'permalink',
   }) as const;
 
-// Whether two anchors select the same query window: same kind and index, and
-// the same start cursor. The cursor — `startRow` for forward/backward
-// (`undefined` for the top anchor), `id` for permalink — is compared by
-// reference. The core deliberately does not compare rows by value: only the
-// data layer knows a row's sort order (Zero has a comparator), and the cursor
-// is the sort columns, not the row key — a key match with different sort
-// values would be a *different* cursor, so a key/value guess could wrongly
-// skip a real re-anchor. Reference equality is the safe conservative signal:
-// unchanged query results hand back the same row object (so a genuine no-op —
-// e.g. re-selecting the top anchor — is caught), and anything else re-anchors.
 /**
  * A scroll-to-a-row request that hasn't landed yet: the target's id, where it
  * should end up, and who asked. `option` requests come from the `permalinkID`
@@ -184,6 +174,10 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    * {@linkcode compareStartRows}. See
    * {@linkcode VirtualizerQueryOptions.toStartRow}.
    */
+  scrollState?: ScrollHistoryState<TStartRow> | null | undefined;
+  onScrollStateChange?:
+    | ((state: ScrollHistoryState<TStartRow>) => void)
+    | undefined;
   /**
    * Orders two start rows, in the shape Zero's own comparators use: negative,
    * zero, or positive. Only the zero matters here — the virtualizer never
@@ -194,19 +188,11 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    * Without it, start rows are compared with `JSON.stringify`, which means
    * they have to be JSON-serializable. Supply this when they aren't (an int64
    * column read as a `bigint` is the usual reason), or when a structural
-   * comparison would be wrong or wasteful for them.
-   *
-   * {@linkcode listContextParams} is compared by JSON either way, as are the
-   * bundled `useHistoryScrollState` / `createHistoryScrollState` helpers,
-   * which compare a whole `history.state` they don't own. Start rows JSON
-   * can't take need a persistence layer of your own.
+   * comparison would be wrong or wasteful for them. Note that only the core
+   * reads it: {@linkcode listContextParams} is compared structurally either
+   * way, so it has to be JSON-serializable regardless.
    */
   compareStartRows?: ((a: TStartRow, b: TStartRow) => number) | undefined;
-
-  scrollState?: ScrollHistoryState<TStartRow> | null | undefined;
-  onScrollStateChange?:
-    | ((state: ScrollHistoryState<TStartRow>) => void)
-    | undefined;
   onSettled?: (() => void) | undefined;
   /**
    * The scroll observers, TanStack Virtual style. Required here; the
@@ -2033,7 +2019,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #schedulePersist(next: PersistState<TStartRow> = this.#persistState()): void {
     const {onScrollStateChange} = this.#options;
     // With no attached scroll element there is no live scroll position to
-    // persist. Skip without recording the key, so the persist still fires once
+    // persist. Skip without recording the state, so the persist still fires once
     // the container attaches. Persisting here would write a spurious
     // scrollTop: 0 over a saved position during the window before a
     // lazily-mounted container attaches — the exact value restore is trying to
