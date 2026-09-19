@@ -154,11 +154,11 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
   minPageSize?: number | undefined;
   /**
    * Persisted scroll/paging state to restore (e.g. on back/forward). Compared
-   * by reference: pass a **referentially stable** value that changes identity
-   * only when its content changes — otherwise restore re-applies every commit
-   * and paging can't settle. The `useHistoryScrollState` / `createHistoryScrollState`
-   * helpers guarantee this (they memoize by serialized content); a custom
-   * persistence layer must memoize the same way.
+   * by reference, so it has to be **referentially stable**: a fresh object
+   * every render re-applies the restore on every commit and paging never
+   * settles. The `useHistoryScrollState` / `createHistoryScrollState` helpers
+   * hold one reference per history entry and hand back that same one until
+   * the browser navigates; a custom persistence layer has to be as steady.
    *
    * This is an instruction — *put the viewport here* — not a mirror of
    * {@linkcode VirtualizerBindingOptions.onScrollStateChange}. Do not feed
