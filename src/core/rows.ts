@@ -65,7 +65,7 @@ export type RowsSnapshot<TRow> = {
   permalinkID: string | null;
 };
 
-/** The raw results of the (up to) four staged queries. */
+/** The raw results of the (up to) three staged queries. */
 export type RowsQueryResults<TRow> = {
   /** Single-row permalink lookup result (undefined while loading). */
   singleRow: TRow | undefined;
@@ -76,9 +76,6 @@ export type RowsQueryResults<TRow> = {
   /** Page-after rows (permalink only). */
   afterRows: TRow[] | undefined;
   afterComplete: boolean;
-  /** The `probeID` lookup's result (undefined when not probing). */
-  probeRow?: TRow | undefined;
-  probeComplete?: boolean | undefined;
 };
 
 function isPermalink<TStartRow>(
@@ -95,26 +92,26 @@ export function buildSingleQuery<TQuery, TOptions, TStartRow>(
   inputs: RowsQueryInputs<TStartRow>,
   getSingleQuery: GetSingleQuery<TQuery, TOptions>,
 ): QueryResult<TQuery, TOptions> | null {
-  return isPermalink(inputs.anchor)
-    ? getSingleQuery({id: inputs.anchor.id, settled: inputs.settled})
-    : null;
+  const id = lookupID(inputs);
+  return id === null ? null : getSingleQuery({id, settled: inputs.settled});
 }
 
 /**
- * Stage 4: the `probeID` lookup — the existence check a jump runs before it
- * re-anchors (see {@linkcode RowsQueryInputs.probeID}). Its own slot, so it
- * answers whatever the anchor is: the jump keeps its place in the query
- * staging without disturbing the window that is on screen. Null when nothing
- * is being probed.
+ * The id this slot looks up: a permalink anchor's target, or — under a page
+ * anchor, where the slot would otherwise sit idle — the id being probed (see
+ * {@linkcode RowsQueryInputs.probeID}).
+ *
+ * One slot serves both, which is also what makes the handover free: a probe
+ * that finds its row re-anchors on that same id, and the query doesn't change,
+ * so nothing is unsubscribed and re-subscribed in between. The core never
+ * probes while a permalink anchor is live, so the two can't collide.
  */
-export function buildProbeQuery<TQuery, TOptions, TStartRow>(
+function lookupID<TStartRow>(
   inputs: RowsQueryInputs<TStartRow>,
-  getSingleQuery: GetSingleQuery<TQuery, TOptions>,
-): QueryResult<TQuery, TOptions> | null {
-  const {probeID} = inputs;
-  return probeID
-    ? getSingleQuery({id: probeID, settled: inputs.settled})
-    : null;
+): string | null {
+  return isPermalink(inputs.anchor)
+    ? inputs.anchor.id
+    : (inputs.probeID ?? null);
 }
 
 /**
@@ -204,11 +201,12 @@ export function assembleRows<TRow, TStartRow>(
 
   const permalinkNotFound = permalinkMissing(inputs, singleRow, singleComplete);
 
-  // The probe runs in its own query slot, so it reports independently of the
-  // anchor (see RowsQueryInputs.probeID).
+  // Under a page anchor the single-row slot is the probe's (see lookupID), so
+  // its result is the probe's answer.
+  const probing = !isPermalink(anchor) && !!inputs.probeID;
   const probe = {
-    probeRow: inputs.probeID ? results.probeRow : undefined,
-    probeComplete: !!inputs.probeID && !!results.probeComplete,
+    probeRow: probing ? singleRow : undefined,
+    probeComplete: probing && singleComplete,
   };
 
   const rowsBeforeLength = mainRows?.length ?? 0;

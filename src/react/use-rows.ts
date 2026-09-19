@@ -4,7 +4,6 @@ import {
   assembleRows,
   buildAfterQuery,
   buildMainQuery,
-  buildProbeQuery,
   buildSingleQuery,
   permalinkMissing,
   type RowsSnapshot,
@@ -15,10 +14,10 @@ import type {GetPageQuery, GetSingleQuery} from '../zero-types.ts';
 /**
  * Internal hook that binds the virtualizer's staged queries to Zero's React
  * bindings. All windowing math lives in the framework-free core
- * ({@linkcode assembleRows}); this hook owns only the query staging — four
+ * ({@linkcode assembleRows}); this hook owns only the query staging — three
  * `useQuery` slots, called unconditionally in the same order every render
- * (queries 2 and 3 depend on query 1's result for permalink anchors; query 4,
- * the id probe, is independent of all of them).
+ * (queries 2 and 3 depend on query 1's result, which is the permalink anchor's
+ * lookup or, under a page anchor, the id probe's).
  */
 export function useRows<TRow, TStartRow>({
   pageSize,
@@ -57,14 +56,8 @@ export function useRows<TRow, TStartRow>({
   const q3 = buildAfterQuery(inputs, getPageQuery, singleStart, notFound);
   const [afterRows, afterResult] = useQuery(q3?.query ?? null, q3?.options);
 
-  // Stage 4: the `probeID` existence check (see buildProbeQuery).
-  const q4 = buildProbeQuery(inputs, getSingleQuery);
-  const [probeRow, probeResult] = useQuery(q4?.query ?? null, q4?.options);
-
   const mainComplete = mainResult.type === 'complete';
   const afterComplete = afterResult.type === 'complete';
-  const typedProbeRow = probeRow as TRow | undefined;
-  const probeComplete = probeResult.type === 'complete';
 
   // Memoized so the snapshot (and its rowAt identity) is stable across
   // renders whose query results didn't change.
@@ -79,8 +72,6 @@ export function useRows<TRow, TStartRow>({
           mainComplete,
           afterRows: afterRows as unknown as TRow[] | undefined,
           afterComplete,
-          probeRow: typedProbeRow,
-          probeComplete,
         },
       ),
     [
@@ -94,8 +85,6 @@ export function useRows<TRow, TStartRow>({
       mainComplete,
       afterRows,
       afterComplete,
-      typedProbeRow,
-      probeComplete,
     ],
   );
 }

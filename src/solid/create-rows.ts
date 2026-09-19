@@ -4,7 +4,6 @@ import {
   assembleRows,
   buildAfterQuery,
   buildMainQuery,
-  buildProbeQuery,
   buildSingleQuery,
   permalinkMissing,
   type RowsQueryInputs,
@@ -15,10 +14,10 @@ import type {GetPageQuery, GetSingleQuery} from '../zero-types.ts';
 /**
  * Binds the virtualizer's staged queries to Zero's Solid bindings. All
  * windowing math lives in the framework-free core ({@linkcode assembleRows});
- * this owns only the query staging — four `useQuery` slots (queries 2 and 3
- * depend on query 1's result for permalink anchors; query 4, the id probe, is
- * independent of all of them), each fed by an accessor so Solid re-subscribes
- * reactively as the inputs change.
+ * this owns only the query staging — three `useQuery` slots (queries 2 and 3
+ * depend on query 1's result, which is the permalink anchor's lookup or, under
+ * a page anchor, the id probe's), each fed by an accessor so Solid
+ * re-subscribes reactively as the inputs change.
  */
 export function createRows<TRow, TStartRow>(args: {
   inputs: Accessor<RowsQueryInputs<TStartRow>>;
@@ -36,19 +35,6 @@ export function createRows<TRow, TStartRow>(args: {
   );
   const typedSingleRow = () => singleRow() as TRow | undefined;
   const singleComplete = () => singleDetails().type === 'complete';
-  // Stage 4: the `probeID` existence check (see buildProbeQuery). It depends on
-  // nothing else and nothing else depends on it, so its position among the
-  // slots is free — it sits here only to keep the two lookups together.
-  const q4 = createMemo(() =>
-    buildProbeQuery(args.inputs(), args.getSingleQuery()),
-  );
-  const [probeRow, probeDetails] = useQuery(
-    () => q4()?.query ?? null,
-    () => q4()?.options ?? {},
-  );
-  const typedProbeRow = () => probeRow() as TRow | undefined;
-  const probeComplete = () => probeDetails().type === 'complete';
-
   const notFound = () =>
     permalinkMissing(args.inputs(), typedSingleRow(), singleComplete());
   const singleStart = () => {
@@ -92,8 +78,6 @@ export function createRows<TRow, TStartRow>(args: {
       mainComplete: mainDetails().type === 'complete',
       afterRows: afterRows() as unknown as TRow[] | undefined,
       afterComplete: afterDetails().type === 'complete',
-      probeRow: typedProbeRow(),
-      probeComplete: probeComplete(),
     }),
   );
 }

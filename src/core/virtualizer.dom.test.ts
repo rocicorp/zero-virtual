@@ -162,18 +162,9 @@ function createHarness({
 
   const answerQueries = (inputs: RowsQueryInputs<TestRow>) => {
     const anchor: Anchor<TestRow> = inputs.anchor;
-    // Stage 4 — the existence check a jump runs before it re-anchors. Its own
-    // slot, so it answers under any anchor.
-    const probe = {
-      probeRow: inputs.probeID
-        ? data.find(r => r.id === inputs.probeID)
-        : undefined,
-      probeComplete: !!inputs.probeID,
-    };
     if (anchor.kind === 'permalink') {
       const singleRow = data.find(r => r.id === anchor.id);
       return assembleRows<TestRow, TestRow>(inputs, {
-        ...probe,
         singleRow,
         singleComplete: true,
         mainRows: singleRow
@@ -186,10 +177,14 @@ function createHarness({
         afterComplete: true,
       });
     }
+    // Under a page anchor the single-row slot answers `probeID` — the
+    // existence check a jump runs before it re-anchors.
+    const probeRow = inputs.probeID
+      ? data.find(r => r.id === inputs.probeID)
+      : undefined;
     return assembleRows<TestRow, TestRow>(inputs, {
-      ...probe,
-      singleRow: undefined,
-      singleComplete: false,
+      singleRow: probeRow,
+      singleComplete: !!inputs.probeID,
       mainRows: page(anchor.startRow ?? null, anchor.kind, inputs.pageSize + 1),
       mainComplete: true,
       afterRows: undefined,
