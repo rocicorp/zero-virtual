@@ -1,6 +1,6 @@
 import {act, renderHook} from '@testing-library/react';
 import {beforeEach, expect, test} from 'vitest';
-import {getHistoryStateSnapshot} from '../core/history-state.ts';
+import {readHistoryState} from '../core/history-state.ts';
 import type {ScrollHistoryState} from '../core/types.ts';
 import {useHistoryScrollState} from './use-history-scroll-state.ts';
 
@@ -96,7 +96,7 @@ test('missing key in an existing state object reads as null', () => {
 
   // history.state is now a non-empty object — key 'a' is simply absent.
   act(() => result.current.b[1](fakeScrollState(9)));
-  act(() => nav.navigate(getHistoryStateSnapshot()));
+  act(() => nav.navigate(readHistoryState()));
 
   expect(result.current.a[0]).toBeNull();
 });
@@ -105,7 +105,24 @@ test('a write lands under its key in history.state', () => {
   const {result} = renderHook(() => useHistoryScrollState('a'));
   const s = fakeScrollState(123);
   act(() => result.current[1](s));
-  expect((getHistoryStateSnapshot() as Record<string, unknown>).a).toEqual(s);
+  expect((readHistoryState() as Record<string, unknown>).a).toEqual(s);
+});
+
+test('a sibling key this hook does not own cannot break it', () => {
+  // `history.state` is shared. Another library's key, a router's location
+  // state — none of it is ours to impose a shape on, and the Navigation API
+  // structured-clones, so it can hold things JSON cannot take. Reading and
+  // writing our own key has to work anyway.
+  const {result} = renderHook(() => useHistoryScrollState('a'));
+  const cyclic: Record<string, unknown> = {rowid: 1n};
+  cyclic.self = cyclic;
+
+  act(() => nav.navigate({theirs: cyclic}));
+  const s = fakeScrollState(5);
+
+  expect(() => act(() => result.current[1](s))).not.toThrow();
+  expect((readHistoryState() as Record<string, unknown>).a).toEqual(s);
+  expect((readHistoryState() as Record<string, unknown>).theirs).toBeDefined();
 });
 
 test('a write does not come back as a state to restore', () => {
@@ -167,7 +184,7 @@ test('a debounced write does not clobber sibling keys', () => {
 
   // Asserted against the stored state, not the hooks' own reads: a write is
   // deliberately invisible to the hook that made it.
-  const stored = getHistoryStateSnapshot() as Record<string, unknown>;
+  const stored = readHistoryState() as Record<string, unknown>;
   expect(stored.a).toEqual(stateA);
   expect(stored.b).toEqual(stateB);
 });

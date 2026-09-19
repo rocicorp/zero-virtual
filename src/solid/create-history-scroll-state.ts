@@ -1,7 +1,7 @@
 import {createMemo, createSignal, onCleanup, type Accessor} from 'solid-js';
 import {
   getHistoryNavigationSnapshot,
-  getHistoryStateSnapshot,
+  readHistoryState,
   subscribeHistoryState,
   updateHistoryState,
 } from '../core/history-state.ts';
@@ -61,7 +61,7 @@ export function createHistoryScrollState<TStartRow>(
     // The live state, not the navigation snapshot: this is a read-modify-write
     // over sibling keys, so it has to see writes that came after the last
     // navigation — including our own.
-    const state = getHistoryStateSnapshot();
+    const state = readHistoryState();
     updateHistoryState({
       ...(state as Record<string, unknown>),
       // Zero's Solid useQuery hands out store proxies, and the anchor's start

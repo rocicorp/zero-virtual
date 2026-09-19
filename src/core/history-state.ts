@@ -14,7 +14,10 @@ let currentSnapshotString = 'null';
 /**
  * The current history-entry state. Cached by JSON identity so an unchanged
  * state returns the same object (required by `useSyncExternalStore`, and what
- * keeps downstream memoization stable).
+ * keeps downstream memoization stable) — which means the whole
+ * `history.state`, every key of it, has to be JSON-serializable. Prefer
+ * {@linkcode getHistoryNavigationSnapshot} for reading and
+ * {@linkcode readHistoryState} for writing; neither has that requirement.
  */
 export function getHistoryStateSnapshot(): unknown {
   const newSnapshot = navigation.currentEntry?.getState();
@@ -30,7 +33,6 @@ export function getHistoryStateSnapshot(): unknown {
 let navigationRead = false;
 let navigationEntryID: string | undefined;
 let navigationState: unknown = null;
-let navigationStateString = 'null';
 
 /**
  * The current history-entry state as of the last *navigation* — a load, a
@@ -48,6 +50,12 @@ let navigationStateString = 'null';
  * state update. So this returns the same object — identity included — for
  * every state-only write, and re-reads only when the entry underneath has
  * actually changed.
+ *
+ * The id is the whole signal; the state itself is never inspected. It is a
+ * whole `history.state`, most of which belongs to whoever else writes there,
+ * and comparing it would mean imposing a shape on their data to answer a
+ * question the id already answers. Readers that care whether their own key
+ * changed across a navigation compare that key themselves.
  */
 export function getHistoryNavigationSnapshot(): unknown {
   const entry = navigation.currentEntry;
@@ -57,13 +65,21 @@ export function getHistoryNavigationSnapshot(): unknown {
   }
   navigationRead = true;
   navigationEntryID = id;
-  const next = entry?.getState();
-  const nextString = JSON.stringify(next);
-  if (nextString !== navigationStateString) {
-    navigationState = next;
-    navigationStateString = nextString;
-  }
+  navigationState = entry?.getState();
   return navigationState;
+}
+
+/**
+ * The live current-entry state, uncached.
+ *
+ * For read-modify-write: a caller that is about to write one key back has to
+ * see the writes that came after the last snapshot — including its own — or
+ * it erases them. It also wants nothing to do with the identity caching
+ * above, which exists for readers and would make this read a `history.state`
+ * it cannot serialize on someone else's behalf.
+ */
+export function readHistoryState(): unknown {
+  return navigation.currentEntry?.getState();
 }
 
 /** Server-side snapshot (no Navigation API): always null. */

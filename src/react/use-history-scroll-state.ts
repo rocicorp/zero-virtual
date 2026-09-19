@@ -2,7 +2,7 @@ import {useCallback, useMemo, useSyncExternalStore} from 'react';
 import {
   getHistoryNavigationSnapshot,
   getHistoryStateServerSnapshot,
-  getHistoryStateSnapshot,
+  readHistoryState,
   subscribeHistoryState,
   updateHistoryState,
 } from '../core/history-state.ts';
@@ -80,7 +80,7 @@ export function useHistoryScrollState<TStartRow>(
       // have written a sibling key since this closure was created — spreading
       // the stale snapshot would silently erase that write. (Mirrors the
       // Solid binding.)
-      const current = getHistoryStateSnapshot();
+      const current = readHistoryState();
       updateHistoryState({
         ...(current as Record<string, unknown>),
         [key]: newState,

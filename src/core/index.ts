@@ -21,6 +21,7 @@ export {
   getHistoryNavigationSnapshot,
   getHistoryStateServerSnapshot,
   getHistoryStateSnapshot,
+  readHistoryState,
   subscribeHistoryState,
   updateHistoryState,
 } from './history-state.ts';

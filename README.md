@@ -522,10 +522,12 @@ the zero is read: the virtualizer never sorts, it just needs to know whether
 two anchors point at the same row.
 
 Reach for it when your start rows aren't JSON-serializable, or when a
-structural comparison would be wrong or wasteful for them. Note that
-`listContextParams` is compared structurally either way, as is the whole
-`history.state` the helpers above read — so rows JSON can't take also need a
-persistence layer of your own.
+structural comparison would be wrong or wasteful for them. `listContextParams`
+is compared structurally either way.
+
+The history helpers above compare only the key they own, so whatever else
+lives in `history.state` — another library's key, a router's location state —
+is never inspected and never has to be JSON-serializable.
 
 Both helpers are built on the Navigation API
 (`navigation.updateCurrentEntry`), which requires **Firefox 147+**; every
