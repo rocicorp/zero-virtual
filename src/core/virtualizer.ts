@@ -798,7 +798,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // request open for #retryPendingScroll to land once the row renders.
   #anchorOn(request: PendingScroll): void {
     this.#pendingScroll = request;
-    this.#probe = null;
+    this.#dropProbe();
     this.#anchorKey = null;
     this.#anchorSuppressed = true;
     this.#setPaging(
@@ -806,8 +806,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     );
   }
 
-  // Cancel an in-flight lookup. The version bump takes `probeID` back out of
-  // the query inputs, so the wrapper unsubscribes it.
+  // The one place `#probe` is cleared. The version bump is what takes
+  // `probeID` back out of the query inputs: without it `#withNotify` has
+  // nothing to report, the wrapper never re-renders, and the single-row
+  // lookup stays subscribed to an id nobody is waiting on any more.
   #dropProbe(): void {
     if (this.#probe !== null) {
       this.#probe = null;
@@ -823,7 +825,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     if (probe === null) return;
     if (!this.#isListContextCurrent()) {
       // The list reset under us (sort/filter change): newer intent wins.
-      this.#probe = null;
+      this.#dropProbe();
       return;
     }
     // The snapshot answers whichever id the lookup ran for, which lags the
@@ -835,10 +837,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     if (this.#rows.probeID !== probe.id) return;
     if (!this.#rows.probeComplete) return;
     if (this.#rows.probeRow === undefined) {
-      this.#probe = null; // no such row — do nothing
+      this.#dropProbe(); // no such row — do nothing
       return;
     }
-    this.#probe = null;
+    this.#dropProbe();
     // The row exists, and the lookup told us which row it is — so carry its
     // DOM key with the request from here on, for the id-isn't-the-key case.
     const request: PendingScroll = {
@@ -1608,7 +1610,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       // A new permalink, or a list-context change, is newer intent than the
       // jump: it cancels it and falls through.
       this.#pendingScroll = null;
-      this.#probe = null;
+      this.#dropProbe();
     }
 
     this.#appliedScrollState = eff;

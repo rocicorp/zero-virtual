@@ -1030,6 +1030,26 @@ describe('scrollToItem', () => {
       expect(h.scroller.scrollTop).toBe(scrollBefore);
     });
 
+    test('takes its lookup back out of the query inputs', () => {
+      // Dropping the probe has to reach the wrapper: `probeID` only leaves
+      // the query inputs on a re-render, and nothing else in that commit is
+      // guaranteed to ask for one. Without the notify the single-row lookup
+      // stays subscribed to an id nobody is waiting on any more.
+      const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+      h.settle();
+
+      h.core.scrollToItem('nope');
+      expect(h.core.getQueryInputs().probeID).toBe('nope');
+
+      let notified = 0;
+      const unsubscribe = h.core.subscribe(() => notified++);
+      h.tick(); // the lookup comes back empty
+      unsubscribe();
+
+      expect(h.core.getQueryInputs().probeID).toBeNull();
+      expect(notified).toBeGreaterThan(0);
+    });
+
     test('leaves paging working afterwards', () => {
       const h = harness({rowCount: 500});
       h.settle();
