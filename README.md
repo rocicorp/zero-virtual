@@ -502,6 +502,31 @@ the anchor carries whatever `toStartRow` returns. An int64 column read as a
 `bigint` is the one to watch for: narrow it in `toStartRow` (`Number(row.id)`,
 `String(row.id)`) and widen it again in `getPageQuery`.
 
+### `compareStartRows`
+
+The virtualizer compares paging anchors to tell one position from another, and
+by default it does that structurally, with `JSON.stringify`. Pass
+`compareStartRows` to do it with your own comparator instead:
+
+```ts
+useZeroVirtualizer({
+  compareStartRows: (a, b) =>
+    a.rowid < b.rowid ? -1 : a.rowid > b.rowid ? 1 : 0,
+  // ...
+});
+```
+
+It takes the same shape as the comparators Zero uses — negative, zero,
+positive — so you can hand over the one you already sort this list by. Only
+the zero is read: the virtualizer never sorts, it just needs to know whether
+two anchors point at the same row.
+
+Reach for it when your start rows aren't JSON-serializable, or when a
+structural comparison would be wrong or wasteful for them. Note that
+`listContextParams` is compared structurally either way, as is the whole
+`history.state` the helpers above read — so rows JSON can't take also need a
+persistence layer of your own.
+
 Both helpers are built on the Navigation API
 (`navigation.updateCurrentEntry`), which requires **Firefox 147+**; every
 Chromium and Safari version this library supports already has it. On older

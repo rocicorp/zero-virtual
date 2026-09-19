@@ -4,7 +4,7 @@ import {VROW_INDEX_ATTR, VROW_KEY_ATTR} from './dom.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
 import type {Anchor, ScrollHistoryState} from './types.ts';
 
-type TestRow = {id: string};
+type TestRow = {id: string; rowid?: bigint};
 
 /**
  * A DOM-attached harness for the imperative side of the core, which the
@@ -32,15 +32,19 @@ function createHarness({
   rowCount,
   rowHeight = 20,
   viewportHeight = 400,
+  bigintRows = false,
   options = {},
 }: {
   rowCount: number;
   rowHeight?: number;
   viewportHeight?: number;
+  /** Give rows an int64-ish column, which JSON can't serialize. */
+  bigintRows?: boolean;
   options?: Partial<VirtualizerOptions<unknown, TestRow, TestRow>>;
 }) {
   const data: TestRow[] = Array.from({length: rowCount}, (_, i) => ({
     id: `r${i}`,
+    ...(bigintRows ? {rowid: BigInt(i)} : {}),
   }));
   const heights = new Map<string, number>();
   const heightOf = (key: string) => heights.get(key) ?? rowHeight;
@@ -238,10 +242,14 @@ function createHarness({
   };
 
   // Settled = the queries stopped changing: the anchor holds still and no
-  // id lookup (`probeID`) is in flight.
+  // id lookup (`probeID`) is in flight. Spelled out field by field rather
+  // than stringified, so the harness imposes no serializability requirement
+  // of its own on the rows under test (see `bigintRows`).
   const queryKey = () => {
     const {anchor, probeID} = core.getQueryInputs();
-    return JSON.stringify({anchor, probeID});
+    const cursor =
+      anchor.kind === 'permalink' ? anchor.id : (anchor.startRow?.id ?? '');
+    return `${anchor.kind}:${anchor.index}:${cursor}:${probeID ?? ''}`;
   };
 
   const settle = (maxTicks = 20) => {
@@ -635,6 +643,78 @@ describe('scroll-state restore of a position we wrote ourselves', () => {
     h.tick();
 
     expect(h.scroller.scrollTop).toBe(400);
+  });
+});
+
+describe('compareStartRows', () => {
+  // An int64 column read as a bigint. The anchor carries the row it paged
+  // from, so the cursor carries the bigint, and every comparison the core
+  // makes of one anchor against another has to get past it.
+  const compareStartRows = (a: TestRow, b: TestRow) =>
+    a.rowid === b.rowid ? 0 : (a.rowid ?? 0n) < (b.rowid ?? 0n) ? -1 : 1;
+
+  const scrolledPastAPage = (
+    options: Partial<VirtualizerOptions<unknown, TestRow, TestRow>>,
+  ) => {
+    const persisted: Array<ScrollHistoryState<TestRow>> = [];
+    const h = harness({
+      rowCount: 500,
+      bigintRows: true,
+      options: {
+        anchoring: 'manual',
+        onScrollStateChange: s =>
+          persisted.push(s as ScrollHistoryState<TestRow>),
+        ...options,
+      },
+    });
+    h.settle();
+    // Far enough that paging re-anchors: the anchor now carries a start row
+    // rather than the bare top-of-list one.
+    h.userScroll(1500);
+    h.settle();
+    h.scroller.dispatchEvent(new Event('scrollend'));
+    return {h, persisted};
+  };
+
+  // What a host hands back: the Navigation API structured-clones, so the
+  // anchor is a different object carrying an equal bigint. Passing the saved
+  // object itself would compare by identity and prove nothing.
+  const asRestoredByAHost = (state: ScrollHistoryState<TestRow>) =>
+    structuredClone(state);
+
+  test('a start row JSON cannot serialize survives the round trip', () => {
+    const {h, persisted} = scrolledPastAPage({compareStartRows});
+
+    const saved = persisted.at(-1)!;
+    const {anchor} = saved;
+    if (anchor.kind === 'permalink') throw new Error('expected a page anchor');
+    expect(typeof anchor.startRow?.rowid).toBe('bigint');
+
+    // The state comes back: the echo check compares it against the ones we
+    // wrote, anchor included.
+    h.core.setOptions({
+      ...h.coreOptions,
+      compareStartRows,
+      scrollState: asRestoredByAHost(saved),
+    });
+
+    expect(() => h.tick()).not.toThrow();
+  });
+
+  test('is what makes that work: without it the compare throws', () => {
+    // Not a lament for the old behaviour — a check that the comparator is
+    // carrying the weight the test above credits it with, rather than the
+    // comparison being skipped by an identity fast path.
+    const {h, persisted} = scrolledPastAPage({compareStartRows});
+    const saved = persisted.at(-1)!;
+
+    h.core.setOptions({
+      ...h.coreOptions,
+      compareStartRows: undefined,
+      scrollState: asRestoredByAHost(saved),
+    });
+
+    expect(() => h.tick()).toThrow(/BigInt/);
   });
 });
 

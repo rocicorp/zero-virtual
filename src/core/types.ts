@@ -116,12 +116,14 @@ export type VirtualizerQueryOptions<
    * Function to extract the start row data from a full row (for pagination
    * anchoring).
    *
-   * The result must be **JSON-serializable**. It rides in the paging anchor,
-   * which is persisted through `onScrollStateChange` and compared by
-   * `JSON.stringify` on the way back, so a value JSON can't represent — a
-   * `bigint` from an int64 column is the one to watch for — throws rather
-   * than degrading. Narrow it here (`Number(row.id)`, `String(row.id)`) and
-   * widen it again in `getPageQuery`.
+   * The result rides in the paging anchor, which is persisted through
+   * `onScrollStateChange` and compared against what comes back. That
+   * comparison is `JSON.stringify` unless you supply
+   * {@linkcode VirtualizerOptions.compareStartRows}, so by default the result
+   * must be **JSON-serializable** — a `bigint` from an int64 column is the
+   * one to watch for. Either narrow it here (`Number(row.id)`,
+   * `String(row.id)`) and widen it again in `getPageQuery`, or hand over the
+   * comparator you already sort by.
    */
   toStartRow: (row: TRow) => TStartRow;
 };

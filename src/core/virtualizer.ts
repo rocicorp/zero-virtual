@@ -67,18 +67,6 @@ const createPermalinkAnchor = (id: string) =>
 // skip a real re-anchor. Reference equality is the safe conservative signal:
 // unchanged query results hand back the same row object (so a genuine no-op —
 // e.g. re-selecting the top anchor — is caught), and anything else re-anchors.
-function anchorsEqual<TStartRow>(
-  a: Anchor<TStartRow>,
-  b: Anchor<TStartRow>,
-): boolean {
-  if (a === b) return true;
-  if (a.kind !== b.kind || a.index !== b.index) return false;
-  if (a.kind === 'permalink') {
-    return a.id === (b as {id: string}).id;
-  }
-  return a.startRow === (b as {startRow?: TStartRow}).startRow;
-}
-
 /**
  * A scroll-to-a-row request that hasn't landed yet: the target's id, where it
  * should end up, and who asked. `option` requests come from the `permalinkID`
@@ -192,9 +180,29 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    * too, and the core defends itself against a bounded amount of echo for the
    * ones that don't.
    *
-   * Must be JSON-serializable, like the anchor it carries — see
+   * Must be JSON-serializable, like the anchor it carries — unless you supply
+   * {@linkcode compareStartRows}. See
    * {@linkcode VirtualizerQueryOptions.toStartRow}.
    */
+  /**
+   * Orders two start rows, in the shape Zero's own comparators use: negative,
+   * zero, or positive. Only the zero matters here — the virtualizer never
+   * sorts, it just needs to know whether two paging anchors point at the same
+   * place — but taking that shape means you can hand over the comparator you
+   * already sort this list by rather than writing a second one.
+   *
+   * Without it, start rows are compared with `JSON.stringify`, which means
+   * they have to be JSON-serializable. Supply this when they aren't (an int64
+   * column read as a `bigint` is the usual reason), or when a structural
+   * comparison would be wrong or wasteful for them.
+   *
+   * {@linkcode listContextParams} is compared by JSON either way, as are the
+   * bundled `useHistoryScrollState` / `createHistoryScrollState` helpers,
+   * which compare a whole `history.state` they don't own. Start rows JSON
+   * can't take need a persistence layer of your own.
+   */
+  compareStartRows?: ((a: TStartRow, b: TStartRow) => number) | undefined;
+
   scrollState?: ScrollHistoryState<TStartRow> | null | undefined;
   onScrollStateChange?:
     | ((state: ScrollHistoryState<TStartRow>) => void)
@@ -336,26 +344,13 @@ function pixels(value: string): number {
   return value.endsWith('px') ? Number.parseFloat(value) || 0 : 0;
 }
 
-/**
- * Content equality for scroll states — the host round-trips them, so this
- * compares by value.
- *
- * The anchor and the list-context params are the app's own data, and both
- * have to be JSON-serializable: see {@linkcode VirtualizerQueryOptions.toStartRow}.
- */
-function sameScrollState<TStartRow>(
-  a: ScrollHistoryState<TStartRow>,
-  b: ScrollHistoryState<TStartRow>,
-): boolean {
-  return (
-    a.scrollTop === b.scrollTop &&
-    a.estimatedTotal === b.estimatedTotal &&
-    a.hasReachedStart === b.hasReachedStart &&
-    a.hasReachedEnd === b.hasReachedEnd &&
-    JSON.stringify(a.anchor) === JSON.stringify(b.anchor) &&
-    JSON.stringify(a.listContextParams) === JSON.stringify(b.listContextParams)
-  );
-}
+/** The slice of paging state a persist writes, for change detection. */
+type PersistState<TStartRow> = {
+  readonly anchor: Anchor<TStartRow>;
+  readonly estimatedTotal: number;
+  readonly hasReachedStart: boolean;
+  readonly hasReachedEnd: boolean;
+};
 
 const EMPTY_ROWS: RowsSnapshot<unknown> = {
   rowAt: () => undefined,
@@ -498,7 +493,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #effScrollStateKey: readonly [unknown, unknown] | null = null;
   #effScrollState: ScrollHistoryState<TStartRow> | null = null;
   // Persist-scheduling change detection.
-  #lastPersistKey = '';
+  #lastPersisted: PersistState<TStartRow> | null = null;
   // Settle-timer reset on list-context change (the old effect's dep).
   #lastSettleContext: TListContextParams;
   // One-shot guard for the identity-churn warning below.
@@ -918,6 +913,48 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // ---- derived values --------------------------------------------------------
 
+  // Whether two start rows point at the same place. `compareStartRows` when
+  // the app supplied one — it knows its own rows, and its comparator is the
+  // list's own sort order — otherwise a structural compare.
+  #startRowsEqual(a: TStartRow | undefined, b: TStartRow | undefined): boolean {
+    if (a === b) return true;
+    if (a === undefined || b === undefined) return false;
+    const {compareStartRows} = this.#options;
+    return compareStartRows
+      ? compareStartRows(a, b) === 0
+      : JSON.stringify(a) === JSON.stringify(b);
+  }
+
+  #anchorsEqual(a: Anchor<TStartRow>, b: Anchor<TStartRow>): boolean {
+    if (a === b) return true;
+    if (a.kind !== b.kind || a.index !== b.index) return false;
+    if (a.kind === 'permalink') {
+      return a.id === (b as {id: string}).id;
+    }
+    return this.#startRowsEqual(
+      a.startRow,
+      (b as {startRow?: TStartRow}).startRow,
+    );
+  }
+
+  // Content equality for scroll states — the host round-trips them, so this
+  // compares by value. The anchor goes through #anchorsEqual; the list-context
+  // params are not rows and are always compared structurally.
+  #sameScrollState(
+    a: ScrollHistoryState<TStartRow>,
+    b: ScrollHistoryState<TStartRow>,
+  ): boolean {
+    return (
+      a.scrollTop === b.scrollTop &&
+      a.estimatedTotal === b.estimatedTotal &&
+      a.hasReachedStart === b.hasReachedStart &&
+      a.hasReachedEnd === b.hasReachedEnd &&
+      this.#anchorsEqual(a.anchor, b.anchor) &&
+      JSON.stringify(a.listContextParams) ===
+        JSON.stringify(b.listContextParams)
+    );
+  }
+
   #manual(): boolean {
     const anchoring = this.#options.anchoring ?? 'auto';
     return (
@@ -1101,7 +1138,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // this when the loaded rows sit entirely below the viewport at scroll
     // offset 0 (a window-scrolled list rendered below other page content, at
     // the top of the page): it re-selects the top anchor every commit.
-    if (totalDelta === 0 && anchorsEqual(s.queryAnchor.anchor, anchor)) {
+    if (totalDelta === 0 && this.#anchorsEqual(s.queryAnchor.anchor, anchor)) {
       return;
     }
     this.#setPaging({
@@ -1958,22 +1995,42 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // ---- persistence -----------------------------------------------------------
 
-  #persistKey(): string {
+  // The persist-relevant slice of paging state: what a scheduled persist would
+  // write, minus the live scroll offset (which scroll events handle).
+  #persistState(): PersistState<TStartRow> {
     const s = this.#paging;
-    return `${JSON.stringify(s.queryAnchor.anchor)}:${this.#effectiveEstimatedTotal()}:${s.hasReachedStart}:${s.hasReachedEnd}`;
+    return {
+      anchor: s.queryAnchor.anchor,
+      estimatedTotal: this.#effectiveEstimatedTotal(),
+      hasReachedStart: s.hasReachedStart,
+      hasReachedEnd: s.hasReachedEnd,
+    };
+  }
+
+  #samePersistState(
+    a: PersistState<TStartRow> | null,
+    b: PersistState<TStartRow>,
+  ): boolean {
+    return (
+      a !== null &&
+      a.estimatedTotal === b.estimatedTotal &&
+      a.hasReachedStart === b.hasReachedStart &&
+      a.hasReachedEnd === b.hasReachedEnd &&
+      this.#anchorsEqual(a.anchor, b.anchor)
+    );
   }
 
   // Schedule a persist when persist-relevant state changed since the last
   // schedule (the old effect's dependency semantics; scroll events schedule
   // unconditionally via #evaluate → #schedulePersist).
   #schedulePersistIfChanged(): void {
-    const key = this.#persistKey();
-    if (key !== this.#lastPersistKey) {
-      this.#schedulePersist(key);
+    const next = this.#persistState();
+    if (!this.#samePersistState(this.#lastPersisted, next)) {
+      this.#schedulePersist(next);
     }
   }
 
-  #schedulePersist(key = this.#persistKey()): void {
+  #schedulePersist(next: PersistState<TStartRow> = this.#persistState()): void {
     const {onScrollStateChange} = this.#options;
     // With no attached scroll element there is no live scroll position to
     // persist. Skip without recording the key, so the persist still fires once
@@ -1984,7 +2041,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     if (!this.#el || !this.#isListContextCurrent() || !onScrollStateChange) {
       return;
     }
-    this.#lastPersistKey = key;
+    this.#lastPersisted = next;
     clearTimeout(this.#persistTimer);
     this.#persistTimer = setTimeout(() => {
       this.#persistTimer = undefined;
@@ -1999,7 +2056,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #persistNow(): void {
     clearTimeout(this.#persistTimer);
     this.#persistTimer = undefined;
-    this.#lastPersistKey = this.#persistKey();
+    this.#lastPersisted = this.#persistState();
     this.#writeScrollState();
   }
 
@@ -2031,7 +2088,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // Whether this state is one we wrote out ourselves and has simply come back
   // to us (see #ownScrollStates).
   #isOwnScrollState(state: ScrollHistoryState<TStartRow>): boolean {
-    return this.#ownScrollStates.some(own => sameScrollState(own, state));
+    return this.#ownScrollStates.some(own => this.#sameScrollState(own, state));
   }
 }
 
