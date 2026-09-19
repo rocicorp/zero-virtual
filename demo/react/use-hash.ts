@@ -3,6 +3,8 @@ import {useSyncExternalStore} from 'react';
 // Module-level cache, updated when the current history entry changes so that
 // getHash() returns the right value the moment React reads it.
 let currentHash = location.hash.slice(1);
+// The path those hashes belong to (see onCurrentEntryChange).
+let currentPath = location.pathname;
 
 // One listener pair for all subscribers, not one per subscriber. The cache
 // above is shared, so a per-subscriber listener would let whichever one ran
@@ -17,10 +19,11 @@ function getHash(): string {
 }
 
 function onNavigate(e: NavigateEvent): void {
-  if (!e.canIntercept || !navigation.currentEntry?.url) return;
-  const currentURL = new URL(navigation.currentEntry.url);
-  const destinationURL = new URL(e.destination.url);
-  if (currentURL.pathname !== destinationURL.pathname) return;
+  if (!e.canIntercept) return;
+  // Every navigation this document can handle, not just the same-path ones:
+  // intercept() is what keeps a navigation in-page at all, so declining one
+  // hands it back to the browser as a full document load.
+  //
   // `scroll: 'manual'` stops the browser from scrolling the document on hash
   // navigations. We manage scroll ourselves (the virtualizer scrolls the
   // permalink target into view and restores saved positions); without this,
@@ -35,6 +38,12 @@ function onNavigate(e: NavigateEvent): void {
 // and `scrollState` as one intent, and handing it half of a navigation
 // makes it restore the position it is on its way out of.
 function onCurrentEntryChange(): void {
+  const previousPath = currentPath;
+  currentPath = location.pathname;
+  // A navigation that changed the path is another page's business. Its
+  // fragment means whatever that page says it means, and adopting it here
+  // would hand this list a permalink id belonging to something else.
+  if (currentPath !== previousPath) return;
   const newHash = location.hash.slice(1);
   if (newHash === currentHash) return;
   currentHash = newHash;
