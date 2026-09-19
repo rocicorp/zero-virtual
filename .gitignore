@@ -10,3 +10,6 @@ docs
 .last-run.json
 test-results/
 playwright-report/
+
+# Local dev-server config for the Claude Code browser pane.
+.claude/launch.json

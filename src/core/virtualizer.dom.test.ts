@@ -4,7 +4,7 @@ import {VROW_INDEX_ATTR, VROW_KEY_ATTR} from './dom.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
 import type {Anchor, ScrollHistoryState} from './types.ts';
 
-type TestRow = {id: string};
+type TestRow = {id: string; rowid?: bigint};
 
 /**
  * A DOM-attached harness for the imperative side of the core, which the
@@ -32,15 +32,19 @@ function createHarness({
   rowCount,
   rowHeight = 20,
   viewportHeight = 400,
+  bigintRows = false,
   options = {},
 }: {
   rowCount: number;
   rowHeight?: number;
   viewportHeight?: number;
+  /** Give rows an int64-ish column, which JSON can't serialize. */
+  bigintRows?: boolean;
   options?: Partial<VirtualizerOptions<unknown, TestRow, TestRow>>;
 }) {
   const data: TestRow[] = Array.from({length: rowCount}, (_, i) => ({
     id: `r${i}`,
+    ...(bigintRows ? {rowid: BigInt(i)} : {}),
   }));
   const heights = new Map<string, number>();
   const heightOf = (key: string) => heights.get(key) ?? rowHeight;
@@ -74,6 +78,16 @@ function createHarness({
     },
   });
 
+  // The geometry a real scroll container reports, kept consistent with the
+  // clamping above: the core reads these to tell a clamped write of its own
+  // from the user scrolling somewhere else.
+  Object.defineProperty(scroller, 'scrollHeight', {
+    get: () => contentHeight(),
+  });
+  Object.defineProperty(scroller, 'clientHeight', {
+    get: () => viewportHeight,
+  });
+
   const rect = (top: number, height: number): DOMRect =>
     ({
       top,
@@ -105,7 +119,7 @@ function createHarness({
   // The injected observers: rect reports immediately (like a ResizeObserver's
   // initial measurement); the offset callback is delivered by deliverScroll.
   let offsetCb: ((offset: number) => void) | null = null;
-  const core = new ZeroVirtualizer<unknown, TestRow, TestRow>({
+  const coreOptions: VirtualizerOptions<unknown, TestRow, TestRow> = {
     estimateSize: () => rowHeight,
     getRowKey: row => row.id,
     listContextParams: 'ctx',
@@ -124,7 +138,8 @@ function createHarness({
       };
     },
     ...options,
-  });
+  };
+  const core = new ZeroVirtualizer<unknown, TestRow, TestRow>(coreOptions);
 
   const deliverScroll = () => {
     if (scrollPending) {
@@ -168,9 +183,14 @@ function createHarness({
         afterComplete: true,
       });
     }
+    // Under a page anchor the single-row slot answers `probeID` — the
+    // existence check a jump runs before it re-anchors.
+    const probeRow = inputs.probeID
+      ? data.find(r => r.id === inputs.probeID)
+      : undefined;
     return assembleRows<TestRow, TestRow>(inputs, {
-      singleRow: undefined,
-      singleComplete: false,
+      singleRow: probeRow,
+      singleComplete: !!inputs.probeID,
       mainRows: page(anchor.startRow ?? null, anchor.kind, inputs.pageSize + 1),
       mainComplete: true,
       afterRows: undefined,
@@ -221,11 +241,22 @@ function createHarness({
     core.afterDOMUpdate();
   };
 
+  // Settled = the queries stopped changing: the anchor holds still and no
+  // id lookup (`probeID`) is in flight. Spelled out field by field rather
+  // than stringified, so the harness imposes no serializability requirement
+  // of its own on the rows under test (see `bigintRows`).
+  const queryKey = () => {
+    const {anchor, probeID} = core.getQueryInputs();
+    const cursor =
+      anchor.kind === 'permalink' ? anchor.id : (anchor.startRow?.id ?? '');
+    return `${anchor.kind}:${anchor.index}:${cursor}:${probeID ?? ''}`;
+  };
+
   const settle = (maxTicks = 20) => {
     for (let i = 0; i < maxTicks; i++) {
-      const before = JSON.stringify(core.getQueryInputs().anchor);
+      const before = queryKey();
       tick();
-      if (JSON.stringify(core.getQueryInputs().anchor) === before) return;
+      if (queryKey() === before) return;
     }
     throw new Error('paging did not settle');
   };
@@ -245,6 +276,7 @@ function createHarness({
 
   return {
     core,
+    coreOptions,
     scroller,
     wrapper,
     tick,
@@ -254,6 +286,13 @@ function createHarness({
     deliverScroll,
     visibleIndexes,
     setRowHeight: (key: string, px: number) => heights.set(key, px),
+    rowElement: (key: string) => {
+      const el = wrapper.querySelector<HTMLElement>(
+        `[${VROW_KEY_ATTR}="${key}"]`,
+      );
+      if (!el) throw new Error(`row ${key} not rendered`);
+      return el;
+    },
     rowTop: (key: string) => {
       const el = wrapper.querySelector(`[${VROW_KEY_ATTR}="${key}"]`);
       if (!el) throw new Error(`row ${key} not rendered`);
@@ -534,6 +573,151 @@ describe('permalink scroll', () => {
   });
 });
 
+describe('scroll-state restore of a position we wrote ourselves', () => {
+  test('a jump that took a long time to load still outranks the echo', () => {
+    // The echo window is refreshed while a jump is in flight — but the commit
+    // it lands on retires the request first, so that one has to count too.
+    // Otherwise a jump whose pages took longer than the window to arrive (a
+    // cold cache) lands with the window already expired, and the pre-jump
+    // position the host is still holding comes back as a restore and undoes
+    // it.
+    const persisted: Array<ScrollHistoryState<TestRow>> = [];
+    const h = harness({
+      rowCount: 500,
+      options: {
+        anchoring: 'manual',
+        onScrollStateChange: s =>
+          persisted.push(s as ScrollHistoryState<TestRow>),
+      },
+    });
+    h.settle();
+    h.userScroll(400);
+    h.scroller.dispatchEvent(new Event('scrollend'));
+    const preJump = persisted.at(-1)!;
+
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.tick(); // the lookup answers and paging re-anchors
+
+    // …and then the pages take their time.
+    const realNow = Date.now;
+    Date.now = () => realNow() + 60_000;
+    try {
+      h.tick(); // they arrive: the jump lands, and the request is retired here
+
+      // The host hands back the position from before the jump.
+      h.core.setOptions({...h.coreOptions, scrollState: {...preJump}});
+      h.tick();
+    } finally {
+      Date.now = realNow;
+    }
+
+    expect(h.rowTop('r400')).toBe(0);
+  });
+
+  test('a later navigation back to it still restores', () => {
+    // The core ignores its own position coming straight back to it (the host
+    // echoes what was just persisted). That must not extend to a real
+    // back/forward navigation to a position it persisted a while ago — with no
+    // permalink in play, nothing else would bring the viewport back.
+    const persisted: Array<ScrollHistoryState<TestRow>> = [];
+    const h = harness({
+      rowCount: 500,
+      options: {
+        onScrollStateChange: s =>
+          persisted.push(s as ScrollHistoryState<TestRow>),
+      },
+    });
+    h.settle();
+
+    h.userScroll(400);
+    h.scroller.dispatchEvent(new Event('scrollend'));
+    const earlier = persisted.at(-1)!;
+    expect(earlier.scrollTop).toBe(400);
+
+    h.userScroll(1200);
+    h.scroller.dispatchEvent(new Event('scrollend'));
+    h.settle();
+
+    // Back: the host hands the earlier entry's state back as a new object.
+    h.core.setOptions({...h.coreOptions, scrollState: {...earlier}});
+    h.tick();
+
+    expect(h.scroller.scrollTop).toBe(400);
+  });
+});
+
+describe('compareStartRows', () => {
+  // An int64 column read as a bigint. The anchor carries the row it paged
+  // from, so the cursor carries the bigint, and every comparison the core
+  // makes of one anchor against another has to get past it.
+  const compareStartRows = (a: TestRow, b: TestRow) =>
+    a.rowid === b.rowid ? 0 : (a.rowid ?? 0n) < (b.rowid ?? 0n) ? -1 : 1;
+
+  const scrolledPastAPage = (
+    options: Partial<VirtualizerOptions<unknown, TestRow, TestRow>>,
+  ) => {
+    const persisted: Array<ScrollHistoryState<TestRow>> = [];
+    const h = harness({
+      rowCount: 500,
+      bigintRows: true,
+      options: {
+        anchoring: 'manual',
+        onScrollStateChange: s =>
+          persisted.push(s as ScrollHistoryState<TestRow>),
+        ...options,
+      },
+    });
+    h.settle();
+    // Far enough that paging re-anchors: the anchor now carries a start row
+    // rather than the bare top-of-list one.
+    h.userScroll(1500);
+    h.settle();
+    h.scroller.dispatchEvent(new Event('scrollend'));
+    return {h, persisted};
+  };
+
+  // What a host hands back: the Navigation API structured-clones, so the
+  // anchor is a different object carrying an equal bigint. Passing the saved
+  // object itself would compare by identity and prove nothing.
+  const asRestoredByAHost = (state: ScrollHistoryState<TestRow>) =>
+    structuredClone(state);
+
+  test('a start row JSON cannot serialize survives the round trip', () => {
+    const {h, persisted} = scrolledPastAPage({compareStartRows});
+
+    const saved = persisted.at(-1)!;
+    const {anchor} = saved;
+    if (anchor.kind === 'permalink') throw new Error('expected a page anchor');
+    expect(typeof anchor.startRow?.rowid).toBe('bigint');
+
+    // The state comes back: the echo check compares it against the ones we
+    // wrote, anchor included.
+    h.core.setOptions({
+      ...h.coreOptions,
+      compareStartRows,
+      scrollState: asRestoredByAHost(saved),
+    });
+
+    expect(() => h.tick()).not.toThrow();
+  });
+
+  test('is what makes that work: without it the compare throws', () => {
+    // Not a lament for the old behaviour — a check that the comparator is
+    // carrying the weight the test above credits it with, rather than the
+    // comparison being skipped by an identity fast path.
+    const {h, persisted} = scrolledPastAPage({compareStartRows});
+    const saved = persisted.at(-1)!;
+
+    h.core.setOptions({
+      ...h.coreOptions,
+      compareStartRows: undefined,
+      scrollState: asRestoredByAHost(saved),
+    });
+
+    expect(() => h.tick()).toThrow(/BigInt/);
+  });
+});
+
 describe('persist timing', () => {
   test('persists immediately on scrollend, before the debounce, so a fast navigation keeps the position', () => {
     const persisted: Array<ScrollHistoryState<TestRow>> = [];
@@ -604,5 +788,387 @@ describe('below-viewport window at the start of the list', () => {
     h.userScroll(150);
     h.settle();
     expect(h.core.getSnapshot().items.length).toBeGreaterThan(0);
+  });
+});
+
+describe('scrollToItem', () => {
+  test('a loaded row scrolls immediately, without re-anchoring', () => {
+    const h = harness({rowCount: 500});
+    h.settle();
+    const anchorBefore = h.core.getQueryInputs().anchor;
+
+    // r50 is loaded (window 0-99) but below the viewport (rows 0-19).
+    h.core.scrollToItem('r50', {align: 'start'});
+
+    expect(h.rowTop('r50')).toBe(0);
+    // No re-query: the row was already in the DOM.
+    expect(h.core.getQueryInputs().anchor).toEqual(anchorBefore);
+  });
+
+  test('an unloaded row re-anchors and the scroll lands once its page renders', () => {
+    // Manual anchoring: the permalink window's coordinate space is relabeled
+    // on the commit after the jump lands (phantom space appears above the
+    // loaded window), and compensating for that relabel is the anchoring's
+    // job. Under `native` the browser does it — which happy-dom does not
+    // emulate, so the row would end up one placeholder row low here.
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+
+    // r400 is far outside the loaded window, so the target's page has to load
+    // first; the scroll lands on a later commit.
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.settle();
+
+    expect(h.rowTop('r400')).toBe(0);
+  });
+
+  test('is level-triggered: the same id twice scrolls twice', () => {
+    const h = harness({rowCount: 500});
+    h.settle();
+
+    h.core.scrollToItem('r50', {align: 'start'});
+    expect(h.rowTop('r50')).toBe(0);
+
+    h.userScroll(0);
+    h.tick();
+    expect(h.rowTop('r50')).toBe(1000);
+
+    h.core.scrollToItem('r50', {align: 'start'});
+    expect(h.rowTop('r50')).toBe(0);
+  });
+
+  describe('align', () => {
+    test('defaults to auto: a row below the viewport scrolls just into view', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+
+      h.core.scrollToItem('r50');
+
+      // 400px viewport, 20px row: the row's bottom at the viewport's bottom.
+      expect(h.rowTop('r50')).toBe(380);
+    });
+
+    test('auto leaves an already-visible row where it is', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+      h.userScroll(500); // rows 25-44 visible
+      h.settle();
+      const before = h.scroller.scrollTop;
+
+      h.core.scrollToItem('r30', {align: 'auto'});
+
+      expect(h.scroller.scrollTop).toBe(before);
+    });
+
+    test('start puts the row at the top of the viewport', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+
+      h.core.scrollToItem('r50', {align: 'start'});
+
+      expect(h.rowTop('r50')).toBe(0);
+    });
+
+    test('center puts the row in the middle of the viewport', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+
+      h.core.scrollToItem('r50', {align: 'center'});
+
+      expect(h.rowTop('r50')).toBe(190);
+    });
+
+    test('end puts the row at the bottom of the viewport', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+
+      h.core.scrollToItem('r50', {align: 'end'});
+
+      expect(h.rowTop('r50')).toBe(380);
+    });
+  });
+
+  test("aligns below the container's scroll-padding (a sticky header)", () => {
+    const h = harness({rowCount: 500});
+    h.settle();
+    // A sticky header covering the top 60px of the scrollport, declared the
+    // way `scrollIntoView` reads it.
+    h.scroller.style.scrollPaddingTop = '60px';
+
+    h.core.scrollToItem('r50', {align: 'start'});
+
+    // Top-aligned means the top of what can actually be seen.
+    expect(h.rowTop('r50')).toBe(60);
+  });
+
+  test("keeps the space the target row's scroll-margin asks for", () => {
+    const h = harness({rowCount: 500});
+    h.settle();
+    // The per-row half of the same contract: the row asks for 30px above it
+    // rather than the container declaring the strip covered.
+    h.rowElement('r50').style.scrollMarginTop = '30px';
+
+    h.core.scrollToItem('r50', {align: 'start'});
+
+    expect(h.rowTop('r50')).toBe(30);
+  });
+
+  test('a clamped jump still releases the request, so paging keeps working', () => {
+    const h = harness({rowCount: 500});
+    h.settle();
+
+    // Centering a row at the very start of the list clamps at scrollTop 0, so
+    // the requested alignment is never reached. The request must still be
+    // released — a pending one stands down both paging and anchoring.
+    h.core.scrollToItem('r1', {align: 'center'});
+    h.settle();
+    expect(h.scroller.scrollTop).toBe(0);
+
+    // Paging still advances the window when the user scrolls near its end.
+    h.userScroll(1500);
+    h.settle();
+    expect(h.core.getSnapshot().items[0].index).toBe(56);
+  });
+
+  test('a loaded row keyed differently from its id is scrolled to, not re-fetched', () => {
+    // Address rows by a short id while keying them by something else. r50 is
+    // already loaded — under `key-r50`, which the id alone can't find — so the
+    // lookup that confirms the id exists also says which row it is, and the
+    // jump scrolls to it instead of throwing the window away to re-fetch it.
+    const h = harness({
+      rowCount: 500,
+      options: {anchoring: 'manual', getRowKey: row => `key-${row.id}`},
+    });
+    h.settle();
+
+    h.core.scrollToItem('r50', {align: 'start'});
+    const anchorKinds: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      h.tick();
+      anchorKinds.push(h.core.getQueryInputs().anchor.kind);
+    }
+
+    expect(h.rowTop('key-r50')).toBe(0);
+    // Never re-anchored: the window that was already on screen served it.
+    expect(anchorKinds).not.toContain('permalink');
+  });
+
+  test('a repeat jump to a row keyed differently from its id still lands', () => {
+    // Deep-link by a short id while keying rows by something else: `findRow`
+    // can't see the target under the id, so a repeat call lands on the "the
+    // query is already hunting for this" path. It may only sit and wait there
+    // while that load is still running — once it has finished, no further
+    // commit is coming, and a request left pending stands paging and anchoring
+    // down for the rest of the session.
+    const h = harness({
+      rowCount: 500,
+      options: {anchoring: 'manual', getRowKey: row => `key-${row.id}`},
+    });
+    h.settle();
+
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.settle();
+    expect(h.rowTop('key-r400')).toBe(0);
+
+    // The repeat call has to schedule work — a re-query, a scroll, something
+    // that brings another commit. Sitting on the request instead would mean
+    // nothing ever lands it (no commit is coming; the load finished), and a
+    // request left pending stands paging and anchoring down from here on.
+    let notified = 0;
+    const unsubscribe = h.core.subscribe(() => notified++);
+    h.core.scrollToItem('r400', {align: 'center'});
+    unsubscribe();
+    expect(notified).toBeGreaterThan(0);
+
+    h.settle();
+    expect(h.rowTop('key-r400')).toBe(190);
+
+    // And paging still works afterwards.
+    h.userScroll(0);
+    h.settle();
+    expect(h.core.getSnapshot().items.length).toBeGreaterThan(0);
+  });
+
+  test('an empty id is a no-op, not a lookup that never answers', () => {
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+
+    // The lookup for an empty id is never issued, so a request waiting on one
+    // would wait forever — and a request in flight swallows `scrollState`
+    // restores and sends later jumps down the re-anchor path.
+    h.core.scrollToItem('');
+    h.tick();
+
+    expect(h.core.getQueryInputs().probeID).toBeNull();
+
+    // And a real jump afterwards still takes the ordinary route.
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.settle();
+    expect(h.rowTop('r400')).toBe(0);
+  });
+
+  test('a second jump to a rendered row supersedes a lookup still in flight', () => {
+    // The first jump is off looking its target up; the second lands right
+    // away because its row is already on screen. The stale lookup must not
+    // come back and re-anchor the list onto the first target.
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.core.scrollToItem('r50', {align: 'start'});
+    expect(h.rowTop('r50')).toBe(0);
+
+    h.settle();
+
+    expect(h.rowTop('r50')).toBe(0);
+  });
+
+  test('a second jump supersedes one that is still loading', () => {
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.core.scrollToItem('r200', {align: 'start'});
+    h.settle();
+
+    expect(h.rowTop('r200')).toBe(0);
+  });
+
+  describe('an id that does not exist', () => {
+    test('does nothing: the list and the scroll position are left alone', () => {
+      const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+      h.settle();
+      h.userScroll(500);
+      h.settle();
+      const itemsBefore = h.core.getSnapshot().items.length;
+      const firstBefore = h.core.getSnapshot().items[0].index;
+      const topBefore = h.rowTop('r30');
+      const scrollBefore = h.scroller.scrollTop;
+
+      // Before the existence check this re-anchored on the id and emptied the
+      // whole list, permanently — the loaded window was thrown away for a
+      // permalink page that never arrives.
+      h.core.scrollToItem('nope');
+      h.settle();
+
+      expect(h.core.getSnapshot().items.length).toBe(itemsBefore);
+      expect(h.core.getSnapshot().items[0].index).toBe(firstBefore);
+      expect(h.core.getSnapshot().rowsEmpty).toBe(false);
+      expect(h.rowTop('r30')).toBe(topBefore);
+      expect(h.scroller.scrollTop).toBe(scrollBefore);
+    });
+
+    test('takes its lookup back out of the query inputs', () => {
+      // Dropping the probe has to reach the wrapper: `probeID` only leaves
+      // the query inputs on a re-render, and nothing else in that commit is
+      // guaranteed to ask for one. Without the notify the single-row lookup
+      // stays subscribed to an id nobody is waiting on any more.
+      const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+      h.settle();
+
+      h.core.scrollToItem('nope');
+      expect(h.core.getQueryInputs().probeID).toBe('nope');
+
+      let notified = 0;
+      const unsubscribe = h.core.subscribe(() => notified++);
+      h.tick(); // the lookup comes back empty
+      unsubscribe();
+
+      expect(h.core.getQueryInputs().probeID).toBeNull();
+      expect(notified).toBeGreaterThan(0);
+    });
+
+    test('leaves paging working afterwards', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+
+      h.core.scrollToItem('nope');
+      h.settle();
+
+      // Nothing is left pending: the window still advances as the user
+      // scrolls toward its end.
+      h.userScroll(1500);
+      h.settle();
+      expect(h.core.getSnapshot().items[0].index).toBe(56);
+    });
+
+    test('a later jump to a real id still lands', () => {
+      const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+      h.settle();
+
+      h.core.scrollToItem('nope');
+      h.settle();
+
+      h.core.scrollToItem('r400', {align: 'start'});
+      h.settle();
+
+      expect(h.rowTop('r400')).toBe(0);
+    });
+
+    test('the lookup does not disturb the list while it is in flight', () => {
+      const h = harness({rowCount: 500});
+      h.settle();
+      const firstBefore = h.core.getSnapshot().items[0].index;
+
+      // The commit that issues the lookup must not move the window: it is
+      // the current anchor's rows that stay on screen, not a loading state.
+      h.core.scrollToItem('r400');
+      h.tick();
+
+      expect(h.core.getSnapshot().items[0].index).toBe(firstBefore);
+      expect(h.core.getSnapshot().rowsEmpty).toBe(false);
+    });
+  });
+
+  test('a permalink that does not exist leaves the list alone even mid-lookup', () => {
+    // The permalink arrives while an earlier jump's lookup is still out. That
+    // lookup is dropped and a new one starts for the permalink — but the
+    // snapshot in hand is still the old one's, found-and-complete. Reading it
+    // as this target's answer would re-anchor on an id nothing has vouched
+    // for, and throw the loaded list away for a row that isn't there.
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+    h.userScroll(500);
+    h.settle();
+    const firstBefore = h.core.getSnapshot().items[0].index;
+
+    h.core.scrollToItem('r400'); // the lookup goes out
+    h.core.setOptions({...h.coreOptions, permalinkID: 'nope'});
+    h.settle();
+
+    expect(h.core.getSnapshot().rowsEmpty).toBe(false);
+    expect(h.core.getSnapshot().items[0].index).toBe(firstBefore);
+  });
+
+  test('a permalinkID that does not exist leaves a loaded list alone', () => {
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+    const itemsBefore = h.core.getSnapshot().items.length;
+
+    // An in-page navigation to a permalink that resolves to nothing: same
+    // rule as scrollToItem — the list that is already on screen survives.
+    h.core.setOptions({...h.coreOptions, permalinkID: 'nope'});
+    h.settle();
+
+    expect(h.core.getSnapshot().items.length).toBe(itemsBefore);
+    expect(h.core.getSnapshot().rowsEmpty).toBe(false);
+  });
+
+  test('a deep link to a permalinkID that does not exist falls back to the top of the list', () => {
+    // Nothing loaded yet (a cold load with the id already in the URL), so
+    // there is no list to protect and the anchor goes straight to the
+    // permalink. When the lookup comes back empty the list must still load —
+    // before, it sat empty forever.
+    const h = harness({rowCount: 500, options: {permalinkID: 'nope'}});
+    // The fallback waits for the not-found to hold for a few commits (a
+    // freshly re-anchored lookup can still be reporting the previous one), so
+    // run a few before settling.
+    h.tick();
+    h.tick();
+    h.settle();
+
+    expect(h.core.getSnapshot().rowsEmpty).toBe(false);
+    expect(h.core.getSnapshot().items[0].index).toBe(0);
+    expect(h.core.getSnapshot().items[0].row).toEqual({id: 'r0'});
   });
 });

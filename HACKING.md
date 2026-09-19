@@ -34,6 +34,36 @@ If you type a new URL into the tab while looking at the demo to navigate away, t
 - This should work even if the item you loaded was far down the list.
 - When you check queries after load you should only see three: one to find the item and two for the prev/next pages.
 
+## scrollToItem
+
+The dev panel has a `scrollToItem` field: an item id, an alignment, and Jump.
+(Ids are opaque; click a row first — its id goes in the URL hash, and the
+field falls back to the hash when left empty.)
+
+- Jump to a row that is currently rendered: it should move immediately, and
+  the open queries shouldn't change.
+- Jump to a row far outside the loaded window: the list re-anchors on it and
+  the scroll lands once its page arrives.
+- Press Jump twice with the same id: the second press scrolls again (unlike a
+  permalink, which is edge-triggered).
+- Try each alignment: `auto` does nothing when the row is already fully
+  visible, and otherwise scrolls the least amount needed; `start`/`center`/
+  `end` place it at the top/middle/bottom, clamped at the ends of the list.
+- Jump to an id that doesn't exist: nothing happens at all — same rows, same
+  scroll position. A jump to a real id afterwards must still land.
+- Navigate to `#does-not-exist` with the list loaded: same rule, the list is
+  left alone. Load `/#does-not-exist` cold and the list still appears, from
+  the top.
+- After a jump that clamps (e.g. `center` on the first row), scrolling should
+  still page normally — a stuck request would stand paging down.
+- Known rough edge: a jump that lands while its window is still streaming in
+  leaves the viewport at the window's edge, and paging then tops the window up
+  from above — on a slow (cold) cache that can walk the window far enough to
+  unload the row you jumped to. Worth watching when touching `#evaluatePaging`.
+- Switch the container to `Window scroll` and jump with `start`: the row must
+  land just below the sticky header, not behind it (the demo keeps
+  `scroll-padding-top` on the document in sync with the header's height).
+
 ## Releasing
 
 Releases are published to npm automatically via CI when a version tag is pushed. To cut a new patch release:
