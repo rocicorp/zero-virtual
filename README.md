@@ -17,6 +17,7 @@ Features:
 - Element scrolling or window scrolling (`useZeroWindowVirtualizer`)
 - Native or manual (momentum-safe) scroll anchoring, auto-detected per platform
 - Permalink support (jump to and highlight a specific item by ID)
+- Imperative `scrollToItem(id, {align})`, loading the row's page if needed
 - State persistence (restore scroll position across navigation)
 - Exact `count` support for an accurate, stable scrollbar
 - Stick-to-bottom helper (`useStickToBottom`) for chat / log UIs
@@ -314,6 +315,88 @@ Manual mode matches native semantics, including suppression at scroll offset 0
 — content prepended while you're at the very top is revealed, not compensated
 away.
 
+### Jumping to a row
+
+The result carries a `scrollToItem(id, options?)` for bringing a specific row
+into view — a "jump to item" button, a search hit, a notification:
+
+```ts
+const virtualizer = useZeroVirtualizer({
+  /* ... */
+});
+
+virtualizer.scrollToItem('item-123'); // scrolls the least amount needed
+virtualizer.scrollToItem('item-123', {align: 'center'});
+```
+
+`id` is the same identifier the `permalinkID` option takes — whatever
+`getSingleQuery` resolves — which need not equal `getRowKey(row)`. A row that
+is already loaded is scrolled to immediately; anything else re-anchors paging
+on the target (exactly as a permalink navigation does) and the scroll lands
+once its page has loaded. An id that resolves to no row does nothing at all:
+the row is looked up before the list is re-anchored on it, so a stale or
+mistyped id leaves what is on screen exactly as it was.
+
+### `firstVisibleItem` / `lastVisibleItem`
+
+The result also carries `firstVisibleItem()` and `lastVisibleItem()`, which
+answer "where am I" without the caller knowing how tall a row is or how many
+rows precede it:
+
+```ts
+const from = virtualizer.lastVisibleItem();
+if (from) virtualizer.scrollToItem(from.key, {align: 'start'});
+```
+
+They return a `VirtualRow` — `index`, `key` and `row` — or `undefined` when no
+loaded row is in view. "Visible" is the same test paging uses to decide when to
+advance the window: a row counts when its box overlaps the scrollport at all.
+Both measure the DOM at call time, so call them from the event handler that
+needs the answer rather than during render.
+
+This is what keyboard navigation wants. `lastVisibleItem()` is page-down's
+starting point, and the `key` it hands back is what `scrollToItem` takes.
+
+A rendered row can also be addressed by its `getRowKey`: the value is matched
+against the rendered rows before any lookup is issued, so passing a key that is
+on screen scrolls to it and costs no query. (Keys are `string | number`, so
+this takes a `RowKey` — hand it `items[].key` directly. Ids themselves are
+strings everywhere else in the library, and a number is stringified on the way
+in.) That is the useful form for
+keyboard navigation, which holds `items[].key` and may not know the id. It
+reaches rendered rows only — a key for a row that isn't rendered falls through
+to the lookup, which reads it as an id, so unless your keys are also valid ids
+nothing happens. When the two differ, pass the key when you know the row is on
+screen and the id otherwise; passing the id is always correct, and costs one
+single-row lookup.
+
+The same goes for `permalinkID` — pointing it at an id that doesn't exist
+leaves a loaded list alone. (On a cold load there is no list to keep, so it
+falls back to the top of the list.)
+
+`align` follows TanStack Virtual's `scrollToIndex`: `'auto'` (the default)
+scrolls the minimum needed to bring the row into view and does nothing when it
+is already fully visible, or `'start'` / `'center'` / `'end'` to place it at the
+top, middle or bottom. Every alignment is clamped by the scroll container.
+
+Alignment follows the same contract as native `scrollIntoView`, from both
+sides: the scrollport is inset by the scroll container's CSS `scroll-padding`
+(how a sticky header is normally declared — "this strip of me is covered"), and
+the row is outset by its own `scroll-margin` ("keep this much space around
+me"). Either keeps a top-aligned row out from under a sticky header; the
+container-side one is usually what you want, since it is a single declaration
+rather than one per row. For a window-scrolled list the scroll container is the
+document, so the declaration goes there — see
+[demo/react/WindowList.module.css](demo/react/WindowList.module.css).
+
+Unlike `permalinkID` — which is declarative and edge-triggered, so the same id
+twice does nothing — `scrollToItem` always scrolls. There is no
+`behavior: 'smooth'`: the scroll is re-applied on every commit while the
+target's page streams in, which a smooth animation would fight.
+
+The callback's identity is stable for the lifetime of the virtualizer, so it is
+safe in a dependency array.
+
 ### Exact row count
 
 Without a known total, the scroll extent is estimated from the rows discovered
@@ -436,6 +519,63 @@ const [scrollState, onScrollStateChange] =
 
 The Solid mirror is `createHistoryScrollState` — same key parameter, with the
 state returned as an accessor.
+
+The state these return changes only when the _browser_ navigates: a load, a
+reload, or a back/forward. What the setter writes does not come back through
+it. The two directions mean different things — the setter records where the
+viewport ended up, the state says where to put it — so a write echoed back
+would arrive as an instruction to return to a position the list has often
+already left (a `scrollToItem` landing, a permalink resolving). If you write
+your own persistence layer instead, hold it to the same rule: feed
+`scrollState` a new value when the user navigated, not when
+`onScrollStateChange` fired.
+
+These helpers store through the Navigation API, which structured-clones, and
+they never look inside the state they carry — so what `toStartRow` returns
+only has to be JSON-serializable if you leave the virtualizer comparing start
+rows structurally. See [`compareStartRows`](#comparestartrows) below.
+
+### `compareStartRows`
+
+The virtualizer compares paging anchors to tell one position from another, and
+by default it does that structurally, with `JSON.stringify`. Pass
+`compareStartRows` to do it with your own comparator instead:
+
+```ts
+useZeroVirtualizer({
+  compareStartRows: (a, b) =>
+    a.rowid < b.rowid ? -1 : a.rowid > b.rowid ? 1 : 0,
+  // ...
+});
+```
+
+It takes the same shape as the comparators Zero uses — negative, zero,
+positive — so you can hand over the one you already sort this list by. Only
+the zero is read: the virtualizer never sorts, it just needs to know whether
+two anchors point at the same row.
+
+Reach for it when your start rows aren't JSON-serializable, or when a
+structural comparison would be wrong or wasteful for them.
+
+**What this does and doesn't lift.** With `compareStartRows`, an int64 column
+read as a `bigint` survives the whole round trip in React: the core never
+stringifies a start row, `useHistoryScrollState` never looks inside the state
+it carries, and the Navigation API structured-clones. Without it, narrow the
+column in `toStartRow` (`Number(row.id)`, `String(row.id)`) and widen it again
+in `getPageQuery`.
+
+Two things are unaffected either way:
+
+- `listContextParams` is always compared structurally, so it has to be
+  JSON-serializable whatever you pass here.
+- `createHistoryScrollState`, the Solid helper, round-trips what it stores
+  through JSON. Zero's Solid bindings hand out store proxies and the Navigation
+  API refuses to clone those, so the round trip is what turns them back into
+  plain data — and a `bigint` doesn't survive it. On Solid, narrow in
+  `toStartRow` or persist the state yourself.
+
+Nothing else in `history.state` is ever inspected — another library's key, a
+router's location state — so none of it has to be JSON-serializable either.
 
 Both helpers are built on the Navigation API
 (`navigation.updateCurrentEntry`), which requires **Firefox 147+**; every

@@ -66,7 +66,8 @@ describe('createRows (solid staging over the core builders)', () => {
     const {rows, getPageQuery, dispose} = setup(inputs);
 
     expect(slots).toHaveLength(3);
-    // Slot 1 (permalink single-row) stays null for a forward anchor.
+    // Slot 1 (the single-row lookup) stays null under a forward anchor with
+    // nothing being probed.
     expect(slots[0].querySignal()).toBeNull();
     // Slot 2 carries a *built* page query — i.e. the getPageQuery accessor was
     // invoked and its result invoked with staged options (not passed along as

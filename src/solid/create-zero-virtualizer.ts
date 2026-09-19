@@ -38,9 +38,9 @@ export type CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> =
 
 /**
  * Result of {@linkcode createZeroVirtualizer}: the snapshot plus the resolved
- * scroll wiring (`options`) and the current scrolling element
- * (`scrollElement`, a live getter — not a reactive source). See
- * {@linkcode VirtualizerResult} for field semantics.
+ * scroll wiring (`options`), the current scrolling element (`scrollElement`, a
+ * live getter — not a reactive source), and `scrollToItem` for jumping to a
+ * row by id. See {@linkcode VirtualizerResult} for field semantics.
  */
 export type CreateZeroVirtualizerResult<TRow> = VirtualizerResult<TRow>;
 
@@ -144,6 +144,11 @@ function createZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
       {...snapshot(), items},
       resultOptions(),
       resolveScrollElement,
+      {
+        scrollToItem: core.scrollToItem,
+        firstVisibleItem: core.firstVisibleItem,
+        lastVisibleItem: core.lastVisibleItem,
+      },
     ),
   );
 }

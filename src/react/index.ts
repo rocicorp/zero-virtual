@@ -15,7 +15,10 @@ export type {
   AnchoringMode,
   GetPageQueryOptions,
   GetSingleQueryOptions,
+  RowKey,
+  ScrollAlignment,
   ScrollHistoryState,
+  ScrollToItemOptions,
   VirtualRow,
 } from '../core/types.ts';
 export type {

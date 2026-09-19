@@ -12,6 +12,22 @@ export type TestItem = {
   modified: number;
 };
 
+// Sentences to pad descriptions out with. Rows are measured in the demo's
+// `dynamic` height mode, so descriptions of a single length would make every
+// row the same height and never exercise it — each item takes a different
+// number of these, derived from its index so the heights stay stable across
+// runs (and across the relabeling the virtualizer does while paging).
+const FILLER = [
+  'It carries enough text to wrap onto another line in a narrow viewport.',
+  'Paging has to keep the viewport steady while rows like this one resolve.',
+  'Measured heights differ from the estimate, which is the point of it.',
+  'Scroll anchoring folds that difference back into the scroll position.',
+];
+
+function withFiller(base: string, i: number): string {
+  return [base, ...FILLER.slice(0, i % (FILLER.length + 1))].join(' ');
+}
+
 // Named items (1–10): Alpha through Kappa.
 //
 // Within this group created and modified are inverses of each other.
@@ -109,13 +125,22 @@ const EXTRA: TestItem[] = Array.from({length: 190}, (_, k) => {
   return {
     id: `tstitem${n}`,
     title: `Test Item ${n}`,
-    description: `Test item ${n} description.`,
+    description: withFiller(`Test item ${n} description.`, i),
     created: BASE - (201 - i) * H,
     modified: BASE - (i - 10) * H,
   };
 });
 
-export const TEST_ITEMS: TestItem[] = [...NAMED, ...EXTRA];
+export const TEST_ITEMS: TestItem[] = [
+  // The named items get the same treatment as the generated ones: varied
+  // description lengths, so the rows at the top of the list are not all the
+  // same height either.
+  ...NAMED.map((item, k) => ({
+    ...item,
+    description: withFiller(item.description, k + 1),
+  })),
+  ...EXTRA,
+];
 
 export async function seedTestDb(connectionString: string): Promise<void> {
   const pool = new pg.Pool({connectionString});

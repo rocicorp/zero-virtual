@@ -15,8 +15,9 @@ import type {GetPageQuery, GetSingleQuery} from '../zero-types.ts';
  * Binds the virtualizer's staged queries to Zero's Solid bindings. All
  * windowing math lives in the framework-free core ({@linkcode assembleRows});
  * this owns only the query staging — three `useQuery` slots (queries 2 and 3
- * depend on query 1's result for permalink anchors), each fed by an accessor
- * so Solid re-subscribes reactively as the inputs change.
+ * depend on query 1's result, which is the permalink anchor's lookup or, under
+ * a page anchor, the id probe's), each fed by an accessor so Solid
+ * re-subscribes reactively as the inputs change.
  */
 export function createRows<TRow, TStartRow>(args: {
   inputs: Accessor<RowsQueryInputs<TStartRow>>;

@@ -18,8 +18,10 @@ export {
   VROW_KEY_ATTR,
 } from './dom.ts';
 export {
+  getHistoryNavigationSnapshot,
   getHistoryStateServerSnapshot,
   getHistoryStateSnapshot,
+  readHistoryState,
   subscribeHistoryState,
   updateHistoryState,
 } from './history-state.ts';
@@ -73,6 +75,8 @@ export type {
   GetSingleQueryOptions,
   QueryResult,
   RowKey,
+  ScrollAlignment,
   ScrollHistoryState,
+  ScrollToItemOptions,
   VirtualRow,
 } from './types.ts';

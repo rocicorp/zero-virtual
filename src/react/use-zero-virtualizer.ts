@@ -37,7 +37,8 @@ export type UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> =
  * in for the unloaded rows above and below — rendered as spacer elements (see
  * {@linkcode VirtualizerResult}),
  * plus load/paging status, the resolved scroll
- * wiring (`options`), and the current scrolling element (`scrollElement`).
+ * wiring (`options`), the current scrolling element (`scrollElement`), and
+ * `scrollToItem` for jumping to a row by id.
  * See {@linkcode VirtualizerResult} for field semantics. The object identity
  * is stable between renders whose content didn't change.
  *
@@ -76,12 +77,13 @@ function useZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
 
   // Silent staging — never notifies during render.
   core.setOptions(options);
-  const {pageSize, anchor, settled} = core.getQueryInputs();
+  const {pageSize, anchor, settled, probeID} = core.getQueryInputs();
   core.setRows(
     useRows({
       pageSize,
       anchor,
       settled,
+      probeID: probeID ?? null,
       getPageQuery: options.getPageQuery,
       getSingleQuery: options.getSingleQuery,
       toStartRow: options.toStartRow,
@@ -113,9 +115,22 @@ function useZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
     [getScrollElement, observeElementRect, observeElementOffset],
   );
   const snapshot = core.getSnapshot();
+  const {scrollToItem, firstVisibleItem, lastVisibleItem} = core;
   return useMemo(
-    () => virtualizerResult(snapshot, resultOptions, resolveScrollElement),
-    [snapshot, resultOptions, resolveScrollElement],
+    () =>
+      virtualizerResult(snapshot, resultOptions, resolveScrollElement, {
+        scrollToItem,
+        firstVisibleItem,
+        lastVisibleItem,
+      }),
+    [
+      snapshot,
+      resultOptions,
+      resolveScrollElement,
+      scrollToItem,
+      firstVisibleItem,
+      lastVisibleItem,
+    ],
   );
 }
 

@@ -86,22 +86,24 @@ test.describe('Item detail panel', () => {
     );
   });
 
-  test('permalink to an item far down the list shows loading then resolves', async ({
+  test('permalink to an item far down the list resolves in the panel', async ({
     page,
   }) => {
     // Test Item 150 is near index 149 (second page) and is not loaded
-    // initially. The detail panel should show "Loading…" while the data
-    // is fetched, then resolve to the item.
+    // initially: the panel has to fetch the row by id rather than read it out
+    // of the loaded window.
+    //
+    // The panel does show "Loading…" first, but that frame lasts as long as
+    // one round trip to zero-cache — which on a warm cache is shorter than a
+    // single poll of the assertion, so it can only be asserted on a slow
+    // machine. What matters here is that the id resolves at all.
     const farItem = TEST_ITEMS.find(i => i.title === 'Test Item 150')!;
     await page.goto(`/#${farItem.id}`);
 
-    // Initially the detail panel shows a loading indicator.
-    await expect(page.getByText('Loading…')).toBeVisible({timeout: TIMEOUT});
-
-    // Eventually the item title appears in the panel heading.
     await expect(page.getByRole('heading', {level: 2})).toContainText(
       'Test Item 150',
       {timeout: TIMEOUT},
     );
+    await expect(page.getByText('Item not found.')).toHaveCount(0);
   });
 });
