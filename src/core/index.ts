@@ -18,6 +18,7 @@ export {
   VROW_KEY_ATTR,
 } from './dom.ts';
 export {
+  getHistoryNavigationSnapshot,
   getHistoryStateServerSnapshot,
   getHistoryStateSnapshot,
   subscribeHistoryState,

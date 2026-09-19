@@ -1,5 +1,6 @@
 import {createMemo, createSignal, onCleanup, type Accessor} from 'solid-js';
 import {
+  getHistoryNavigationSnapshot,
   getHistoryStateSnapshot,
   subscribeHistoryState,
   updateHistoryState,
@@ -20,6 +21,11 @@ const DEFAULT_KEY = 'scrollState';
  * of your own (e.g. `history.replaceState` or `sessionStorage`) — the
  * options accept any implementation.
  *
+ * The returned accessor only changes when the *browser* navigates: a load, a
+ * reload, or a back/forward. What `setState` writes does not come back
+ * through it — see the React `useHistoryScrollState` for why the two
+ * directions must not be joined up.
+ *
  * Call during component setup (uses `onCleanup`).
  *
  * @param key - The key to use in `history.state`. Defaults to `"scrollState"`.
@@ -32,9 +38,10 @@ export function createHistoryScrollState<TStartRow>(
   Accessor<ScrollHistoryState<TStartRow> | null>,
   (state: ScrollHistoryState<TStartRow> | null) => void,
 ] {
-  const [raw, setRaw] = createSignal<unknown>(getHistoryStateSnapshot());
+  // Only navigations move this — see getHistoryNavigationSnapshot.
+  const [raw, setRaw] = createSignal<unknown>(getHistoryNavigationSnapshot());
   onCleanup(
-    subscribeHistoryState(() => setRaw(() => getHistoryStateSnapshot())),
+    subscribeHistoryState(() => setRaw(() => getHistoryNavigationSnapshot())),
   );
 
   // Memoized by JSON identity (matching the React hook), so an unrelated
@@ -51,6 +58,9 @@ export function createHistoryScrollState<TStartRow>(
   );
 
   const setScrollState = (newState: ScrollHistoryState<TStartRow> | null) => {
+    // The live state, not the navigation snapshot: this is a read-modify-write
+    // over sibling keys, so it has to see writes that came after the last
+    // navigation — including our own.
     const state = getHistoryStateSnapshot();
     updateHistoryState({
       ...(state as Record<string, unknown>),

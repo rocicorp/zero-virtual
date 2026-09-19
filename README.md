@@ -487,6 +487,16 @@ const [scrollState, onScrollStateChange] =
 The Solid mirror is `createHistoryScrollState` — same key parameter, with the
 state returned as an accessor.
 
+The state these return changes only when the _browser_ navigates: a load, a
+reload, or a back/forward. What the setter writes does not come back through
+it. The two directions mean different things — the setter records where the
+viewport ended up, the state says where to put it — so a write echoed back
+would arrive as an instruction to return to a position the list has often
+already left (a `scrollToItem` landing, a permalink resolving). If you write
+your own persistence layer instead, hold it to the same rule: feed
+`scrollState` a new value when the user navigated, not when
+`onScrollStateChange` fired.
+
 Both helpers are built on the Navigation API
 (`navigation.updateCurrentEntry`), which requires **Firefox 147+**; every
 Chromium and Safari version this library supports already has it. On older

@@ -181,6 +181,16 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    * and paging can't settle. The `useHistoryScrollState` / `createHistoryScrollState`
    * helpers guarantee this (they memoize by serialized content); a custom
    * persistence layer must memoize the same way.
+   *
+   * This is an instruction — *put the viewport here* — not a mirror of
+   * {@linkcode VirtualizerBindingOptions.onScrollStateChange}. Do not feed
+   * what that callback writes back in: by the time a debounced write has
+   * completed the round trip the viewport has often moved on (a
+   * `scrollToItem` landing, a permalink resolving), and re-applying it undoes
+   * that. Change this only when the user navigated — a load, a reload, a
+   * back/forward. The bundled helpers do exactly that; a custom layer should
+   * too, and the core defends itself against a bounded amount of echo for the
+   * ones that don't.
    */
   scrollState?: ScrollHistoryState<TStartRow> | null | undefined;
   onScrollStateChange?:
