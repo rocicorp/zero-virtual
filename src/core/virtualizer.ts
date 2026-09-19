@@ -16,6 +16,7 @@ import type {
   ScrollRect,
   VirtualizerScrollOptions,
 } from './scroll.ts';
+import {valueKey} from './value-key.ts';
 import type {
   Anchor,
   AnchoringMode,
@@ -331,25 +332,6 @@ const PERMALINK_MISSING_COMMITS = 2;
 /** A computed CSS length in px, or 0 for any other unit (`auto`, `%`). */
 function pixels(value: string): number {
   return value.endsWith('px') ? Number.parseFloat(value) || 0 : 0;
-}
-
-/**
- * A value, as a string that changes when the value does. Used for anchors and
- * for list-context params, both of which carry the app's own data — which JSON
- * can't always represent (a bigint column in a start row, a filter keyed by
- * one) — so fall back to a shallow key over the value's own entries rather
- * than throwing out of a commit. The cost is only that two values differing
- * solely below the top level read as unchanged.
- */
-function valueKey(value: unknown): string {
-  try {
-    return JSON.stringify(value) ?? String(value);
-  } catch {
-    if (typeof value !== 'object' || value === null) return String(value);
-    return Object.entries(value)
-      .map(([k, v]) => `${k}=${String(v)}`)
-      .join(',');
-  }
 }
 
 /**

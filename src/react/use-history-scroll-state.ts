@@ -6,6 +6,7 @@ import {
   subscribeHistoryState,
   updateHistoryState,
 } from '../core/history-state.ts';
+import {valueKey} from '../core/value-key.ts';
 import type {ScrollHistoryState} from '../core/types.ts';
 
 const DEFAULT_KEY = 'scrollState';
@@ -68,7 +69,11 @@ export function useHistoryScrollState<TStartRow>(
     if (!state) return null;
     return ((state as Record<string, unknown>)[key] ??
       null) as ScrollHistoryState<TStartRow> | null;
-  }, [state && JSON.stringify((state as Record<string, unknown>)[key])]);
+    // Keyed by value, not identity: the state comes back off a history entry,
+    // so it is a fresh object every time. `valueKey` rather than
+    // JSON.stringify because the entry was structured-cloned, and this is the
+    // app's own row data — a bigint in it must not throw out of a render.
+  }, [state && valueKey((state as Record<string, unknown>)[key])]);
 
   const setScrollState = useCallback(
     (newState: ScrollHistoryState<TStartRow> | null) => {

@@ -8,17 +8,19 @@
  * story on older Firefox.
  */
 
+import {valueKey} from './value-key.ts';
+
 let currentSnapshot: unknown = null;
 let currentSnapshotString = 'null';
 
 /**
- * The current history-entry state. Cached by JSON identity so an unchanged
- * state returns the same object (required by `useSyncExternalStore`, and what
+ * The current history-entry state. Cached by value ({@linkcode valueKey}) so
+ * an unchanged state returns the same object (required by `useSyncExternalStore`, and what
  * keeps downstream memoization stable).
  */
 export function getHistoryStateSnapshot(): unknown {
   const newSnapshot = navigation.currentEntry?.getState();
-  const newSnapshotString = JSON.stringify(newSnapshot);
+  const newSnapshotString = valueKey(newSnapshot);
   if (newSnapshotString !== currentSnapshotString) {
     currentSnapshot = newSnapshot;
     currentSnapshotString = newSnapshotString;
@@ -58,7 +60,7 @@ export function getHistoryNavigationSnapshot(): unknown {
   navigationRead = true;
   navigationEntryID = id;
   const next = entry?.getState();
-  const nextString = JSON.stringify(next);
+  const nextString = valueKey(next);
   if (nextString !== navigationStateString) {
     navigationState = next;
     navigationStateString = nextString;
