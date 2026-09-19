@@ -497,10 +497,10 @@ your own persistence layer instead, hold it to the same rule: feed
 `scrollState` a new value when the user navigated, not when
 `onScrollStateChange` fired.
 
-The state must be JSON-serializable, because it carries the paging anchor and
-the anchor carries whatever `toStartRow` returns. An int64 column read as a
-`bigint` is the one to watch for: narrow it in `toStartRow` (`Number(row.id)`,
-`String(row.id)`) and widen it again in `getPageQuery`.
+These helpers store through the Navigation API, which structured-clones, and
+they never look inside the state they carry — so what `toStartRow` returns
+only has to be JSON-serializable if you leave the virtualizer comparing start
+rows structurally. See [`compareStartRows`](#comparestartrows) below.
 
 ### `compareStartRows`
 
@@ -522,12 +522,27 @@ the zero is read: the virtualizer never sorts, it just needs to know whether
 two anchors point at the same row.
 
 Reach for it when your start rows aren't JSON-serializable, or when a
-structural comparison would be wrong or wasteful for them. `listContextParams`
-is compared structurally either way.
+structural comparison would be wrong or wasteful for them.
 
-The history helpers above compare only the key they own, so whatever else
-lives in `history.state` — another library's key, a router's location state —
-is never inspected and never has to be JSON-serializable.
+**What this does and doesn't lift.** With `compareStartRows`, an int64 column
+read as a `bigint` survives the whole round trip in React: the core never
+stringifies a start row, `useHistoryScrollState` never looks inside the state
+it carries, and the Navigation API structured-clones. Without it, narrow the
+column in `toStartRow` (`Number(row.id)`, `String(row.id)`) and widen it again
+in `getPageQuery`.
+
+Two things are unaffected either way:
+
+- `listContextParams` is always compared structurally, so it has to be
+  JSON-serializable whatever you pass here.
+- `createHistoryScrollState`, the Solid helper, round-trips what it stores
+  through JSON. Zero's Solid bindings hand out store proxies and the Navigation
+  API refuses to clone those, so the round trip is what turns them back into
+  plain data — and a `bigint` doesn't survive it. On Solid, narrow in
+  `toStartRow` or persist the state yourself.
+
+Nothing else in `history.state` is ever inspected — another library's key, a
+router's location state — so none of it has to be JSON-serializable either.
 
 Both helpers are built on the Navigation API
 (`navigation.updateCurrentEntry`), which requires **Firefox 147+**; every

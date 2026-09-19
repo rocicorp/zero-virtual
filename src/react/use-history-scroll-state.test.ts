@@ -108,6 +108,22 @@ test('a write lands under its key in history.state', () => {
   expect((readHistoryState() as Record<string, unknown>).a).toEqual(s);
 });
 
+test('carries a start row JSON cannot serialize', () => {
+  // With `compareStartRows` the core never stringifies a start row, and this
+  // hook stores through structured clone — so an int64 read as a bigint goes
+  // out and comes back intact. Nothing here may look inside the state.
+  const {result} = renderHook(() => useHistoryScrollState('a'));
+  const s = {
+    ...fakeScrollState(11),
+    anchor: {index: 3, kind: 'forward' as const, startRow: {rowid: 42n}},
+  };
+
+  expect(() => act(() => result.current[1](s))).not.toThrow();
+
+  act(() => nav.navigate(readHistoryState()));
+  expect(result.current[0]).toEqual(s);
+});
+
 test('a sibling key this hook does not own cannot break it', () => {
   // `history.state` is shared. Another library's key, a router's location
   // state — none of it is ours to impose a shape on, and the Navigation API

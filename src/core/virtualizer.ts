@@ -188,9 +188,14 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    * Without it, start rows are compared with `JSON.stringify`, which means
    * they have to be JSON-serializable. Supply this when they aren't (an int64
    * column read as a `bigint` is the usual reason), or when a structural
-   * comparison would be wrong or wasteful for them. Note that only the core
-   * reads it: {@linkcode listContextParams} is compared structurally either
-   * way, so it has to be JSON-serializable regardless.
+   * comparison would be wrong or wasteful for them. With it, a start row JSON
+   * can't take survives the round trip through `useHistoryScrollState`, which
+   * stores by structured clone and never looks inside what it carries. (The
+   * Solid helper is the exception: it round-trips through JSON to turn Zero's
+   * store proxies back into plain data.)
+   *
+   * {@linkcode listContextParams} is compared structurally either way, so it
+   * has to be JSON-serializable regardless.
    */
   compareStartRows?: ((a: TStartRow, b: TStartRow) => number) | undefined;
   onSettled?: (() => void) | undefined;

@@ -44,18 +44,15 @@ export function createHistoryScrollState<TStartRow>(
     subscribeHistoryState(() => setRaw(() => getHistoryNavigationSnapshot())),
   );
 
-  // Memoized by JSON identity (matching the React hook), so an unrelated
-  // history-state change doesn't produce a new scroll-state reference.
-  const scrollState = createMemo<ScrollHistoryState<TStartRow> | null>(
-    () => {
-      const state = raw();
-      if (!state) return null;
-      return ((state as Record<string, unknown>)[key] ??
-        null) as ScrollHistoryState<TStartRow> | null;
-    },
-    null,
-    {equals: (a, b) => JSON.stringify(a) === JSON.stringify(b)},
-  );
+  // Identity, not content (matching the React hook): `raw()` only moves when
+  // the browser navigated, so it is already the signal, and looking inside it
+  // would put a JSON requirement on the app's own row data.
+  const scrollState = createMemo<ScrollHistoryState<TStartRow> | null>(() => {
+    const state = raw();
+    if (!state) return null;
+    return ((state as Record<string, unknown>)[key] ??
+      null) as ScrollHistoryState<TStartRow> | null;
+  });
 
   const setScrollState = (newState: ScrollHistoryState<TStartRow> | null) => {
     // The live state, not the navigation snapshot: this is a read-modify-write

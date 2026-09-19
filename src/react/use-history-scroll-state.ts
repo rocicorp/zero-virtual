@@ -64,13 +64,20 @@ export function useHistoryScrollState<TStartRow>(
     getHistoryStateServerSnapshot,
   );
 
+  // `state` only moves when the browser navigated, and it holds still for
+  // every write in between, so its identity is already the signal: no reason
+  // to look inside it — and looking would put a JSON requirement on the
+  // app's own row data that `compareStartRows` is there to lift.
+  //
+  // A navigation between two entries that happen to hold the same position
+  // therefore restores rather than short-circuiting. That is the right way
+  // round: the list may have scrolled away from what it last persisted, and
+  // then the restore is exactly what is wanted.
   const scrollState: ScrollHistoryState<TStartRow> | null = useMemo(() => {
     if (!state) return null;
     return ((state as Record<string, unknown>)[key] ??
       null) as ScrollHistoryState<TStartRow> | null;
-    // Keyed by content, not identity: the state comes back off a history
-    // entry, so it is a fresh object every time.
-  }, [state && JSON.stringify((state as Record<string, unknown>)[key])]);
+  }, [state, key]);
 
   const setScrollState = useCallback(
     (newState: ScrollHistoryState<TStartRow> | null) => {
