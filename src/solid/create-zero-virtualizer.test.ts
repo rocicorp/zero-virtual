@@ -35,6 +35,10 @@ function makeRows(
     firstRowIndex: 0,
     permalinkNotFound: false,
     permalinkRow: undefined,
+    permalinkID: null,
+    probeID: null,
+    probeRow: undefined,
+    probeComplete: false,
     ...overrides,
   };
 }

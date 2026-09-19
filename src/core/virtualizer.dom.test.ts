@@ -80,7 +80,9 @@ function createHarness({
   Object.defineProperty(scroller, 'scrollHeight', {
     get: () => contentHeight(),
   });
-  Object.defineProperty(scroller, 'clientHeight', {get: () => viewportHeight});
+  Object.defineProperty(scroller, 'clientHeight', {
+    get: () => viewportHeight,
+  });
 
   const rect = (top: number, height: number): DOMRect =>
     ({
@@ -952,6 +954,47 @@ describe('scrollToItem', () => {
     expect(() => h.tick()).not.toThrow();
   });
 
+  test('a second jump to a rendered row supersedes a lookup still in flight', () => {
+    // The first jump is off looking its target up; the second lands right
+    // away because its row is already on screen. The stale lookup must not
+    // come back and re-anchor the list onto the first target.
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+
+    h.core.scrollToItem('r400', {align: 'start'});
+    h.core.scrollToItem('r50', {align: 'start'});
+    expect(h.rowTop('r50')).toBe(0);
+
+    h.settle();
+
+    expect(h.rowTop('r50')).toBe(0);
+  });
+
+  test("list-context params JSON can't represent do not break a restore", () => {
+    // The other half of the app's own data in a scroll state: the params are
+    // matched against the live ones on every commit — including in the
+    // constructor, before anything else runs — so an int64 filter id must not
+    // be what throws the list out.
+    const params = {orgID: 1n};
+    expect(() =>
+      harness({
+        rowCount: 500,
+        options: {
+          anchoring: 'manual',
+          listContextParams: params,
+          scrollState: {
+            anchor: {kind: 'forward', index: 0, startRow: undefined},
+            scrollTop: 200,
+            estimatedTotal: 500,
+            hasReachedStart: true,
+            hasReachedEnd: false,
+            listContextParams: params,
+          },
+        },
+      }),
+    ).not.toThrow();
+  });
+
   test('a second jump supersedes one that is still loading', () => {
     const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
     h.settle();
@@ -1027,6 +1070,26 @@ describe('scrollToItem', () => {
       expect(h.core.getSnapshot().items[0].index).toBe(firstBefore);
       expect(h.core.getSnapshot().rowsEmpty).toBe(false);
     });
+  });
+
+  test('a permalink that does not exist leaves the list alone even mid-lookup', () => {
+    // The permalink arrives while an earlier jump's lookup is still out. That
+    // lookup is dropped and a new one starts for the permalink — but the
+    // snapshot in hand is still the old one's, found-and-complete. Reading it
+    // as this target's answer would re-anchor on an id nothing has vouched
+    // for, and throw the loaded list away for a row that isn't there.
+    const h = harness({rowCount: 500, options: {anchoring: 'manual'}});
+    h.settle();
+    h.userScroll(500);
+    h.settle();
+    const firstBefore = h.core.getSnapshot().items[0].index;
+
+    h.core.scrollToItem('r400'); // the lookup goes out
+    h.core.setOptions({...h.coreOptions, permalinkID: 'nope'});
+    h.settle();
+
+    expect(h.core.getSnapshot().rowsEmpty).toBe(false);
+    expect(h.core.getSnapshot().items[0].index).toBe(firstBefore);
   });
 
   test('a permalinkID that does not exist leaves a loaded list alone', () => {

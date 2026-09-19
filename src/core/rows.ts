@@ -42,6 +42,13 @@ export type RowsSnapshot<TRow> = {
   firstRowIndex: number;
   permalinkNotFound: boolean;
   /**
+   * The id {@linkcode probeRow} and {@linkcode probeComplete} are about, or
+   * null when nothing is being probed. A snapshot lags the request it is read
+   * for, so a reader has to check this before trusting either of them for a
+   * particular id — they may still be answering the previous one.
+   */
+  probeID: string | null;
+  /**
    * The row `probeID` resolved to, when the probe has completed and found
    * one; `undefined` while it is loading, when it found nothing, or when
    * nothing is being probed. Read together with {@linkcode probeComplete}.
@@ -212,6 +219,7 @@ export function assembleRows<TRow, TStartRow>(
   // its result is the probe's answer.
   const probing = !isPermalink(anchor) && !!inputs.probeID;
   const probe = {
+    probeID: probing ? (inputs.probeID ?? null) : null,
     probeRow: probing ? singleRow : undefined,
     probeComplete: probing && singleComplete,
   };

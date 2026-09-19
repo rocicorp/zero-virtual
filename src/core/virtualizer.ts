@@ -326,17 +326,19 @@ function pixels(value: string): number {
 /**
  * A value, as a string that changes when the value does. Used for anchors and
  * for list-context params, both of which carry the app's own data — which JSON
- * can't always represent (a bigint column in a start row, say) — so fall back
- * to the parts that are always primitives rather than throwing out of a commit.
- * The cost of the fallback is only that two anchors differing solely in an
- * unserializable start row read as unchanged.
+ * can't always represent (a bigint column in a start row, a filter keyed by
+ * one) — so fall back to a shallow key over the value's own entries rather
+ * than throwing out of a commit. The cost is only that two values differing
+ * solely below the top level read as unchanged.
  */
-function anchorKey(value: unknown): string {
+function valueKey(value: unknown): string {
   try {
     return JSON.stringify(value) ?? String(value);
   } catch {
-    const {kind, index} = (value ?? {}) as {kind?: unknown; index?: unknown};
-    return `${String(kind)}:${String(index)}`;
+    if (typeof value !== 'object' || value === null) return String(value);
+    return Object.entries(value)
+      .map(([k, v]) => `${k}=${String(v)}`)
+      .join(',');
   }
 }
 
@@ -344,7 +346,7 @@ function anchorKey(value: unknown): string {
  * Content equality for scroll states — the host round-trips them, so this
  * compares by value.
  *
- * Both the anchor and the list-context params go through `anchorKey`, which
+ * Both the anchor and the list-context params go through `valueKey`, which
  * degrades to the parts it can read rather than throwing or answering "not
  * equal" for a value JSON can't represent (a bigint column in a start row).
  * Answering "not equal" would be the conservative direction for a comparison
@@ -361,8 +363,8 @@ function sameScrollState<TStartRow>(
     a.estimatedTotal === b.estimatedTotal &&
     a.hasReachedStart === b.hasReachedStart &&
     a.hasReachedEnd === b.hasReachedEnd &&
-    anchorKey(a.anchor) === anchorKey(b.anchor) &&
-    anchorKey(a.listContextParams) === anchorKey(b.listContextParams)
+    valueKey(a.anchor) === valueKey(b.anchor) &&
+    valueKey(a.listContextParams) === valueKey(b.listContextParams)
   );
 }
 
@@ -377,6 +379,7 @@ const EMPTY_ROWS: RowsSnapshot<unknown> = {
   permalinkNotFound: false,
   permalinkRow: undefined,
   permalinkID: null,
+  probeID: null,
   probeRow: undefined,
   probeComplete: false,
 };
@@ -740,6 +743,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // commit to land it on.
     const el = this.#el;
     if (el !== null && findRow(el, id) !== null) {
+      // A lookup left over from an earlier request is no longer wanted: its
+      // answer would come back a commit or two from now and re-anchor the
+      // list onto *that* target, overriding this one.
+      this.#dropProbe();
       this.#pendingScroll = request;
       this.#retryPendingScroll();
       return;
@@ -799,6 +806,15 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     );
   }
 
+  // Cancel an in-flight lookup. The version bump takes `probeID` back out of
+  // the query inputs, so the wrapper unsubscribes it.
+  #dropProbe(): void {
+    if (this.#probe !== null) {
+      this.#probe = null;
+      this.#version++;
+    }
+  }
+
   // Act on a finished probe: a target that exists gets its page loaded (or is
   // scrolled to, if it rendered while we were looking it up); one that doesn't
   // is dropped, leaving the list exactly as it was.
@@ -810,6 +826,13 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       this.#probe = null;
       return;
     }
+    // The snapshot answers whichever id the lookup ran for, which lags the
+    // request it is being read for: a probe replaced earlier in *this* pass
+    // (#restoreOrReset can do that) is still facing the previous one's
+    // finished result. Taking that as this target's would re-anchor on an id
+    // nothing has vouched for — the loaded list thrown away for a row that
+    // may not exist at all.
+    if (this.#rows.probeID !== probe.id) return;
     if (!this.#rows.probeComplete) return;
     if (this.#rows.probeRow === undefined) {
       this.#probe = null; // no such row — do nothing
@@ -913,8 +936,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   // Only restore from scrollState if its listContextParams matches the current
-  // context. JSON compare (state may come from serialized storage where object
-  // identity is not preserved), cached by input identities so it isn't
+  // context. Compared by value (state may come from serialized storage where
+  // object identity is not preserved) via `valueKey`, which survives params
+  // JSON can't represent; cached by input identities so it isn't
   // re-stringified per call.
   #effectiveScrollState(): ScrollHistoryState<TStartRow> | null {
     const {scrollState, listContextParams} = this.#options;
@@ -929,8 +953,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     let eff: ScrollHistoryState<TStartRow> | null = null;
     if (scrollState) {
       eff =
-        JSON.stringify(scrollState.listContextParams) ===
-        JSON.stringify(listContextParams)
+        valueKey(scrollState.listContextParams) === valueKey(listContextParams)
           ? scrollState
           : null;
     }
@@ -1946,7 +1969,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   #persistKey(): string {
     const s = this.#paging;
-    return `${anchorKey(s.queryAnchor.anchor)}:${this.#effectiveEstimatedTotal()}:${s.hasReachedStart}:${s.hasReachedEnd}`;
+    return `${valueKey(s.queryAnchor.anchor)}:${this.#effectiveEstimatedTotal()}:${s.hasReachedStart}:${s.hasReachedEnd}`;
   }
 
   // Schedule a persist when persist-relevant state changed since the last
