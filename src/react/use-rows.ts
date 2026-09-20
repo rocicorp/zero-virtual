@@ -16,12 +16,14 @@ import type {GetPageQuery, GetSingleQuery} from '../zero-types.ts';
  * bindings. All windowing math lives in the framework-free core
  * ({@linkcode assembleRows}); this hook owns only the query staging — three
  * `useQuery` slots, called unconditionally in the same order every render
- * (queries 2 and 3 depend on query 1's result for permalink anchors).
+ * (queries 2 and 3 depend on query 1's result, which is the permalink anchor's
+ * lookup or, under a page anchor, the id probe's).
  */
 export function useRows<TRow, TStartRow>({
   pageSize,
   anchor,
   settled,
+  probeID,
   getPageQuery,
   getSingleQuery,
   toStartRow,
@@ -29,12 +31,13 @@ export function useRows<TRow, TStartRow>({
   pageSize: number;
   anchor: Anchor<TStartRow>;
   settled: boolean;
+  probeID: string | null;
 
   getPageQuery: GetPageQuery<TRow, TStartRow>;
   getSingleQuery: GetSingleQuery<TRow>;
   toStartRow: (row: TRow) => TStartRow;
 }): RowsSnapshot<TRow> {
-  const inputs = {pageSize, anchor, settled};
+  const inputs = {pageSize, anchor, settled, probeID};
 
   // Stage 1: single-item lookup (permalink only; null keeps the slot stable).
   const q1 = buildSingleQuery(inputs, getSingleQuery);
@@ -61,7 +64,7 @@ export function useRows<TRow, TStartRow>({
   return useMemo(
     () =>
       assembleRows(
-        {pageSize, anchor, settled},
+        {pageSize, anchor, settled, probeID},
         {
           singleRow: typedSingleRow,
           singleComplete,
@@ -75,6 +78,7 @@ export function useRows<TRow, TStartRow>({
       pageSize,
       anchor,
       settled,
+      probeID,
       typedSingleRow,
       singleComplete,
       mainRows,

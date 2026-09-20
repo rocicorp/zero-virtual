@@ -112,7 +112,19 @@ export type VirtualizerQueryOptions<
   getPageQuery: GetPageQuery<TPageQuery, TPageOptions, TStartRow>;
   /** Function that returns a query for fetching a single row by ID */
   getSingleQuery: GetSingleQuery<TSingleQuery, TSingleOptions>;
-  /** Function to extract the start row data from a full row (for pagination anchoring) */
+  /**
+   * Function to extract the start row data from a full row (for pagination
+   * anchoring).
+   *
+   * The result rides in the paging anchor, which is persisted through
+   * `onScrollStateChange` and compared against what comes back. That
+   * comparison is `JSON.stringify` unless you supply
+   * {@linkcode VirtualizerOptions.compareStartRows}, so by default the result
+   * must be **JSON-serializable** — a `bigint` from an int64 column is the
+   * one to watch for. Either narrow it here (`Number(row.id)`,
+   * `String(row.id)`) and widen it again in `getPageQuery`, or hand over the
+   * comparator you already sort by.
+   */
   toStartRow: (row: TRow) => TStartRow;
 };
 
@@ -166,3 +178,23 @@ export type ScrollHistoryState<
   /** The list context params active when this state was saved (used to invalidate stale state) */
   listContextParams: TListContextParams;
 }>;
+
+/**
+ * Where {@link ScrollToItemOptions.align} places the target row in the
+ * viewport. The same vocabulary TanStack Virtual's `scrollToIndex` uses:
+ * - `auto`: the minimum scroll that brings the row fully into view — no scroll
+ *   at all when it is already fully visible (the default).
+ * - `start`: the row's top at the viewport's top.
+ * - `center`: the row centered in the viewport.
+ * - `end`: the row's bottom at the viewport's bottom.
+ *
+ * Every alignment is clamped by the scroll container, so a row near either end
+ * of the list lands as close as the container allows.
+ */
+export type ScrollAlignment = 'auto' | 'start' | 'center' | 'end';
+
+/** Options for the `scrollToItem` method on the virtualizer result. */
+export type ScrollToItemOptions = {
+  /** Defaults to `'auto'`. */
+  align?: ScrollAlignment | undefined;
+};

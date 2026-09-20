@@ -31,6 +31,10 @@ function makeUseRowsResult(
     firstRowIndex: 0,
     permalinkNotFound: false,
     permalinkRow: undefined,
+    permalinkID: null,
+    probeID: null,
+    probeRow: undefined,
+    probeComplete: false,
     ...overrides,
   };
 }
@@ -299,6 +303,25 @@ describe('useZeroVirtualizer - result options', () => {
     rerender();
     expect(result.current).toBe(first);
     expect(result.current.options).toBe(first.options);
+  });
+
+  test('scrollToItem identity survives a content change, so it is dep-array safe', () => {
+    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+
+    const options = makeOptions();
+    const {result, rerender} = renderHook(() => useZeroVirtualizer(options));
+
+    const firstResult = result.current;
+    const firstScrollToItem = firstResult.scrollToItem;
+    expect(typeof firstScrollToItem).toBe('function');
+
+    // A new rows result rebuilds the result object; the callback must not
+    // change with it, or every consumer's effect re-runs on every page.
+    mockUseRows.mockReturnValue(makeUseRowsResult({rowsLength: 3}));
+    rerender();
+
+    expect(result.current).not.toBe(firstResult);
+    expect(result.current.scrollToItem).toBe(firstScrollToItem);
   });
 });
 
