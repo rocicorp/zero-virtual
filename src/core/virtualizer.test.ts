@@ -218,6 +218,47 @@ describe('ZeroVirtualizer snapshot — items, space and total', () => {
 });
 
 describe('ZeroVirtualizer wrapper contract', () => {
+  test('items survive metadata updates but change with row keys and data', () => {
+    const opts = makeOptions();
+    const v = new ZeroVirtualizer(opts);
+    v.setRows(makeRows({rowsLength: 1, rowAt: () => ({id: 'a'})}));
+    const items = v.getSnapshot().items;
+    v.setOptions({...opts, count: 100});
+    expect(v.getSnapshot().items).toBe(items);
+    v.setOptions({...opts, getRowKey: () => 'new-key'});
+    expect(v.getSnapshot().items).not.toBe(items);
+    expect(v.getSnapshot().items[0].key).toBe('new-key');
+    v.setRows(makeRows({rowsLength: 1, rowAt: () => ({id: 'b'})}));
+    expect(v.getSnapshot().items[0].row).toEqual({id: 'b'});
+  });
+
+  test('attachment cleanup runs once per container and restores its style', () => {
+    const rectCleanup = vi.fn();
+    const offsetCleanup = vi.fn();
+    const v = new ZeroVirtualizer(
+      makeOptions({
+        anchoring: 'manual',
+        observeElementRect: () => rectCleanup,
+        observeElementOffset: () => offsetCleanup,
+      }),
+    );
+    const first = document.createElement('div');
+    const second = document.createElement('div');
+    first.style.overflowAnchor = 'auto';
+    v.attach(first);
+    v.attach(first);
+    expect(rectCleanup).not.toHaveBeenCalled();
+    expect(first.style.overflowAnchor).toBe('none');
+    v.attach(second);
+    expect(rectCleanup).toHaveBeenCalledTimes(1);
+    expect(offsetCleanup).toHaveBeenCalledTimes(1);
+    expect(first.style.overflowAnchor).toBe('auto');
+    v.detach();
+    v.detach();
+    expect(rectCleanup).toHaveBeenCalledTimes(2);
+    expect(offsetCleanup).toHaveBeenCalledTimes(2);
+  });
+
   test('changing count invalidates the cached snapshot', () => {
     const opts = makeOptions();
     const v = new ZeroVirtualizer(opts);
