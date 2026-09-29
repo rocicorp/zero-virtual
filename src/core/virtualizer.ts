@@ -349,6 +349,9 @@ function createAttachment<TRow>(
     rect: {width: 0, height: 0} as ScrollRect,
     resizeObserver: null as ResizeObserver | null,
     observedItems: null as ReadonlyArray<VirtualRow<TRow>> | null,
+    get scrollTop(): number {
+      return scrollElement.scrollTop;
+    },
     get height(): number {
       return this.rect.width > 0 || this.rect.height > 0
         ? this.rect.height
@@ -361,7 +364,14 @@ function createAttachment<TRow>(
           : scrollElement.getBoundingClientRect().top;
       return {top, bottom: top + this.height};
     },
-    listen(target: HTMLElement | Window, event: string, handler: () => void) {
+    listen(
+      event: 'scrollend' | 'touchstart' | 'touchend' | 'touchcancel',
+      handler: () => void,
+    ) {
+      const target =
+        event === 'scrollend' && scrollElement === document.scrollingElement
+          ? window
+          : scrollElement;
       target.addEventListener(event, handler, {passive: true});
       cleanups.push(() => target.removeEventListener(event, handler));
     },
@@ -613,32 +623,26 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.detach();
     if (!el) return;
 
-    const dom = createAttachment<TRow>(
+    const attachment = createAttachment<TRow>(
       el,
       this.#resolveScrollElement(el),
       this.#manual(),
     );
     // Observers may report synchronously during setup.
-    this.#attachment = dom;
-    dom.cleanups.push(
-      this.#options.observeElementRect(dom, rect => {
-        dom.rect = rect;
+    this.#attachment = attachment;
+    attachment.cleanups.push(
+      this.#options.observeElementRect(attachment, rect => {
+        attachment.rect = rect;
         this.#withNotify(() => this.#evaluate());
       }),
-      this.#options.observeElementOffset(dom, this.#onScrollOffset),
+      this.#options.observeElementOffset(attachment, this.#onScrollOffset),
     );
-    dom.listen(
-      dom.scrollElement === document.scrollingElement
-        ? window
-        : dom.scrollElement,
-      'scrollend',
-      this.#onScrollEnd,
-    );
+    attachment.listen('scrollend', this.#onScrollEnd);
     // Touch events bubble from the rows to the scroll element.
     if (this.#manual()) {
-      dom.listen(dom.scrollElement, 'touchstart', this.#onTouchStart);
-      dom.listen(dom.scrollElement, 'touchend', this.#onTouchEnd);
-      dom.listen(dom.scrollElement, 'touchcancel', this.#onTouchEnd);
+      attachment.listen('touchstart', this.#onTouchStart);
+      attachment.listen('touchend', this.#onTouchEnd);
+      attachment.listen('touchcancel', this.#onTouchEnd);
     }
     // Re-attachment can unset settled; notify subscribers of that transition.
     this.#withNotify(() => this.#resetSettleTimer());
@@ -754,8 +758,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       this.#jumpEchoUntil = Date.now() + JUMP_ECHO_WINDOW_MS;
     }
     // Rendered targets scroll synchronously; no query or later commit is needed.
-    const dom = this.#attachment;
-    if (dom !== null && this.#findTarget(dom.el, request) !== null) {
+    const attachment = this.#attachment;
+    if (
+      attachment !== null &&
+      this.#findTarget(attachment.el, request) !== null
+    ) {
       // Replacing the request also unsubscribes any superseded lookup.
       this.#setRequest(request);
       this.#retryPendingScroll();
@@ -1036,12 +1043,12 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // Shared visibility definition for paging and public visible-item helpers.
   // Rows are in DOM order, so stop below the viewport.
   #visibleIndexRange(
-    dom: Attachment<TRow>,
+    attachment: Attachment<TRow>,
   ): {first: number; last: number} | null {
-    const {top: elTop, bottom: elBottom} = dom.viewport;
+    const {top: elTop, bottom: elBottom} = attachment.viewport;
     let first = Infinity;
     let last = -Infinity;
-    for (const child of queryRows(dom.el)) {
+    for (const child of queryRows(attachment.el)) {
       const rect = child.getBoundingClientRect();
       if (rect.top >= elBottom) break;
       if (rectInViewport(rect, elTop, elBottom)) {
@@ -1054,9 +1061,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   #visibleItem(edge: 'first' | 'last'): VirtualRow<TRow> | undefined {
-    const dom = this.#attachment;
-    if (!dom) return undefined;
-    const range = this.#visibleIndexRange(dom);
+    const attachment = this.#attachment;
+    if (!attachment) return undefined;
+    const range = this.#visibleIndexRange(attachment);
     if (range === null) return undefined;
     // Snapshot items are contiguous from the first loaded index.
     const {items} = this.getSnapshot();
@@ -1067,10 +1074,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // Scroll to an absolute offset, skipping no-op writes (same rounded offset).
   // Returns whether it actually wrote — i.e. whether the position moved.
   #setScrollTop(top: number): boolean {
-    const dom = this.#attachment;
-    if (dom && Math.round(dom.scrollElement.scrollTop) !== Math.round(top)) {
+    const attachment = this.#attachment;
+    if (attachment && Math.round(attachment.scrollTop) !== Math.round(top)) {
       this.#programmaticScroll = true;
-      dom.scrollElement.scrollTop = top;
+      attachment.scrollElement.scrollTop = top;
       return true;
     }
     return false;
@@ -1088,17 +1095,17 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // Hold on the content wrapper, which survives paging. Fall back to the
   // first row when it is directly inside the scroller. A negative margin works
   // where padding would clamp and avoids overwriting consumer spacer styles.
-  #holdTarget(dom: Attachment<TRow>): HTMLElement | null {
-    const first = firstRow(dom.el);
+  #holdTarget(attachment: Attachment<TRow>): HTMLElement | null {
+    const first = firstRow(attachment.el);
     if (!first) return null;
     const parent = first.parentElement;
-    return parent && parent !== dom.scrollElement ? parent : first;
+    return parent && parent !== attachment.scrollElement ? parent : first;
   }
 
   // A negative margin pulls content up by the pending correction.
   #applyHold(px: number): void {
-    const dom = this.#attachment;
-    const target = dom ? this.#holdTarget(dom) : null;
+    const attachment = this.#attachment;
+    const target = attachment ? this.#holdTarget(attachment) : null;
     const prev = this.#holdEl;
     if (prev && prev !== target) prev.style.marginTop = '';
     this.#holdEl = px !== 0 ? target : null;
@@ -1108,8 +1115,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // Transfer a held margin if paging replaces its carrier (first-row fallback).
   #migrateHold(): void {
     if (this.#holdEl === null) return;
-    const dom = this.#attachment;
-    const target = dom ? this.#holdTarget(dom) : null;
+    const attachment = this.#attachment;
+    const target = attachment ? this.#holdTarget(attachment) : null;
     if (target !== this.#holdEl) {
       this.#applyHold(-this.#anchorState.pendingJump);
     }
@@ -1117,22 +1124,22 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // Content coordinates exclude scrolling and the held margin, so a scrollTop
   // write before its scroll event cannot be mistaken for content movement.
-  #anchorOffsetOf(dom: Attachment<TRow>, rect: DOMRect): number {
+  #anchorOffsetOf(attachment: Attachment<TRow>, rect: DOMRect): number {
     return (
       rect.top -
-      dom.viewport.top +
-      dom.scrollElement.scrollTop +
+      attachment.viewport.top +
+      attachment.scrollTop +
       this.#anchorState.pendingJump
     );
   }
 
   #refreshAnchor(): void {
-    const dom = this.#attachment;
-    if (!dom) return;
-    const vTop = dom.viewport.top;
+    const attachment = this.#attachment;
+    if (!attachment) return;
+    const vTop = attachment.viewport.top;
     // Match native anchoring: the first row extending below the viewport top.
     let ref: HTMLElement | null = null;
-    for (const child of queryRows(dom.el)) {
+    for (const child of queryRows(attachment.el)) {
       if (child.getBoundingClientRect().bottom > vTop + 0.5) {
         ref = child;
         break;
@@ -1140,21 +1147,21 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     }
     this.#anchorKey = ref?.getAttribute(VROW_KEY_ATTR) ?? null;
     this.#anchorOffset = ref
-      ? this.#anchorOffsetOf(dom, ref.getBoundingClientRect())
+      ? this.#anchorOffsetOf(attachment, ref.getBoundingClientRect())
       : 0;
   }
 
   // Apply corrections immediately unless a touch gesture requires a hold.
   #compensate(delta: number): void {
-    const dom = this.#attachment;
-    if (!dom) return;
+    const attachment = this.#attachment;
+    if (!attachment) return;
     // Rebase in content coordinates so this growth is not compensated twice.
     this.#anchorOffset += delta;
     if (this.#anchorState.isScrolling && this.#touchScroll) {
       this.#anchorState.pendingJump += delta;
       this.#applyHold(-this.#anchorState.pendingJump);
     } else {
-      this.#setScrollTop(dom.scrollElement.scrollTop + delta);
+      this.#setScrollTop(attachment.scrollTop + delta);
     }
   }
 
@@ -1168,25 +1175,25 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     ) {
       return;
     }
-    const dom = this.#attachment;
-    if (!dom) return;
+    const attachment = this.#attachment;
+    if (!attachment) return;
     // Transfer a held margin if paging replaces its carrier (first-row fallback).
     this.#migrateHold();
     // At scrollTop <= 0, reveal prepended content instead of compensating it
     // away (also covers rubber-band overscroll).
-    if (dom.scrollElement.scrollTop <= 0) {
+    if (attachment.scrollTop <= 0) {
       this.#refreshAnchor();
       return;
     }
     const key = this.#anchorKey;
-    const ref = key !== null ? findRow(dom.el, key) : null;
+    const ref = key !== null ? findRow(attachment.el, key) : null;
     if (!ref) {
       // Adopt a reference when the previous row leaves the loaded window.
       this.#refreshAnchor();
       return;
     }
     const delta =
-      this.#anchorOffsetOf(dom, ref.getBoundingClientRect()) -
+      this.#anchorOffsetOf(attachment, ref.getBoundingClientRect()) -
       this.#anchorOffset;
     if (Math.abs(delta) < 0.5) return;
     this.#compensate(delta);
@@ -1194,11 +1201,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // Commit the held correction to scrollTop before clearing its margin.
   #flushHold(): boolean {
-    const dom = this.#attachment;
-    if (dom && this.#anchorState.pendingJump !== 0) {
-      this.#setScrollTop(
-        dom.scrollElement.scrollTop + this.#anchorState.pendingJump,
-      );
+    const attachment = this.#attachment;
+    if (attachment && this.#anchorState.pendingJump !== 0) {
+      this.#setScrollTop(attachment.scrollTop + this.#anchorState.pendingJump);
       this.#anchorState.pendingJump = 0;
       this.#applyHold(0);
       return true;
@@ -1465,11 +1470,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       this.#setPaging(restoredPagingState(eff, listContextParams));
     } else if (permalinkID) {
       // Visible permalink targets only highlight; off-screen targets scroll.
-      const dom = this.#attachment;
-      const targetEl = dom ? findRow(dom.el, permalinkID) : null;
+      const attachment = this.#attachment;
+      const targetEl = attachment ? findRow(attachment.el, permalinkID) : null;
       let targetVisible = false;
-      if (dom && targetEl) {
-        const {top, bottom} = dom.viewport;
+      if (attachment && targetEl) {
+        const {top, bottom} = attachment.viewport;
         targetVisible = rectInViewport(
           targetEl.getBoundingClientRect(),
           top,
@@ -1538,16 +1543,16 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // Compute the requested alignment; the browser clamps at list boundaries.
   #alignDelta(
-    dom: Attachment<TRow>,
+    attachment: Attachment<TRow>,
     target: HTMLElement,
     align: ScrollAlignment,
   ): number {
     // Inset the scrollport by scroll-padding and outset the row by
     // scroll-margin, matching the platform scroll-into-view geometry.
-    const viewport = dom.viewport;
-    const padding = getComputedStyle(dom.scrollElement);
-    const top = viewport.top + pixels(padding.scrollPaddingTop);
-    const bottom = viewport.bottom - pixels(padding.scrollPaddingBottom);
+    const {top: viewportTop, bottom: viewportBottom} = attachment.viewport;
+    const padding = getComputedStyle(attachment.scrollElement);
+    const top = viewportTop + pixels(padding.scrollPaddingTop);
+    const bottom = viewportBottom - pixels(padding.scrollPaddingBottom);
     const margin = getComputedStyle(target);
     const box = target.getBoundingClientRect();
     const rectTop = box.top - pixels(margin.scrollMarginTop);
@@ -1586,11 +1591,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       this.#setRequest(null);
       return;
     }
-    const dom = this.#attachment;
-    if (!dom) return;
+    const attachment = this.#attachment;
+    if (!attachment) return;
     // An id may differ from the DOM key. Adopt only a matching, fully loaded
     // permalink result; stale rows must not retire the current request.
-    let target = this.#findTarget(dom.el, pending);
+    let target = this.#findTarget(attachment.el, pending);
     if (target === null && pending.rowKey === undefined) {
       // Resolve the DOM key once its own page queries have completed.
       const {permalinkRow, permalinkID, complete} = this.#rows;
@@ -1600,7 +1605,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
           : undefined;
       if (rowKey !== undefined) {
         this.#setRequest({...pending, rowKey});
-        target = findRow(dom.el, rowKey);
+        target = findRow(attachment.el, rowKey);
       }
     }
     if (!target) {
@@ -1617,8 +1622,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     }
     // Flush the hold before measuring alignment in real scroll coordinates.
     this.#flushHold();
-    const before = dom.scrollElement.scrollTop;
-    const delta = this.#alignDelta(dom, target, pending.align);
+    const before = attachment.scrollTop;
+    const delta = this.#alignDelta(attachment, target, pending.align);
     if (Math.abs(delta) <= 1) {
       this.#setRequest(null); // in place
       return;
@@ -1632,19 +1637,23 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // Observe row resizes in manual mode; reattach only when items change.
   #reobserveRows(): void {
-    const dom = this.#attachment;
-    if (!this.#manual() || !dom || typeof ResizeObserver === 'undefined') {
+    const attachment = this.#attachment;
+    if (
+      !this.#manual() ||
+      !attachment ||
+      typeof ResizeObserver === 'undefined'
+    ) {
       return;
     }
     const items = this.getSnapshot().items;
-    if (items === dom.observedItems && dom.resizeObserver) return;
-    dom.observedItems = items;
-    dom.resizeObserver?.disconnect();
-    dom.resizeObserver = new ResizeObserver(() =>
+    if (items === attachment.observedItems && attachment.resizeObserver) return;
+    attachment.observedItems = items;
+    attachment.resizeObserver?.disconnect();
+    attachment.resizeObserver = new ResizeObserver(() =>
       this.#withNotify(() => this.#measureAndCompensate()),
     );
-    for (const child of queryRows(dom.el)) {
-      dom.resizeObserver.observe(child, {box: 'border-box'});
+    for (const child of queryRows(attachment.el)) {
+      attachment.resizeObserver.observe(child, {box: 'border-box'});
     }
   }
 
@@ -1661,13 +1670,13 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       // the target's context is still loading.
       return;
     }
-    const dom = this.#attachment;
-    if (!dom) return;
+    const attachment = this.#attachment;
+    if (!attachment) return;
 
-    const visible = this.#visibleIndexRange(dom);
+    const visible = this.#visibleIndexRange(attachment);
     const firstVisible = visible?.first ?? Infinity;
     const lastVisible = visible?.last ?? -Infinity;
-    const elBottom = dom.viewport.bottom;
+    const elBottom = attachment.viewport.bottom;
     // Both distances are 0 when the corresponding edge row is visible.
     const threshold = Math.max(
       this.#options.overscan ?? 5,
@@ -1696,12 +1705,12 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     if (firstVisible === Infinity) {
       // A scrollbar jump into unloaded space needs cursor-based page cascading
       // toward the viewport; there is no index query to teleport there.
-      const first = firstRow(dom.el);
+      const first = firstRow(attachment.el);
       if (!first) return;
       if (first.getBoundingClientRect().top >= elBottom) {
         // A list below the viewport at its start needs no backward page.
         // Otherwise page upward into the unloaded space.
-        if (dom.scrollElement.scrollTop <= 0 || rows.atStart) {
+        if (attachment.scrollTop <= 0 || rows.atStart) {
           this.#setAnchor(TOP_ANCHOR as Anchor<TStartRow>);
         } else {
           updateAnchorForEdge(rows.firstRowIndex, 'backward', 0);
@@ -1796,13 +1805,14 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // Read the live position; detachment may have happened since scheduling.
   #writeScrollState(): void {
     const {onScrollStateChange, listContextParams} = this.#options;
-    const dom = this.#attachment;
-    if (!dom || !this.#isListContextCurrent() || !onScrollStateChange) return;
+    const attachment = this.#attachment;
+    if (!attachment || !this.#isListContextCurrent() || !onScrollStateChange)
+      return;
     const state: ScrollHistoryState<TStartRow> = {
       ...this.#persistState(),
       // The logical committed offset: if a gesture is mid-flight with an owed
       // jump held in the wrapper margin, fold it in so restore lands right.
-      scrollTop: dom.scrollElement.scrollTop + this.#anchorState.pendingJump,
+      scrollTop: attachment.scrollTop + this.#anchorState.pendingJump,
       listContextParams,
     };
     this.#ownScrollStates.unshift(state);

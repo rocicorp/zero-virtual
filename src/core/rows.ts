@@ -86,8 +86,9 @@ export type RowsQueryResults<TRow> = {
 };
 
 /**
- * Stage 1: the single-row lookup (permalink anchors only; null otherwise so
- * wrappers can keep a stable query slot).
+ * Stage 1: the single-row lookup for a permalink anchor or a page anchor's
+ * probeID. Returns null when neither is present, so wrappers can keep a stable
+ * query slot.
  */
 export function buildSingleQuery<TQuery, TOptions, TStartRow>(
   inputs: RowsQueryInputs<TStartRow>,
