@@ -9,4 +9,17 @@
   top: 0;
   z-index: 1;
   background: #fff;
+  height: var(--sticky-bar-height);
+}
+
+/* The bar covers the top of the scrollport, and for a window-scrolled list
+   that scrollport is the document. `scroll-padding-top` is how the platform is
+   told about it — `scrollIntoView` reads it, and so does the virtualizer's
+   `scrollToItem`, so a row it jumps to lands below the bar rather than behind
+   it. It has to sit on the scroll container itself, hence `:global` — scoped
+   with `:has()` so it applies only while this demo is the one rendered, and
+   not to the element-scrolling one that ships in the same bundle. */
+:global(html):has(.stickyBar) {
+  --sticky-bar-height: 67px;
+  scroll-padding-top: var(--sticky-bar-height);
 }

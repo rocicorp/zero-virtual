@@ -1,15 +1,17 @@
+import type {ScrollToItemOptions} from '@rocicorp/zero-virtual/react';
 import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {AddControls} from './AddControls.tsx';
 import styles from '../shared/DevPanel.module.css';
+import {JumpControls} from './JumpControls.tsx';
 import type {HeightMode} from './list-shared.ts';
 import {useUrlState} from './use-url-state.ts';
 
 /**
  * The collapsible dev panel from the design handoff: all demo configuration
- * (scroll container, item sizing, add-item actions), the virtualizer's live
- * anchoring stats, and the runtime options, in a dark card pinned bottom-right.
- * Collapses to a pill launcher. Stats poll via rAF; isolated so polling never
- * re-renders the list.
+ * (scroll container, item sizing, add-item actions, jump-to-item), the
+ * virtualizer's live anchoring stats, and the runtime options, in a dark card
+ * pinned bottom-right. Collapses to a pill launcher. Stats poll via rAF;
+ * isolated so polling never re-renders the list.
  */
 export function DevPanel({
   getScrollElement,
@@ -21,6 +23,7 @@ export function DevPanel({
   onAnchoringChange,
   follow,
   onFollowChange,
+  scrollToItem,
 }: {
   getScrollElement: () => HTMLElement | null;
   windowMode?: boolean;
@@ -31,6 +34,7 @@ export function DevPanel({
   onAnchoringChange: (v: string) => void;
   follow: string;
   onFollowChange: (v: string) => void;
+  scrollToItem: (id: string, options?: ScrollToItemOptions) => void;
 }): ReactNode {
   const [open, setOpen] = useState(true);
   // The scroll-container mode lives in the URL (it selects which demo renders).
@@ -104,6 +108,7 @@ export function DevPanel({
           </select>
         </label>
         <AddControls sortDirection={sortDirection} />
+        <JumpControls scrollToItem={scrollToItem} />
       </div>
 
       <div className={`${styles.section} ${styles.stats}`}>

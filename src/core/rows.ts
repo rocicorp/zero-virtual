@@ -16,6 +16,16 @@ export type RowsQueryInputs<TStartRow> = {
   pageSize: number;
   anchor: Anchor<TStartRow>;
   settled: boolean;
+  /**
+   * An id to look up *without* moving the query window: the single-row query
+   * runs for it while the anchor (and so the loaded rows) stays put. This is
+   * how `scrollToItem` — and an in-page permalink navigation over an already
+   * loaded list — checks that a row exists before re-anchoring on it, so an
+   * id that resolves to nothing leaves the list alone instead of emptying it.
+   * Null when the anchor is a permalink (which runs its own lookup) or when
+   * nothing is being probed.
+   */
+  probeID?: string | null | undefined;
 };
 
 /**
@@ -32,12 +42,34 @@ export type RowsSnapshot<TRow> = {
   firstRowIndex: number;
   permalinkNotFound: boolean;
   /**
+   * The id {@linkcode probeRow} and {@linkcode probeComplete} are about, or
+   * null when nothing is being probed. A snapshot lags the request it is read
+   * for, so a reader has to check this before trusting either of them for a
+   * particular id — they may still be answering the previous one.
+   */
+  probeID: string | null;
+  /**
+   * The row `probeID` resolved to, when the probe has completed and found
+   * one; `undefined` while it is loading, when it found nothing, or when
+   * nothing is being probed. Read together with {@linkcode probeComplete}.
+   */
+  probeRow: TRow | undefined;
+  /** Whether the `probeID` lookup has completed (false when not probing). */
+  probeComplete: boolean;
+  /**
    * The resolved permalink target row (the single-row lookup result), when the
    * current anchor is a permalink and the row has loaded; `undefined`
    * otherwise. Its `getRowKey` locates the DOM row to scroll to — the
    * permalink id need not equal the row key.
    */
   permalinkRow: TRow | undefined;
+  /**
+   * The id {@linkcode permalinkRow} and {@linkcode permalinkNotFound} are
+   * about, or null under a page anchor. A snapshot can lag a re-anchor by a
+   * commit or two, so a reader has to check this before trusting either of
+   * them for a particular id — they may still be answering the previous one.
+   */
+  permalinkID: string | null;
 };
 
 /** The raw results of the (up to) three staged queries. */
@@ -67,9 +99,33 @@ export function buildSingleQuery<TQuery, TOptions, TStartRow>(
   inputs: RowsQueryInputs<TStartRow>,
   getSingleQuery: GetSingleQuery<TQuery, TOptions>,
 ): QueryResult<TQuery, TOptions> | null {
-  return isPermalink(inputs.anchor)
-    ? getSingleQuery({id: inputs.anchor.id, settled: inputs.settled})
-    : null;
+  const id = lookupID(inputs);
+  return id === null ? null : getSingleQuery({id, settled: inputs.settled});
+}
+
+/**
+ * The id this slot looks up: a permalink anchor's target, or — under a page
+ * anchor, where the slot would otherwise sit idle — the id being probed (see
+ * {@linkcode RowsQueryInputs.probeID}).
+ *
+ * One slot serves both, which is also what makes the handover free: a probe
+ * that finds its row re-anchors on that same id, and the query doesn't change,
+ * so nothing is unsubscribed and re-subscribed in between. The core never
+ * probes while a permalink anchor is live, so the two can't collide.
+ */
+function lookupID<TStartRow>(
+  inputs: RowsQueryInputs<TStartRow>,
+): string | null {
+  const {anchor, probeID} = inputs;
+  if (!isPermalink(anchor)) return probeID ?? null;
+  // Both at once would mean one of them silently loses its query and waits on
+  // an answer that never comes, which nothing surfaces at runtime — so say so
+  // here rather than let a caller meet it as a list that stops responding.
+  assert(
+    !probeID,
+    'probeID must be null while the anchor is a permalink: they share a query slot',
+  );
+  return anchor.id;
 }
 
 /**
@@ -159,6 +215,15 @@ export function assembleRows<TRow, TStartRow>(
 
   const permalinkNotFound = permalinkMissing(inputs, singleRow, singleComplete);
 
+  // Under a page anchor the single-row slot is the probe's (see lookupID), so
+  // its result is the probe's answer.
+  const probing = !isPermalink(anchor) && !!inputs.probeID;
+  const probe = {
+    probeID: probing ? (inputs.probeID ?? null) : null,
+    probeRow: probing ? singleRow : undefined,
+    probeComplete: probing && singleComplete,
+  };
+
   const rowsBeforeLength = mainRows?.length ?? 0;
   const rowsAfterLength = afterRows?.length ?? 0;
   const rowsBeforeSize = Math.min(rowsBeforeLength, halfPageSize);
@@ -219,6 +284,8 @@ export function assembleRows<TRow, TStartRow>(
         : anchorIndex - rowsBeforeSize,
       permalinkNotFound,
       permalinkRow: singleRow,
+      permalinkID: anchor.id,
+      ...probe,
     };
   }
 
@@ -235,6 +302,8 @@ export function assembleRows<TRow, TStartRow>(
       firstRowIndex: anchorIndex,
       permalinkNotFound,
       permalinkRow: undefined,
+      permalinkID: null,
+      ...probe,
     };
   }
 
@@ -251,5 +320,7 @@ export function assembleRows<TRow, TStartRow>(
     firstRowIndex: anchorIndex - paginatedRowsLength,
     permalinkNotFound,
     permalinkRow: undefined,
+    permalinkID: null,
+    ...probe,
   };
 }
