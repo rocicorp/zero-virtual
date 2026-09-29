@@ -32,12 +32,16 @@ function createHarness({
   rowCount,
   rowHeight = 20,
   viewportHeight = 400,
+  viewportTop = 0,
+  windowScroll = false,
   bigintRows = false,
   options = {},
 }: {
   rowCount: number;
   rowHeight?: number;
   viewportHeight?: number;
+  viewportTop?: number;
+  windowScroll?: boolean;
   /** Give rows an int64-ish column, which JSON can't serialize. */
   bigintRows?: boolean;
   options?: Partial<VirtualizerOptions<unknown, TestRow, TestRow>>;
@@ -101,11 +105,16 @@ function createHarness({
       toJSON: () => ({}),
     }) as DOMRect;
 
-  scroller.getBoundingClientRect = () => rect(0, viewportHeight);
+  if (windowScroll) {
+    vi.spyOn(document, 'scrollingElement', 'get').mockReturnValue(scroller);
+  }
+  scroller.getBoundingClientRect = () =>
+    rect(windowScroll ? -scrollTop : viewportTop, viewportHeight);
 
   const rowRect = (el: Element): DOMRect => {
     let top =
-      -scrollTop +
+      viewportTop -
+      scrollTop +
       paddingPx(wrapper.style.paddingTop) +
       paddingPx(wrapper.style.marginTop);
     for (const child of wrapper.children) {
@@ -139,7 +148,10 @@ function createHarness({
     },
     ...options,
   };
-  const core = new ZeroVirtualizer<unknown, TestRow, TestRow>(coreOptions);
+  const core = new ZeroVirtualizer<unknown, TestRow, TestRow>(
+    coreOptions,
+    () => scroller,
+  );
 
   const deliverScroll = () => {
     if (scrollPending) {
@@ -224,7 +236,7 @@ function createHarness({
   const tick = () => {
     core.setRows(answerQueries(core.getQueryInputs()));
     syncDOM();
-    core.attach(scroller);
+    core.attach(windowScroll ? wrapper : scroller);
     core.afterDOMUpdate();
     // The browser fires the scroll event for any scrollTop write the update
     // performed (compensation, restore); this is what clears the
@@ -270,7 +282,8 @@ function createHarness({
     [...wrapper.children]
       .filter(c => {
         const r = rowRect(c);
-        return r.bottom > 0 && r.top < viewportHeight;
+        const top = windowScroll ? 0 : viewportTop;
+        return r.bottom > top && r.top < top + viewportHeight;
       })
       .map(c => Number(c.getAttribute(VROW_INDEX_ATTR)));
 
@@ -285,6 +298,9 @@ function createHarness({
     userScroll,
     deliverScroll,
     visibleIndexes,
+    moveViewportTo: (top: number) => {
+      viewportTop = top;
+    },
     setRowHeight: (key: string, px: number) => heights.set(key, px),
     rowElement: (key: string) => {
       const el = wrapper.querySelector<HTMLElement>(
@@ -313,6 +329,7 @@ function harness(...args: Parameters<typeof createHarness>) {
 }
 afterEach(() => {
   while (harnesses.length) harnesses.pop()!.destroy();
+  vi.restoreAllMocks();
 });
 
 /** [start, end] inclusive. */
@@ -1275,5 +1292,99 @@ describe('scrollToItem', () => {
     expect(h.core.getSnapshot().rowsEmpty).toBe(false);
     expect(h.core.getSnapshot().items[0].index).toBe(0);
     expect(h.core.getSnapshot().items[0].row).toEqual({id: 'r0'});
+  });
+});
+
+describe('attachment geometry', () => {
+  test.each([false, true])(
+    'alignment and visibility with window scrolling=%s',
+    windowScroll => {
+      const h = harness({rowCount: 500, viewportTop: 160, windowScroll});
+      h.settle();
+      h.scroller.style.scrollPaddingTop = '40px';
+      h.scroller.style.scrollPaddingBottom = '30px';
+      const target = h.rowElement('r50');
+      target.style.scrollMarginTop = '10px';
+      target.style.scrollMarginBottom = '15px';
+      const top = windowScroll ? 0 : 160;
+      for (const [align, expected] of [
+        ['start', top + 50],
+        ['end', top + 335],
+        ['center', top + 192.5],
+      ] as const) {
+        h.core.scrollToItem('r50', {align});
+        expect(h.rowTop('r50')).toBe(expected);
+        expect(h.core.firstVisibleItem()?.index).toBe(h.visibleIndexes()[0]);
+        expect(h.core.lastVisibleItem()?.index).toBe(h.visibleIndexes().at(-1));
+      }
+      h.deliverScroll();
+      h.settle();
+      expect(h.core.firstVisibleItem()?.index).toBe(h.visibleIndexes()[0]);
+    },
+  );
+
+  test('moving a container updates its geometry without a resize notification', () => {
+    const h = harness({
+      rowCount: 500,
+      viewportTop: 100,
+      options: {anchoring: 'manual'},
+    });
+    h.settle();
+    h.userScroll(1000);
+    h.settle();
+    h.moveViewportTo(250);
+    h.tick();
+    expect(h.scroller.scrollTop).toBe(1000);
+    expect(h.core.firstVisibleItem()?.key).toBe('r50');
+    h.core.scrollToItem('r60', {align: 'start'});
+    expect(h.rowTop('r60')).toBe(250);
+  });
+
+  test.each([false, true])(
+    'touch growth stays held until scrollend with window scrolling=%s',
+    windowScroll => {
+      const h = harness({
+        rowCount: 500,
+        windowScroll,
+        options: {anchoring: 'manual'},
+      });
+      h.settle();
+      h.scroller.dispatchEvent(new Event('touchstart'));
+      h.userScroll(1000);
+      h.settle();
+      h.setRowHeight('r30', 50);
+      h.tick();
+      expect(h.scroller.scrollTop).toBe(1000);
+      expect(h.wrapper.style.marginTop).toBe('-30px');
+      expect(h.rowTop('r50')).toBe(0);
+      h.scroller.dispatchEvent(new Event('touchend'));
+      (windowScroll ? window : h.scroller).dispatchEvent(
+        new Event('scrollend'),
+      );
+      expect(h.scroller.scrollTop).toBe(1030);
+      expect(h.wrapper.style.marginTop).toBe('');
+      expect(h.rowTop('r50')).toBe(0);
+    },
+  );
+
+  test('reattachment falls back to the new viewport until its observer reports', () => {
+    let report: ((rect: {width: number; height: number}) => void) | undefined;
+    const h = harness({
+      rowCount: 500,
+      options: {
+        observeElementRect: (_instance, cb) => {
+          report = cb;
+        },
+      },
+    });
+    h.settle();
+    expect(h.core.lastVisibleItem()?.key).toBe('r19');
+    report!({width: 300, height: 200});
+    expect(h.core.lastVisibleItem()?.key).toBe('r9');
+    h.core.detach();
+    h.settle();
+    expect(h.core.lastVisibleItem()?.key).toBe('r19');
+    report!({width: 300, height: 0});
+    expect(h.core.firstVisibleItem()).toBeUndefined();
   });
 });
