@@ -1,4 +1,4 @@
-import {assert, unreachable} from '../asserts.ts';
+import {assert} from '../asserts.ts';
 import type {
   Anchor,
   GetPageQuery,
@@ -85,12 +85,6 @@ export type RowsQueryResults<TRow> = {
   afterComplete: boolean;
 };
 
-function isPermalink<TStartRow>(
-  anchor: Anchor<TStartRow>,
-): anchor is Extract<Anchor<TStartRow>, {kind: 'permalink'}> {
-  return anchor.kind === 'permalink';
-}
-
 /**
  * Stage 1: the single-row lookup (permalink anchors only; null otherwise so
  * wrappers can keep a stable query slot).
@@ -99,33 +93,17 @@ export function buildSingleQuery<TQuery, TOptions, TStartRow>(
   inputs: RowsQueryInputs<TStartRow>,
   getSingleQuery: GetSingleQuery<TQuery, TOptions>,
 ): QueryResult<TQuery, TOptions> | null {
-  const id = lookupID(inputs);
-  return id === null ? null : getSingleQuery({id, settled: inputs.settled});
-}
-
-/**
- * The id this slot looks up: a permalink anchor's target, or — under a page
- * anchor, where the slot would otherwise sit idle — the id being probed (see
- * {@linkcode RowsQueryInputs.probeID}).
- *
- * One slot serves both, which is also what makes the handover free: a probe
- * that finds its row re-anchors on that same id, and the query doesn't change,
- * so nothing is unsubscribed and re-subscribed in between. The core never
- * probes while a permalink anchor is live, so the two can't collide.
- */
-function lookupID<TStartRow>(
-  inputs: RowsQueryInputs<TStartRow>,
-): string | null {
-  const {anchor, probeID} = inputs;
-  if (!isPermalink(anchor)) return probeID ?? null;
-  // Both at once would mean one of them silently loses its query and waits on
-  // an answer that never comes, which nothing surfaces at runtime — so say so
-  // here rather than let a caller meet it as a list that stops responding.
-  assert(
-    !probeID,
-    'probeID must be null while the anchor is a permalink: they share a query slot',
-  );
-  return anchor.id;
+  const {anchor, probeID, settled} = inputs;
+  // One query slot serves both lookups. Probing while a permalink owns it
+  // would silently leave one request waiting for an answer that cannot arrive.
+  if (anchor.kind === 'permalink') {
+    assert(
+      !probeID,
+      'probeID must be null while the anchor is a permalink: they share a query slot',
+    );
+  }
+  const id = anchor.kind === 'permalink' ? anchor.id : (probeID ?? null);
+  return id === null ? null : getSingleQuery({id, settled});
 }
 
 /**
@@ -139,7 +117,7 @@ export function buildMainQuery<TQuery, TOptions, TStartRow>(
   permalinkNotFound: boolean,
 ): QueryResult<TQuery, TOptions> | null {
   const {anchor, pageSize, settled} = inputs;
-  if (isPermalink(anchor)) {
+  if (anchor.kind === 'permalink') {
     assert(pageSize % 2 === 0);
     return !permalinkNotFound && singleStart
       ? getPageQuery({
@@ -169,7 +147,7 @@ export function buildAfterQuery<TQuery, TOptions, TStartRow>(
   permalinkNotFound: boolean,
 ): QueryResult<TQuery, TOptions> | null {
   const {anchor, pageSize, settled} = inputs;
-  if (!isPermalink(anchor)) return null;
+  if (anchor.kind !== 'permalink') return null;
   assert(pageSize % 2 === 0);
   return !permalinkNotFound && singleStart
     ? getPageQuery({
@@ -188,7 +166,9 @@ export function permalinkMissing<TRow, TStartRow>(
   singleComplete: boolean,
 ): boolean {
   return (
-    isPermalink(inputs.anchor) && singleComplete && singleRow === undefined
+    inputs.anchor.kind === 'permalink' &&
+    singleComplete &&
+    singleRow === undefined
   );
 }
 
@@ -215,9 +195,9 @@ export function assembleRows<TRow, TStartRow>(
 
   const permalinkNotFound = permalinkMissing(inputs, singleRow, singleComplete);
 
-  // Under a page anchor the single-row slot is the probe's (see lookupID), so
+  // Under a page anchor the single-row slot is the probe's, so
   // its result is the probe's answer.
-  const probing = !isPermalink(anchor) && !!inputs.probeID;
+  const probing = anchor.kind !== 'permalink' && !!inputs.probeID;
   const probe = {
     probeID: probing ? (inputs.probeID ?? null) : null,
     probeRow: probing ? singleRow : undefined,
@@ -233,32 +213,23 @@ export function assembleRows<TRow, TStartRow>(
   const hasMoreRows = kind !== 'permalink' && pageRows.length > pageSize;
   const paginatedRowsLength = hasMoreRows ? pageSize : pageRows.length;
 
+  // Both page directions use the same bounded lookup. Keep this lazy: Solid
+  // rows may be reactive proxies, and callers must see their current values.
   const rowAt = (index: number): TRow | undefined => {
-    switch (kind) {
-      case 'permalink': {
-        if (index === anchorIndex) {
-          return singleRow;
-        }
-        if (index > anchorIndex) {
-          if (afterRows === undefined) return undefined;
-          const i = index - anchorIndex - 1;
-          return i < rowsAfterSize ? afterRows[i] : undefined;
-        }
-        if (mainRows === undefined) return undefined;
-        const i = anchorIndex - index - 1;
-        return i < rowsBeforeSize ? mainRows[i] : undefined;
-      }
-      case 'forward': {
-        const i = index - anchorIndex;
-        return i >= 0 && i < paginatedRowsLength ? pageRows[i] : undefined;
-      }
-      case 'backward': {
-        const i = anchorIndex - index - 1;
-        return i >= 0 && i < paginatedRowsLength ? pageRows[i] : undefined;
-      }
-      default:
-        unreachable(kind);
-    }
+    if (kind === 'permalink' && index === anchorIndex) return singleRow;
+    const forward =
+      kind === 'forward' || (kind === 'permalink' && index > anchorIndex);
+    const source = kind === 'permalink' && forward ? afterRows : mainRows;
+    const size =
+      kind === 'permalink'
+        ? forward
+          ? rowsAfterSize
+          : rowsBeforeSize
+        : paginatedRowsLength;
+    const offset = forward
+      ? index - anchorIndex - (kind === 'permalink' ? 1 : 0)
+      : anchorIndex - index - 1;
+    return offset >= 0 && offset < size ? source?.[offset] : undefined;
   };
 
   if (kind === 'permalink') {
@@ -289,35 +260,19 @@ export function assembleRows<TRow, TStartRow>(
     };
   }
 
+  const forward = kind === 'forward';
   const pageStart = anchor.startRow ?? null;
-
-  if (kind === 'forward') {
-    return {
-      rowAt,
-      rowsLength: paginatedRowsLength,
-      complete: mainComplete,
-      rowsEmpty: pageRows.length === 0,
-      atStart: pageStart === null || anchorIndex === 0,
-      atEnd: mainComplete && !hasMoreRows,
-      firstRowIndex: anchorIndex,
-      permalinkNotFound,
-      permalinkRow: undefined,
-      permalinkID: null,
-      ...probe,
-    };
-  }
-
-  kind satisfies 'backward';
-  assert(pageStart !== null);
-
+  assert(forward || pageStart !== null);
   return {
     rowAt,
     rowsLength: paginatedRowsLength,
     complete: mainComplete,
     rowsEmpty: pageRows.length === 0,
-    atStart: mainComplete && !hasMoreRows,
-    atEnd: false,
-    firstRowIndex: anchorIndex - paginatedRowsLength,
+    atStart: forward
+      ? pageStart === null || anchorIndex === 0
+      : mainComplete && !hasMoreRows,
+    atEnd: forward && mainComplete && !hasMoreRows,
+    firstRowIndex: forward ? anchorIndex : anchorIndex - paginatedRowsLength,
     permalinkNotFound,
     permalinkRow: undefined,
     permalinkID: null,
