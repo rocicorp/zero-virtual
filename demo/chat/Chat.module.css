@@ -6,24 +6,44 @@
   scroll-padding-block: var(--chat-header-height) var(--chat-footer-height);
 }
 :global(body):has(.page) {
-  background: #f6f7f9;
-}
-.page {
-  --page-width: 860px;
-  --gutter: 24px;
+  /* Change the chat palette here; all components inherit these colors. */
+  --canvas: #f6f7f9;
   --surface: #fff;
+  --text: #24272c;
   --muted: #6c727c;
   --faint: #828995;
   --label: #596574;
   --border: #e4e6ea;
+  --divider: #f0f1f4;
   --control-border: #d6dbe2;
   --control-surface: #fafbfc;
+  --control-text: #39414c;
+  --control-label: #555d69;
+  --control-hover-surface: #f3f5f8;
+  --control-hover-border: #b9c2cf;
+  --status-surface: #f8f9fb;
+  --status-border: #eef0f3;
+  --attachment-border: #e0e4eb;
+  --accent: #465b7b;
+  --accent-strong: #33445e;
+  --accent-strong-hover: #26364e;
+  --focus: #5576a4;
+  --link: #6b7d98;
+  --highlight-surface: #f0f5fc;
+  --highlight-border: #7c9bc4;
+  --error: #ad3939;
+
+  background: var(--canvas);
+}
+.page {
+  --page-width: 860px;
+  --gutter: 24px;
   --radius: 6px;
 
   max-width: var(--page-width);
   min-height: 100dvh;
   margin: 0 auto;
-  color: #24272c;
+  color: var(--text);
   background: var(--surface);
   font-family: system-ui, sans-serif;
   font-size: 14px;
@@ -33,14 +53,14 @@
     border: 1px solid var(--button-color, var(--control-border));
     border-radius: var(--radius);
     background: var(--button-color, var(--surface));
-    color: #39414c;
+    color: var(--control-text);
     font: inherit;
     padding: 7px 11px;
     cursor: pointer;
 
     &:hover:enabled {
-      background: var(--button-color, #f3f5f8);
-      border-color: var(--button-color, #b9c2cf);
+      background: var(--button-color, var(--control-hover-surface));
+      border-color: var(--button-color, var(--control-hover-border));
     }
     &:disabled {
       opacity: 0.5;
@@ -48,7 +68,7 @@
     }
   }
   :focus-visible {
-    outline: 2px solid #5576a4;
+    outline: 2px solid var(--focus);
     outline-offset: 2px;
   }
   @media (max-width: 600px) {
@@ -106,10 +126,10 @@
     display: flex;
     align-items: center;
     gap: 5px;
-    color: #555d69;
+    color: var(--control-label);
   }
   input {
-    accent-color: #465b7b;
+    accent-color: var(--accent);
   }
   @media (max-width: 600px) {
     padding-bottom: 14px;
@@ -123,8 +143,8 @@
 }
 .status {
   padding: 9px var(--gutter);
-  background: #f8f9fb;
-  border-top: 1px solid #eef0f3;
+  background: var(--status-surface);
+  border-top: 1px solid var(--status-border);
   font-size: 11px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -144,14 +164,14 @@
 }
 .message {
   padding: 16px var(--gutter);
-  border-bottom: 1px solid #f0f1f4;
+  border-bottom: 1px solid var(--divider);
 
   &:last-of-type {
     border-bottom: 0;
   }
   &.highlighted {
-    background: #f0f5fc;
-    box-shadow: inset 3px 0 #7c9bc4;
+    background: var(--highlight-surface);
+    box-shadow: inset 3px 0 var(--highlight-border);
   }
   @media (max-width: 600px) {
     padding-block: 14px;
@@ -173,7 +193,7 @@
   a {
     margin-left: auto;
     font-size: 11px;
-    color: #6b7d98;
+    color: var(--link);
     text-decoration: none;
 
     &:hover {
@@ -189,7 +209,7 @@
 }
 .attachment {
   margin-top: 12px;
-  border: 1px solid #e0e4eb;
+  border: 1px solid var(--attachment-border);
   border-radius: var(--radius);
   font-size: 13px;
   max-width: 600px;
@@ -231,12 +251,12 @@
     gap: 8px;
 
     button {
-      --button-color: #33445e;
+      --button-color: var(--accent-strong);
       color: var(--surface);
       padding: 9px 18px;
 
       &:hover:enabled {
-        --button-color: #26364e;
+        --button-color: var(--accent-strong-hover);
       }
     }
   }
@@ -277,7 +297,7 @@
   }
 }
 .error {
-  color: #ad3939;
+  color: var(--error);
   font-size: 13px;
   margin: 0 0 10px;
 }

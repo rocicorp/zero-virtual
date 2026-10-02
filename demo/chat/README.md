@@ -24,6 +24,8 @@ The `Message` and `Composer` components are ordinary React UI. `DemoControls`
 contains only seeding and fake incoming messages; you can omit it from your app.
 `use-window-follow` provides toolbar status and unread counts. The stylesheet
 uses measured toolbar and composer heights for document scroll padding.
+The chat's color palette is defined as CSS variables near the top of
+`Chat.module.css`; components inherit them for easy customization.
 
 ## Adapt it
 
