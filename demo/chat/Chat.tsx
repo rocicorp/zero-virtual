@@ -52,6 +52,7 @@ export function Chat() {
               />
             ))}
             <div style={{height: spaceAfter}} />
+            <div className={styles.composerSpace} aria-hidden="true" />
           </div>
           {chat.empty && (
             <div className={styles.empty}>
@@ -63,7 +64,6 @@ export function Chat() {
             </div>
           )}
         </div>
-        <div className={styles.composerSpace} aria-hidden="true" />
         <footer ref={footerRef} className={styles.footer}>
           <Composer send={chat.send} />
         </footer>

@@ -40,6 +40,8 @@ uses measured toolbar and composer heights for document scroll padding.
 5. Send through your registered mutator. Await only `.client` for the local
    optimistic write; Zero reconciles with the server in the background. The
    composer clears immediately and restores the draft if the local write fails.
+   Zero 1.9 logs server failures and resolves `.server` with an error result;
+   use `.server.then(...)` if your app needs to display those errors too.
 
 `useStickToBottom` follows new content only while you're at the bottom. The
 window variant receives the element containing the rows, not `window` itself.
@@ -58,8 +60,10 @@ aligning a message, keeping it clear of the toolbar and composer. Use row
 
 Scroll padding changes alignment; it does not add layout space. The
 `composerSpace` element reserves the measured footer height after the messages,
-so the final message can scroll fully above the fixed composer. The sticky
-toolbar already occupies space in normal document flow.
+so the final message can scroll fully above the fixed composer. Keep it inside
+the messages wrapper observed by `useStickToBottom`, so composer height changes
+also re-pin the window while following latest. The sticky toolbar already
+occupies space in normal document flow.
 
 Keep the measurements out of the bars' own height rules so their heights remain
 dynamic. The hook disconnects its observer and removes the variables on unmount.
