@@ -1,3 +1,4 @@
+import {fileURLToPath} from 'node:url';
 import {defineConfig} from 'vitest/config';
 
 export default defineConfig({
@@ -5,6 +6,12 @@ export default defineConfig({
   // (signals/memos/effects actually propagate) — same resolution the demo gets.
   resolve: {
     conditions: ['browser', 'development'],
+    // Demo tests import the package by name; CI runs tests before building dist.
+    alias: {
+      '@rocicorp/zero-virtual/react': fileURLToPath(
+        new URL('./src/react/index.ts', import.meta.url),
+      ),
+    },
   },
   test: {
     environment: 'happy-dom',
