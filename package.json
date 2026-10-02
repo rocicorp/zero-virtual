@@ -37,14 +37,15 @@
   },
   "scripts": {
     "dev": "pnpm --filter demo-react dev:ui",
-    "check-types": "tsgo -p src/tsconfig.json && tsgo -p demo/react/tsconfig.app.json && tsgo -p demo/react/tsconfig.node.json && tsgo -p demo/react/e2e/tsconfig.json && tsgo -p demo/solid/tsconfig.app.json && tsgo -p demo/solid/tsconfig.node.json",
+    "check-types": "tsgo -p src/tsconfig.json && tsgo -p demo/react/tsconfig.app.json && tsgo -p demo/react/tsconfig.node.json && tsgo -p demo/react/e2e/tsconfig.json && tsgo -p demo/solid/tsconfig.app.json && tsgo -p demo/solid/tsconfig.node.json && tsgo -p demo/chat/tsconfig.app.json && tsgo -p demo/chat/tsconfig.node.json",
     "lint": "oxlint --type-aware",
     "check": "oxlint --type-aware --type-check",
     "fmt": "oxfmt",
     "format": "oxfmt",
     "build": "tsgo -p src/tsconfig.json",
     "test": "vitest run",
-    "prepack": "rm -rf dist && pnpm run build"
+    "prepack": "rm -rf dist && pnpm run build",
+    "dev:chat": "pnpm --filter demo-chat dev:ui"
   },
   "devDependencies": {
     "@rocicorp/zero": "1.9.0",

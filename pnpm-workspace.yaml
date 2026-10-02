@@ -1,4 +1,5 @@
 packages:
+  - 'demo/chat'
   - 'demo/react'
   - 'demo/shared'
   - 'demo/solid'
