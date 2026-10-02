@@ -631,3 +631,10 @@ pnpm dev:ui
 
 - https://github.com/rocicorp/ztunes (live at https://ztunes.rocicorp.dev/)
 - https://github.com/rocicorp/mono/tree/main/apps/zbugs (live at https://gigabugs.rocicorp.dev/)
+
+## Chat demo
+
+The standalone [chat app](demo/chat/README.md) runs on port 5175 with
+`pnpm dev:chat`, using the same shared database and Zero cache. It includes
+2,000 seeded messages, a composer, simulated incoming messages, expandable
+attachments, permalinks, and scroll restoration.

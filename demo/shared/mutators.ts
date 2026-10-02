@@ -1,7 +1,17 @@
 import {defineMutator, defineMutators} from '@rocicorp/zero';
+import {seededChatMessage} from './chat-data.ts';
+import {chatMutators} from './chat.ts';
 import type {Item} from './schema.ts';
 
 export const mutators = defineMutators({
+  chat: {
+    ...chatMutators,
+    seed: defineMutator<{count: number}>(async ({tx, args}) => {
+      const count = Math.max(0, Math.min(2000, Math.floor(args.count)));
+      for (let i = 0; i < count; i++)
+        await tx.mutate.item.upsert(seededChatMessage(i));
+    }),
+  },
   item: {
     add: defineMutator<Omit<Item, 'modified'>>(async ({tx, args}) => {
       await tx.mutate.item.insert({...args, modified: Date.now()});
