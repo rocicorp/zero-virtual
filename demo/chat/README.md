@@ -28,8 +28,9 @@ uses measured toolbar and composer heights for document scroll padding.
 ## Adapt it
 
 1. Replace the shared demo `item` table with your message table. This demo maps
-   `title` to author and `description` to body; it uses `chat-` IDs to keep chat
-   messages out of the list demo. In your app, filter queries by conversation ID.
+   `title` to author and `description` to body; the chat queries select `chat-`
+   IDs. The list demos show all items, including chat messages. In your app,
+   filter queries by conversation ID.
 2. Keep the page query ordered by timestamp **and ID** so equal timestamps have
    a stable order. The pagination cursor needs those two fields.
 3. Wire the page and single-message queries into the virtualizer. Keep

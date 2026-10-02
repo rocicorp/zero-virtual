@@ -1,6 +1,6 @@
 import {defineQueries, defineQuery} from '@rocicorp/zero';
 import {zql, type Item} from './schema.ts';
-import {CHAT_PREFIX, chatQueries} from './chat.ts';
+import {chatQueries} from './chat.ts';
 
 export type ItemStart = Pick<Item, 'id' | 'created' | 'modified'>;
 
@@ -27,9 +27,7 @@ export const queries = defineQueries({
           listContextParams: ListContextParams;
         };
       }) => {
-        let q = zql.item
-          .where('id', 'NOT LIKE', `${CHAT_PREFIX}%`)
-          .limit(limit);
+        let q = zql.item.limit(limit);
 
         const {sortField, sortDirection} = listContextParams;
         const orderByDir =
