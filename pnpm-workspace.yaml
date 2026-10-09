@@ -15,4 +15,4 @@ allowBuilds:
   protobufjs: true
 
 minimumReleaseAgeExclude:
-  - '@rocicorp/zero@1.10.0-canary.17'
+  - '@rocicorp/zero'
