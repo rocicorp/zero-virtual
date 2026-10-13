@@ -614,8 +614,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // the first layout.
   #laneStart: number[] = [];
   // The footprint (height plus the lane's gap) of every rendered card, as
-  // last measured.
+  // last measured, and the lanes' row gap as last read (the lanes are styled
+  // alike).
   readonly #cardHeight = new Map<string, number>();
+  #laneGap = 0;
   // What each lane showed at the last layout, in order, and a version bumped
   // whenever that changes, so a layout change alone gets persisted.
   #laneRendered: string[][] = [];
@@ -1044,7 +1046,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       a.scrollTop === b.scrollTop &&
       this.#samePersistState(a, b) &&
       JSON.stringify(a.listContextParams) ===
-        JSON.stringify(b.listContextParams)
+        JSON.stringify(b.listContextParams) &&
+      JSON.stringify(a.laneCards) === JSON.stringify(b.laneCards)
     );
   }
 
@@ -1925,6 +1928,12 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     return this.#windowKeysOf(this.#rows, this.#options.getRowKey);
   }
 
+  // The footprint of a card not measured yet: the estimate plus the gap
+  // below it, like a measured one.
+  #cardEstimate(): number {
+    return this.#rowEstimate() + this.#laneGap;
+  }
+
   // The layout belongs to one list and lane count; anything else starts
   // afresh. A restore still landing keeps the lanes it saved.
   #resetLanesIfStale(): void {
@@ -1965,7 +1974,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       if (l !== undefined && l >= lanes) laneOf.delete(key);
     }
     if (keys.every(key => laneOf.has(key))) return laneOf;
-    const estimate = this.#rowEstimate();
+    const estimate = this.#cardEstimate();
     const height = (key: string) => this.#cardHeight.get(key) ?? estimate;
     const place = (key: string, l: number) => {
       laneOf.set(key, l);
@@ -2005,9 +2014,13 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // below the viewport's top once it renders (see #layOutLanes).
   #seedLanes(cards: ScrollHistoryState<TStartRow>['laneCards']): void {
     this.#laneCards = cards;
+    // A new restore replaces what the last one still had to place.
+    this.#lanePins.clear();
     if (cards === undefined) return;
+    const lanes = this.#lanes();
     cards.forEach((lane, l) => {
-      if (lane === null) return;
+      // Saved under another lane count, a lane may not exist now.
+      if (lane === null || l >= lanes) return;
       for (const key of lane.keys) this.#laneOf.set(key, l);
       this.#lanePins.set(lane.keys[0], lane.offset);
     });
@@ -2024,7 +2037,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     const firstLane = laneEls.find(el => el !== undefined);
     if (firstLane === undefined) return;
     const lanes = this.#lanes();
-    const estimate = this.#rowEstimate();
+    const estimate = this.#cardEstimate();
     const rows = this.#rows;
     const heights = this.#cardHeight;
     const height = (key: string) => heights.get(key) ?? estimate;
@@ -2077,6 +2090,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       this.#laneStart = Array.from({length: lanes}, () => above);
     }
     const start = this.#laneStart;
+    const startBefore = start.slice();
     const startFor = (l: number): number => {
       const pin = pins[l];
       if (pin === null || pin === undefined) return start[l];
@@ -2104,6 +2118,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     const measured = new Map<string, number>();
     now.forEach((lane, l) => {
       const gap = pixels(getComputedStyle(laneEls[l]!).rowGap);
+      if (l === 0) this.#laneGap = gap;
       for (const card of lane) {
         measured.set(card.key, card.el.getBoundingClientRect().height + gap);
         if (this.#placedUnmeasured.delete(card.key)) placed.add(card.key);
@@ -2167,10 +2182,15 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       if (this.#restoreScrollTop !== null) this.#restoreScrollTop += shift;
       if (scrollTop > 0 || this.#landing()) this.#compensate(shift);
     }
+    // Persist a change to the lanes alone: the cards in them, or where they
+    // start (a card resizing above the viewport moves what's saved too).
     const rendered = now.map(lane => lane.map(card => card.key));
     if (
       rendered.length !== this.#laneRendered.length ||
-      rendered.some((lane, l) => lane.join() !== this.#laneRendered[l].join())
+      rendered.some(
+        (lane, l) => lane.join() !== this.#laneRendered[l].join(),
+      ) ||
+      start.some((top, l) => top !== startBefore[l])
     ) {
       this.#laneRenderedVersion++;
     }
@@ -2203,7 +2223,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     if (!this.#masonry() || !attachment || this.#laneRendered.length === 0) {
       return undefined;
     }
-    const estimate = this.#rowEstimate();
+    const estimate = this.#cardEstimate();
     const order = this.#windowOrderOf(this.#windowKeys());
     const vTop =
       attachment.scrollTop +

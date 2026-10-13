@@ -161,8 +161,9 @@ export function createHarness({
       : data.slice(Math.max(0, startIdx - limit), startIdx).reverse();
   };
   let partial: {rows: number; from: string} | null = null;
-  // Answer the next page query with nothing, still loading, once.
-  let empty = false;
+  // Answer the next page queries with nothing, still loading, this many
+  // times.
+  let empty = 0;
   const answerQueries = (inputs: RowsQueryInputs<TestRow>) => {
     const anchor: Anchor<TestRow> = inputs.anchor;
     if (anchor.kind === 'permalink') {
@@ -196,8 +197,8 @@ export function createHarness({
       mainRows = mainRows.slice(0, partial!.rows);
       partial = null;
     }
-    if (empty) {
-      empty = false;
+    if (empty > 0) {
+      empty--;
       mainRows = [];
     }
     return assembleRows<TestRow, TestRow>(inputs, {
@@ -308,8 +309,8 @@ export function createHarness({
     lagDOMNext: () => {
       lagDOM = true;
     },
-    emptyNext: () => {
-      empty = true;
+    emptyNext: (times = 1) => {
+      empty = times;
     },
     partialNext: (rows: number) => {
       const {anchor} = core.getQueryInputs();

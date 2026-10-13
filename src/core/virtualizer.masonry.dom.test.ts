@@ -225,6 +225,35 @@ describe('masonry', () => {
     expect(lanesOf(after)).toEqual(lanes);
   });
 
+  test('a second restore replaces what the first still had to place', () => {
+    // The first restore's cards haven't rendered when another restore
+    // comes in: where it wanted them is forgotten, or they'd land there
+    // when they render in the second restore's window.
+    const states: ScrollHistoryState<TestRow>[] = [];
+    const h = harness({
+      rowCount: 1000,
+      options: {onScrollStateChange: s => states.push(s)},
+    });
+    h.settle();
+    h.userScroll(1500);
+    h.settle();
+    const first = states.at(-1)!;
+    h.userScroll(h.scroller.scrollTop + 300);
+    h.settle();
+    const second = states.at(-1)!;
+    const screen = h.onScreen();
+    h.core.scrollToItem('r900', {align: 'start'});
+    h.settle();
+
+    h.emptyNext(2);
+    h.setOptions({...h.coreOptions, scrollState: first});
+    h.tick();
+    h.setOptions({...h.coreOptions, scrollState: second});
+    h.settle();
+
+    expect(h.onScreen()).toEqual(screen);
+  });
+
   test('a reload restores a position the first window cannot reach', () => {
     // The saved position is deep in the list; the first window a reload
     // loads ends well above it, so the browser clamps the viewport until
