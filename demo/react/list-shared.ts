@@ -123,6 +123,15 @@ export function useEstimateSize(heightMode: HeightMode): () => number {
 }
 
 /**
+ * The `?lanes=` column count: a whole number of at least 1. Anything else —
+ * `Infinity`, a negative, text — falls back to a plain list.
+ */
+function parseLanes(value: string): number {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
+/**
  * The URL-driven demo controls shared by both scroller demos (the DevPanel
  * inputs): row-height mode, grid columns (`lanes`; 1 is a plain list),
  * transform-while-scrolling, anchoring mode, the optional exact `count` (for
@@ -134,7 +143,7 @@ export function useDemoControls() {
   const [heightModeStr, setHeightMode] = useUrlState('height', 'uniform');
   const heightMode = heightModeStr as HeightMode;
   const [lanesStr, setLanes] = useUrlState('lanes', '1');
-  const lanes = Math.max(1, Math.floor(Number(lanesStr)) || 1);
+  const lanes = parseLanes(lanesStr);
   const [anchoringStr, setAnchoring] = useUrlState('anchoring', 'manual');
   const anchoring = anchoringStr as AnchoringMode;
   const [countStr] = useUrlState('count', '');

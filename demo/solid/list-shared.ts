@@ -99,6 +99,15 @@ export function createEstimateSize(heightMode: () => HeightMode): () => number {
   return () => (heightMode() === 'uniform' ? ITEM_HEIGHT : SIZE_ESTIMATE);
 }
 
+/**
+ * The `?lanes=` column count: a whole number of at least 1. Anything else —
+ * `Infinity`, a negative, text — falls back to a plain list.
+ */
+function parseLanes(value: string): number {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
 export function createDemoControls() {
   const [heightModeStr, setHeightMode] = createUrlState('height', 'uniform');
   const [lanesStr, setLanes] = createUrlState('lanes', '1');
@@ -115,7 +124,7 @@ export function createDemoControls() {
   return {
     heightMode: () => heightModeStr() as HeightMode,
     setHeightMode,
-    lanes: () => Math.max(1, Math.floor(Number(lanesStr())) || 1),
+    lanes: () => parseLanes(lanesStr()),
     setLanes,
     anchoring: () => anchoringStr() as AnchoringMode,
     setAnchoring,
