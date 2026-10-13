@@ -3,7 +3,8 @@ import {
   type GetPageQueryOptions,
   type GetSingleQueryOptions,
 } from '@rocicorp/zero-virtual/react';
-import {useCallback, useMemo, useState} from 'react';
+import {useCallback, useMemo, useState, type CSSProperties} from 'react';
+import styles from '../shared/App.module.css';
 import {
   queries,
   type ItemStart,
@@ -30,6 +31,22 @@ export const ITEM_HEIGHT = 48;
  * estimate for every row in `dynamic` mode (real heights come from the DOM).
  */
 export const SIZE_ESTIMATE = 80;
+
+/**
+ * Props for the rows' content wrapper. As a grid (`lanes` > 1) each row places
+ * itself in its column (see `ItemRow`) and the spacers span every column.
+ */
+export function contentWrapperProps(lanes: number): {
+  className?: string;
+  style?: CSSProperties;
+} {
+  return lanes > 1
+    ? {
+        className: styles.grid,
+        style: {gridTemplateColumns: `repeat(${lanes}, minmax(0, 1fr))`},
+      }
+    : {};
+}
 
 export function getRowKey(item: Item): string {
   return item.id;
@@ -95,7 +112,8 @@ export function useGetPageQuery(listContextParams: ListContextParams) {
  * A single representative row-height estimate per mode, used only to size the
  * content-wrapper padding that stands in for not-yet-loaded rows (the
  * scrollbar is approximate, as with any virtualized list). Real heights come
- * from the DOM.
+ * from the DOM. In a grid it estimates a grid row (as tall as its tallest
+ * cell); the same per-mode figure is close enough for the demo.
  */
 export function useEstimateSize(heightMode: HeightMode): () => number {
   return useCallback(
@@ -106,14 +124,17 @@ export function useEstimateSize(heightMode: HeightMode): () => number {
 
 /**
  * The URL-driven demo controls shared by both scroller demos (the DevPanel
- * inputs): row-height mode, transform-while-scrolling, anchoring mode, the
- * optional exact `count` (for an accurate, stable scrollbar — e.g. ?count=5000;
- * without it the estimate grows as rows are discovered and the handle jumps),
- * and follow-bottom (stick-to-bottom for chat).
+ * inputs): row-height mode, grid columns (`lanes`; 1 is a plain list),
+ * transform-while-scrolling, anchoring mode, the optional exact `count` (for
+ * an accurate, stable scrollbar — e.g. ?count=5000; without it the estimate
+ * grows as rows are discovered and the handle jumps), and follow-bottom
+ * (stick-to-bottom for chat).
  */
 export function useDemoControls() {
   const [heightModeStr, setHeightMode] = useUrlState('height', 'uniform');
   const heightMode = heightModeStr as HeightMode;
+  const [lanesStr, setLanes] = useUrlState('lanes', '1');
+  const lanes = Math.max(1, Math.floor(Number(lanesStr)) || 1);
   const [anchoringStr, setAnchoring] = useUrlState('anchoring', 'manual');
   const anchoring = anchoringStr as AnchoringMode;
   const [countStr] = useUrlState('count', '');
@@ -126,6 +147,8 @@ export function useDemoControls() {
   return {
     heightMode,
     setHeightMode,
+    lanes,
+    setLanes,
     anchoring,
     setAnchoring,
     count,

@@ -7,6 +7,8 @@ export function DevPanel(props: {
   getScrollElement: () => HTMLElement | null;
   heightMode: HeightMode;
   onHeightModeChange: (v: string) => void;
+  lanes: number;
+  onLanesChange: (v: string) => void;
   sortDirection: 'asc' | 'desc';
   anchoring: string;
   onAnchoringChange: (v: string) => void;
@@ -65,6 +67,19 @@ export function DevPanel(props: {
               <option value="fixed">Fixed non-uniform</option>
               <option value="uniform">Fixed uniform</option>
               <option value="dynamic">Dynamic</option>
+            </select>
+          </label>
+          <label class={styles.fieldLabel}>
+            <span class={styles.fieldName}>layout</span>
+            <select
+              class={styles.select}
+              value={props.lanes}
+              onChange={e => props.onLanesChange(e.currentTarget.value)}
+            >
+              <option value="1">List</option>
+              <option value="2">Grid · 2 columns</option>
+              <option value="3">Grid · 3 columns</option>
+              <option value="4">Grid · 4 columns</option>
             </select>
           </label>
           <AddControls sortDirection={props.sortDirection} />

@@ -18,6 +18,8 @@ export function DevPanel({
   windowMode = false,
   heightMode,
   onHeightModeChange,
+  lanes,
+  onLanesChange,
   sortDirection,
   anchoring,
   onAnchoringChange,
@@ -29,6 +31,8 @@ export function DevPanel({
   windowMode?: boolean;
   heightMode: HeightMode;
   onHeightModeChange: (v: string) => void;
+  lanes: number;
+  onLanesChange: (v: string) => void;
   sortDirection: 'asc' | 'desc';
   anchoring: string;
   onAnchoringChange: (v: string) => void;
@@ -105,6 +109,19 @@ export function DevPanel({
             <option value="fixed">Fixed non-uniform</option>
             <option value="uniform">Fixed uniform</option>
             <option value="dynamic">Dynamic</option>
+          </select>
+        </label>
+        <label className={styles.fieldLabel}>
+          <span className={styles.fieldName}>layout</span>
+          <select
+            className={styles.select}
+            value={lanes}
+            onChange={e => onLanesChange(e.target.value)}
+          >
+            <option value="1">List</option>
+            <option value="2">Grid · 2 columns</option>
+            <option value="3">Grid · 3 columns</option>
+            <option value="4">Grid · 4 columns</option>
           </select>
         </label>
         <AddControls sortDirection={sortDirection} />

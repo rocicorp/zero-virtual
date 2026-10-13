@@ -156,6 +156,40 @@ describe('createZeroVirtualizer (solid wrapper wiring)', () => {
     });
   });
 
+  test('a row that changes column keeps its instance and reports the new lane', () => {
+    const el = document.createElement('div');
+    const rowsData = [{id: 'a'}, {id: 'b'}, {id: 'c'}];
+    const [rows] = createSignal(
+      makeRows({
+        rowsLength: 3,
+        complete: true,
+        rowsEmpty: false,
+        atStart: true,
+        atEnd: true,
+        firstRowIndex: 0,
+        rowAt: i => rowsData[i],
+      }),
+    );
+    rowsMock.accessor = rows;
+
+    createRoot(dispose => {
+      const [lanes, setLanes] = createSignal(1);
+      const snap = createZeroVirtualizer(() => ({
+        ...makeOptions(el),
+        lanes: lanes(),
+      }));
+      const second = snap().items[1];
+      expect(snap().items.map(it => it.lane)).toEqual([0, 0, 0]);
+
+      // A layout change re-places the rows; the keyed store updates `lane` in
+      // place, so a plain <For> keeps each row's DOM while it moves.
+      setLanes(2);
+      expect(snap().items.map(it => it.lane)).toEqual([0, 1, 0]);
+      expect(snap().items[1]).toBe(second);
+      dispose();
+    });
+  });
+
   test('feeds live query inputs to the rows layer', () => {
     const el = document.createElement('div');
     const [rows] = createSignal(makeRows({}));

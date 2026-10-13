@@ -457,6 +457,74 @@ describe('ZeroVirtualizer wrapper contract', () => {
   });
 });
 
+describe('lanes (grid)', () => {
+  const window = (overrides: Partial<RowsSnapshot<unknown>>) => ({
+    complete: true,
+    rowsEmpty: false,
+    atStart: false,
+    atEnd: false,
+    ...overrides,
+  });
+
+  test('items carry their grid column', () => {
+    const grid = makeVirtualizer(window({firstRowIndex: 7, rowsLength: 5}), {
+      lanes: 3,
+    });
+    expect(grid.getSnapshot().items.map(it => it.lane)).toEqual([
+      1, 2, 0, 1, 2,
+    ]);
+    const list = makeVirtualizer(window({firstRowIndex: 7, rowsLength: 3}));
+    expect(list.getSnapshot().items.map(it => it.lane)).toEqual([0, 0, 0]);
+  });
+
+  test('columns of a backward window are never negative before it is renumbered', () => {
+    const v = makeVirtualizer(window({firstRowIndex: -4, rowsLength: 6}), {
+      lanes: 3,
+    });
+    expect(v.getSnapshot().items.map(it => it.lane)).toEqual([
+      2, 0, 1, 2, 0, 1,
+    ]);
+  });
+
+  test('spacers stand in for the whole grid rows outside the window', () => {
+    // Rows 7..15 of 40 in 3 columns: grid rows 0-1 above, 2-5 loaded (the
+    // first and last only partly), 6-13 below.
+    const v = makeVirtualizer(window({firstRowIndex: 7, rowsLength: 9}), {
+      lanes: 3,
+      count: 40,
+    });
+    const {spaceBefore, spaceAfter} = v.getSnapshot();
+    expect(spaceBefore).toBe(2 * EST);
+    expect(spaceAfter).toBe(8 * EST);
+  });
+
+  test('anything but a positive column count is a plain list', () => {
+    for (const lanes of [0, -2, Number.NaN, Infinity]) {
+      const v = makeVirtualizer(window({firstRowIndex: 5, rowsLength: 2}), {
+        lanes,
+      });
+      expect(v.getSnapshot().items.map(it => it.lane)).toEqual([0, 0]);
+      expect(v.getSnapshot().spaceBefore).toBe(5 * EST);
+    }
+    const fractional = makeVirtualizer(
+      window({firstRowIndex: 5, rowsLength: 2}),
+      {lanes: 2.5},
+    );
+    expect(fractional.getSnapshot().items.map(it => it.lane)).toEqual([1, 0]);
+  });
+
+  test('changing lanes invalidates the cached snapshot', () => {
+    const rows = window({firstRowIndex: 6, rowsLength: 2});
+    const v = makeVirtualizer(rows);
+    const a = v.getSnapshot();
+    v.setOptions(makeOptions({lanes: 2}));
+    const b = v.getSnapshot();
+    expect(b).not.toBe(a);
+    expect(b.items.map(it => it.lane)).toEqual([0, 1]);
+    expect(b.spaceBefore).toBe(3 * EST);
+  });
+});
+
 describe('minPageSize', () => {
   test('defaults the query page size to 50', () => {
     const v = new ZeroVirtualizer(makeOptions());

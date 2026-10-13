@@ -15,6 +15,7 @@ Features:
 - Bidirectional infinite scrolling (load more items at top or bottom)
 - Uniform, non-uniform, or fully dynamic (content-measured) row heights
 - Element scrolling or window scrolling (`useZeroWindowVirtualizer`)
+- Lists or grids of equal columns (`lanes`)
 - Native or manual (momentum-safe) scroll anchoring, auto-detected per platform
 - Permalink support (jump to and highlight a specific item by ID)
 - Imperative `scrollToItem(id, {align})`, loading the row's page if needed
@@ -26,7 +27,8 @@ Features:
 
 ## Restrictions
 
-- Vertical lists only.
+- Vertical scrolling only. Rows render as a list or as a grid of equal
+  columns ([`lanes`](#grids)); masonry layouts aren't supported.
 - **Browser support: Chromium 114+, Firefox 109+, Safari 26+.** The floor is
   the native `scrollend` event, which the manual anchoring relies on to
   reconcile momentum-time corrections at the end of a touch gesture (there is
@@ -294,6 +296,59 @@ overrides. They default per hook — the defaults are exported as
 custom container. The result echoes the resolved wiring as `options` and
 exposes the current scrolling element as `scrollElement`, also TanStack-style.
 The Solid equivalent is `createZeroWindowVirtualizer`.
+
+### Grids
+
+Pass `lanes` to lay the rows out as a grid with that many columns. Rows fill
+the grid row by row, and each item's `lane` is the column it belongs in. Make
+the content wrapper a CSS grid, place every row with `gridColumn: lane + 1`,
+and let the spacers span all the columns:
+
+```tsx
+const {items, spaceBefore, spaceAfter} = useZeroVirtualizer({
+  // ...
+  lanes: 3,
+  estimateSize: useCallback(() => 240, []), // the height of one grid row
+});
+
+return (
+  <div ref={parentRef} style={{overflow: 'auto', height: '100vh'}}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+      }}
+    >
+      <div style={{height: spaceBefore, gridColumn: '1 / -1'}} />
+      {items.map(({index, key, lane, row}) => (
+        <div
+          key={key}
+          {...rowAttributes(index, key)}
+          style={{gridColumn: lane + 1}}
+        >
+          {row ? row.title : 'Loading...'}
+        </div>
+      ))}
+      <div style={{height: spaceAfter, gridColumn: '1 / -1'}} />
+    </div>
+  </div>
+);
+```
+
+- Place rows by `lane` rather than relying on auto-placement: the loaded
+  window can start partway through a grid row, and an explicit column keeps
+  each row where it belongs as pages load above it.
+- In a grid, `estimateSize` estimates one grid row, `overscan` counts grid
+  rows, and `spaceBefore` / `spaceAfter` stand in for whole grid rows. Pages
+  hold about three viewports of grid rows, so they grow with the column
+  count.
+- Changing `lanes` (say, at a responsive breakpoint) re-flows the loaded rows
+  into the new columns without resetting paging.
+- A row keeps its column while the list pages, with one exception. A list
+  opened in the middle (a permalink, a far `scrollToItem`), or one that had
+  rows inserted above the loaded window, numbers its rows relatively until
+  paging reaches the true start. When the start loads, the first row has to
+  land in the first column, so every loaded row can shift over once.
 
 ### Scroll anchoring modes
 

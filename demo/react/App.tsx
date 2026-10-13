@@ -10,6 +10,7 @@ import {ItemDetail} from './ItemDetail.tsx';
 import {ItemRow} from './ItemRow.tsx';
 import {ListHeader} from './ListHeader.tsx';
 import {
+  contentWrapperProps,
   getRowKey,
   getSingleQuery,
   toStartRow,
@@ -35,6 +36,8 @@ export function App(): React.ReactNode {
   const {
     heightMode,
     setHeightMode,
+    lanes,
+    setLanes,
     anchoring,
     setAnchoring,
     count,
@@ -54,6 +57,7 @@ export function App(): React.ReactNode {
     getScrollElement,
     anchoring,
     count,
+    lanes,
     getRowKey,
     estimateSize,
     getPageQuery,
@@ -84,11 +88,12 @@ export function App(): React.ReactNode {
         />
         {/* Scrollable viewport. Rows render in normal flow inside a content
             wrapper. `spaceBefore` / `spaceAfter` stand in for the unloaded rows
-            above and below, rendered as spacer elements so scroll anchoring
-            keeps the viewport stable across paging. */}
+            above and below, rendered as spacer elements (spanning every column
+            when `lanes` makes the wrapper a grid) so scroll anchoring keeps
+            the viewport stable across paging. */}
         <div ref={parentRef} className={styles.viewport}>
-          <div>
-            <div style={{height: spaceBefore}} />
+          <div {...contentWrapperProps(lanes)}>
+            <div style={{height: spaceBefore, gridColumn: '1 / -1'}} />
             {items.map(item => (
               <ItemRow
                 key={item.key}
@@ -98,7 +103,7 @@ export function App(): React.ReactNode {
                 permalinkID={permalinkID}
               />
             ))}
-            <div style={{height: spaceAfter}} />
+            <div style={{height: spaceAfter, gridColumn: '1 / -1'}} />
           </div>
         </div>
       </div>
@@ -109,6 +114,8 @@ export function App(): React.ReactNode {
         getScrollElement={getScrollElement}
         heightMode={heightMode}
         onHeightModeChange={setHeightMode}
+        lanes={lanes}
+        onLanesChange={setLanes}
         sortDirection={sortDirection}
         anchoring={anchoring}
         onAnchoringChange={setAnchoring}
