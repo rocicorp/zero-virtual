@@ -1,4 +1,4 @@
-import {createMemo, createSignal, onCleanup, type Accessor} from 'solid-js';
+import {createSignal, onCleanup, type Accessor} from 'solid-js';
 import {
   getHistoryNavigationSnapshot,
   readHistoryState,
@@ -44,15 +44,25 @@ export function createHistoryScrollState<TStartRow>(
     subscribeHistoryState(() => setRaw(() => getHistoryNavigationSnapshot())),
   );
 
-  // Identity, not content (matching the React hook): `raw()` only moves when
-  // the browser navigated, so it is already the signal, and looking inside it
-  // would put a JSON requirement on the app's own row data.
-  const scrollState = createMemo<ScrollHistoryState<TStartRow> | null>(() => {
-    const state = raw();
+  // Read when called, not from `raw`, which only tells dependents to re-run.
+  // A navigation's other `currententrychange` listeners — the app's own URL
+  // or hash signal — can run before this one, and the updates they set off
+  // read this accessor. By then the entry has already changed, so reading it
+  // live hands them this navigation's state along with its URL: the pair the
+  // virtualizer reads as one intent, rather than the new permalink with the
+  // previous entry's position (React gets the same from
+  // `useSyncExternalStore`, which reads every store at render).
+  //
+  // Identity, not content (matching the React hook): the snapshot only moves
+  // when the browser navigated, so it is already the signal, and looking
+  // inside it would put a JSON requirement on the app's own row data.
+  const scrollState = (): ScrollHistoryState<TStartRow> | null => {
+    raw();
+    const state = getHistoryNavigationSnapshot();
     if (!state) return null;
     return ((state as Record<string, unknown>)[key] ??
       null) as ScrollHistoryState<TStartRow> | null;
-  });
+  };
 
   const setScrollState = (newState: ScrollHistoryState<TStartRow> | null) => {
     // The live state, not the navigation snapshot: this is a read-modify-write
@@ -64,8 +74,7 @@ export function createHistoryScrollState<TStartRow>(
       // Zero's Solid useQuery hands out store proxies, and the anchor's start
       // row is taken straight from a query row — so the state can contain a
       // proxy, which the Navigation API's structured clone rejects. Round-trip
-      // through JSON to get plain data (this module already defines state
-      // identity by JSON, see the equality memo above).
+      // through JSON to get plain data.
       [key]: newState && JSON.parse(JSON.stringify(newState)),
     });
   };

@@ -1,5 +1,10 @@
 import {useQuery} from '@rocicorp/zero/solid';
-import {createMemo, type Accessor} from 'solid-js';
+import {
+  createMemo,
+  createRenderEffect,
+  createSignal,
+  type Accessor,
+} from 'solid-js';
 import {
   assembleRows,
   buildAfterQuery,
@@ -70,14 +75,28 @@ export function createRows<TRow, TStartRow>(args: {
     () => q3()?.options ?? {},
   );
 
-  return createMemo(() =>
-    assembleRows(args.inputs(), {
-      singleRow: typedSingleRow(),
-      singleComplete: singleComplete(),
-      mainRows: mainRows() as unknown as TRow[] | undefined,
-      mainComplete: mainDetails().type === 'complete',
-      afterRows: afterRows() as unknown as TRow[] | undefined,
-      afterComplete: afterDetails().type === 'complete',
-    }),
+  // Assemble in a render effect, not a memo. When the inputs change, a memo
+  // here can run before the `useQuery` views have re-materialized for the new
+  // queries, and pair the new inputs with the previous queries' rows and
+  // completeness: a window that claims the new anchor but holds the old page
+  // (a backward page read as forward comes out reversed), and passes as
+  // complete. Render effects run after every memo, by which point the views
+  // have caught up. The rows reach the core a pass later, as rows routinely
+  // lag a re-anchor.
+  const [rows, setRows] = createSignal<RowsSnapshot<TRow>>(
+    undefined as unknown as RowsSnapshot<TRow>,
   );
+  createRenderEffect(() =>
+    setRows(() =>
+      assembleRows(args.inputs(), {
+        singleRow: typedSingleRow(),
+        singleComplete: singleComplete(),
+        mainRows: mainRows() as unknown as TRow[] | undefined,
+        mainComplete: mainDetails().type === 'complete',
+        afterRows: afterRows() as unknown as TRow[] | undefined,
+        afterComplete: afterDetails().type === 'complete',
+      }),
+    ),
+  );
+  return rows;
 }

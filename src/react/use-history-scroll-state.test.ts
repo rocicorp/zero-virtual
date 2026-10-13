@@ -5,13 +5,16 @@ import type {ScrollHistoryState} from '../core/types.ts';
 import {useHistoryScrollState} from './use-history-scroll-state.ts';
 
 // Minimal Navigation API stub (happy-dom doesn't implement it): current-entry
-// state and id, plus currententrychange, which is all core/history-state.ts
-// uses. `id` matters — it is how the store tells a navigation from an
-// in-place state write, so the stub has to regenerate it the way the real API
-// does: on a new or replaced entry, never on updateCurrentEntry.
+// state, id and key, plus currententrychange, which is all
+// core/history-state.ts uses. `id` and `key` matter — they are how the store
+// tells a navigation from an in-place state write, and a replace from both,
+// so the stub has to set them the way the real API does: a new id on a new or
+// replaced entry, never on updateCurrentEntry; a new key only on a new entry.
 type NavigationStub = {
   /** Navigate to a fresh entry carrying `state` (push / load / reload). */
   navigate(state: unknown): void;
+  /** Replace the current entry with one carrying `state`. */
+  replace(state: unknown): void;
   /** Traverse to a previously visited entry, by the id `navigate` returned. */
   traverse(id: string): void;
 };
@@ -21,12 +24,14 @@ let nextEntryID = 0;
 
 function installNavigationStub(): void {
   const entries = new Map<string, unknown>();
+  const keys = new Map<string, string>();
   let currentID = '';
   const listeners = new Set<() => void>();
 
-  const newEntry = (state: unknown) => {
+  const newEntry = (state: unknown, key = `k${nextEntryID + 1}`) => {
     currentID = `e${++nextEntryID}`;
     entries.set(currentID, state);
+    keys.set(currentID, key);
   };
   newEntry(undefined);
 
@@ -34,6 +39,7 @@ function installNavigationStub(): void {
     get currentEntry() {
       return {
         id: currentID,
+        key: keys.get(currentID),
         getState: () => entries.get(currentID),
       };
     },
@@ -55,6 +61,10 @@ function installNavigationStub(): void {
   nav = {
     navigate(state) {
       newEntry(structuredClone(state));
+      for (const listener of listeners) listener();
+    },
+    replace(state) {
+      newEntry(structuredClone(state), keys.get(currentID));
       for (const listener of listeners) listener();
     },
     traverse(id) {
@@ -82,6 +92,25 @@ function fakeScrollState(scrollTop: number): ScrollHistoryState<unknown> {
     listContextParams: {},
   };
 }
+
+test('a replace navigation does not hand its state out as an instruction', () => {
+  // An app keeping a setting in the URL replaces the current entry and carries
+  // its state over. That state was written where the list was; handed out as
+  // a new one, it would send the list back there after the setting has
+  // changed the layout.
+  const {result} = renderHook(() => useHistoryScrollState('a'));
+  act(() => nav.navigate({a: fakeScrollState(300)}));
+  const restored = result.current[0];
+  expect(restored?.scrollTop).toBe(300);
+
+  act(() => result.current[1](fakeScrollState(900)));
+  act(() => nav.replace(readHistoryState()));
+  expect(result.current[0]).toBe(restored);
+
+  // A real navigation still reads the entry it lands on.
+  act(() => nav.navigate({a: fakeScrollState(50)}));
+  expect(result.current[0]?.scrollTop).toBe(50);
+});
 
 test('missing key reads as null', () => {
   const {result} = renderHook(() => useHistoryScrollState('a'));

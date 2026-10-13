@@ -32,11 +32,12 @@ export function getHistoryStateSnapshot(): unknown {
 // The entry the navigation snapshot below was taken from, and that snapshot.
 let navigationRead = false;
 let navigationEntryID: string | undefined;
+let navigationEntryKey: string | undefined;
 let navigationState: unknown = null;
 
 /**
  * The current history-entry state as of the last *navigation* — a load, a
- * reload, a push/replace, or a traverse.
+ * reload, a push, or a traverse. A replace keeps the snapshot (see below).
  *
  * {@linkcode updateHistoryState} changes the current entry's state in place
  * *without* navigating: same entry, new state. A reader that treats that as
@@ -63,8 +64,23 @@ export function getHistoryNavigationSnapshot(): unknown {
   if (navigationRead && id === navigationEntryID) {
     return navigationState;
   }
+  // A replace swaps the entry (a new `id`) in the same slot (the same `key`).
+  // It rewrites where the user is — an app keeping a filter or a setting in
+  // the URL — rather than taking them somewhere, so the position on screen
+  // still stands. Keep the snapshot: the state a replace carries over was
+  // written for the old entry, and handed out anew it reads as an
+  // instruction to go back to where it was written.
+  if (
+    navigationRead &&
+    entry?.key !== undefined &&
+    entry.key === navigationEntryKey
+  ) {
+    navigationEntryID = id;
+    return navigationState;
+  }
   navigationRead = true;
   navigationEntryID = id;
+  navigationEntryKey = entry?.key;
   navigationState = entry?.getState();
   return navigationState;
 }
