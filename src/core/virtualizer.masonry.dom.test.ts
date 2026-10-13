@@ -12,18 +12,28 @@ type TestRow = {id: string};
  * virtualizer.dom.test.ts: a happy-dom scroll container whose geometry the
  * test controls. The content wrapper holds one element per lane, side by
  * side; each lane stacks its cards from the padding-top the core sets on it,
- * with no gap. Cards have varied heights — `r${i}` is 40 to 119px — and the
- * core estimates 80.
+ * `gap` px apart. Cards have varied heights — `r${i}` is 40 to 119px — and
+ * the core estimates 80.
  */
 function createHarness({
   rowCount,
   lanes = 3,
   viewportHeight = 600,
+  gap = 0,
+  scrollBeforeLayout = false,
   options = {},
 }: {
   rowCount: number;
   lanes?: number;
   viewportHeight?: number;
+  /** The lanes' row gap, which goes between cards only. */
+  gap?: number;
+  /**
+   * Deliver a scroll event a render caused — the browser clamping scrollTop
+   * to content that ended short — before the core's next layout, as it can
+   * when that layout comes from a ResizeObserver later in the frame.
+   */
+  scrollBeforeLayout?: boolean;
   options?: Partial<VirtualizerOptions<unknown, TestRow, TestRow>>;
 }) {
   const data: TestRow[] = Array.from({length: rowCount}, (_, i) => ({
@@ -44,7 +54,8 @@ function createHarness({
   const laneHeight = (lane: HTMLElement) =>
     px(lane.style.paddingTop) +
     cardsOf(lane).reduce(
-      (sum, c) => sum + heightOf(c.getAttribute(VROW_KEY_ATTR) ?? ''),
+      (sum, c, i) =>
+        sum + (i > 0 ? gap : 0) + heightOf(c.getAttribute(VROW_KEY_ATTR) ?? ''),
       0,
     ) +
     px(lane.style.paddingBottom);
@@ -53,8 +64,18 @@ function createHarness({
 
   let scrollTop = 0;
   let scrollPending = false;
+  // Like a browser, clamp scrollTop when the content shrinks under it, not
+  // just on writes: whenever the position is read.
+  const currentScrollTop = () => {
+    const max = Math.max(0, contentHeight() - viewportHeight);
+    if (scrollTop > max) {
+      scrollTop = max;
+      scrollPending = true;
+    }
+    return scrollTop;
+  };
   Object.defineProperty(scroller, 'scrollTop', {
-    get: () => scrollTop,
+    get: currentScrollTop,
     set(v: number) {
       const next = Math.max(0, Math.min(v, contentHeight() - viewportHeight));
       if (next !== scrollTop) {
@@ -82,14 +103,14 @@ function createHarness({
     }) as DOMRect;
   scroller.getBoundingClientRect = () => rect(0, viewportHeight);
   // Where the lanes start, in the viewport: the wrapper's top.
-  const lanesTop = () => -scrollTop + px(wrapper.style.marginTop);
+  const lanesTop = () => -currentScrollTop() + px(wrapper.style.marginTop);
   const cardRect = (el: Element): DOMRect => {
     const lane = el.parentElement as HTMLElement;
     let top = lanesTop() + px(lane.style.paddingTop);
     for (const card of cardsOf(lane)) {
       const h = heightOf(card.getAttribute(VROW_KEY_ATTR) ?? '');
       if (card === el) return rect(top, h);
-      top += h;
+      top += h + gap;
     }
     throw new Error('card not in its lane');
   };
@@ -192,8 +213,7 @@ function createHarness({
   };
 
   // Render the lanes and each item into its lane, keyed like a framework.
-  const syncDOM = () => {
-    const snapshot = core.getSnapshot();
+  const syncDOM = (snapshot: ReturnType<typeof core.getSnapshot>) => {
     const byKey = new Map<string, Element>();
     for (const lane of laneEls) {
       for (const card of cardsOf(lane)) {
@@ -204,6 +224,7 @@ function createHarness({
     while (laneEls.length < count) {
       const lane = document.createElement('div');
       lane.setAttribute(VLANE_ATTR, String(laneEls.length));
+      lane.style.rowGap = `${gap}px`;
       lane.getBoundingClientRect = () => rect(lanesTop(), laneHeight(lane));
       laneEls.push(lane);
     }
@@ -225,12 +246,26 @@ function createHarness({
     laneEls.forEach((lane, l) => lane.replaceChildren(...next[l]));
   };
 
-  const tick = () => {
+  // On the next tick that brings different rows, keep rendering the old ones,
+  // as Solid can: the core's post-render pass runs with rows the DOM doesn't
+  // show yet. Returns whether this tick lagged.
+  let lagDOM = false;
+  const keysOf = (snapshot: ReturnType<typeof core.getSnapshot>) =>
+    snapshot.items.map(item => String(item.key)).join();
+  const tick = (): boolean => {
+    const rendered = core.getSnapshot();
     core.setRows(answerQueries(core.getQueryInputs()));
-    syncDOM();
+    const lagged = lagDOM && keysOf(rendered) !== keysOf(core.getSnapshot());
+    syncDOM(lagged ? rendered : core.getSnapshot());
+    if (scrollBeforeLayout) {
+      currentScrollTop();
+      deliverScroll();
+    }
+    if (lagged) lagDOM = false;
     core.attach(scroller);
     core.afterDOMUpdate();
     deliverScroll();
+    return lagged;
   };
 
   const queryKey = () => {
@@ -276,6 +311,9 @@ function createHarness({
     heightOf,
     setHeight: (key: string, h: number) => heights.set(key, h),
     /** Answer the next new page query with only its first `rows` rows. */
+    lagDOMNext: () => {
+      lagDOM = true;
+    },
     partialNext: (rows: number) => {
       const {anchor} = core.getQueryInputs();
       partial = {rows, from: `${anchor.kind}:${anchor.startRow?.id ?? ''}`};
@@ -352,33 +390,36 @@ describe('masonry', () => {
     expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThan(120);
   });
 
-  test('paging down and back up moves no card on screen or between lanes', () => {
-    const h = harness({rowCount: 1000});
-    h.settle();
-    const lanesOf = new Map<string, number>();
-    const track = () =>
-      h.laneKeys().forEach((lane, l) => {
-        for (const key of lane) {
-          const seen = lanesOf.get(key);
-          if (seen === undefined) lanesOf.set(key, l);
-          else expect(l, `lane of ${key}`).toBe(seen);
-        }
-      });
-    track();
-
-    let pagedAway = false;
-    for (const top of [2000, 4000, 6000, 8000, 6000, 4000, 2000, 500]) {
-      h.userScroll(top);
-      const before = h.onScreen();
+  test.each([false, true])(
+    'paging down and back up moves no card on screen or between lanes (scroll event before the layout: %s)',
+    scrollBeforeLayout => {
+      const h = harness({rowCount: 1000, scrollBeforeLayout});
       h.settle();
-      // Cards paging in can fill space on screen; none that was there moves.
-      expect(h.onScreen()).toMatchObject(before);
+      const lanesOf = new Map<string, number>();
+      const track = () =>
+        h.laneKeys().forEach((lane, l) => {
+          for (const key of lane) {
+            const seen = lanesOf.get(key);
+            if (seen === undefined) lanesOf.set(key, l);
+            else expect(l, `lane of ${key}`).toBe(seen);
+          }
+        });
       track();
-      if (!h.laneKeys().flat().includes('r0')) pagedAway = true;
-    }
-    // The pages really did turn over.
-    expect(pagedAway).toBe(true);
-  });
+
+      let pagedAway = false;
+      for (const top of [2000, 4000, 6000, 8000, 6000, 4000, 2000, 500]) {
+        h.userScroll(top);
+        const before = h.onScreen();
+        h.settle();
+        // Cards paging in can fill space on screen; none that was there moves.
+        expect(h.onScreen()).toMatchObject(before);
+        track();
+        if (!h.laneKeys().flat().includes('r0')) pagedAway = true;
+      }
+      // The pages really did turn over.
+      expect(pagedAway).toBe(true);
+    },
+  );
 
   test('under a finger, a shift of every lane is held until the gesture ends', () => {
     // Writing scrollTop mid-momentum is ignored on iOS, or ends the fling.
@@ -613,6 +654,54 @@ describe('masonry', () => {
     h.settle();
 
     expect(h.onScreen()).toEqual(before);
+  });
+
+  test('more lanes at the end of the list keep the first card on screen where it is', () => {
+    // In four lanes the same cards end well above where the viewport is.
+    // Every lane is padded down to the bottom of the viewport being kept —
+    // the last card in a lane has no gap below it — or the browser clamps
+    // scrollTop to the shorter content and everything on screen moves.
+    const h = harness({rowCount: 100, lanes: 2, gap: 8});
+    h.settle();
+    for (let i = 0; i < 10; i++) {
+      h.userScroll(100_000);
+      h.settle();
+    }
+    expect(h.scroller.scrollTop + 600).toBe(h.scroller.scrollHeight);
+    const [key, top] = Object.entries(h.onScreen()).sort(
+      (a, b) => Number(a[0].slice(1)) - Number(b[0].slice(1)),
+    )[0];
+
+    h.setOptions({...h.coreOptions, lanes: 4});
+    h.settle();
+
+    expect(h.cardTop(key)).toBe(top);
+  });
+
+  test('lays out the cards as rendered when the rows run ahead of the DOM', () => {
+    // Solid can run the post-render pass with rows its DOM doesn't show yet.
+    // Sizing the lanes for cards that aren't there would move the ones that
+    // are.
+    const h = harness({rowCount: 1000, gap: 8, options: {permalinkID: 'r500'}});
+    h.settle();
+    let lagged = 0;
+    for (let i = 0; i < 12; i++) {
+      h.userScroll(Math.max(400, h.scroller.scrollTop - 300));
+      const before = h.onScreen();
+      // When this step's new rows arrive, the DOM is a commit behind — and
+      // that commit may well be painted.
+      h.lagDOMNext();
+      for (let t = 0; t < 10; t++) {
+        if (h.tick()) {
+          expect(h.onScreen()).toMatchObject(before);
+          lagged++;
+          break;
+        }
+      }
+      h.settle();
+      expect(h.onScreen()).toMatchObject(before);
+    }
+    expect(lagged).toBeGreaterThan(3);
   });
 
   test('a new lane count keeps the first card on screen where it is', () => {
