@@ -11,7 +11,8 @@ import {
   type ListContextParams,
 } from '../shared/queries.ts';
 import type {Item} from '../shared/schema.ts';
-import {useUrlState} from './use-url-state.ts';
+import {layoutFromParams, paramsForLayout} from '../shared/layout.ts';
+import {setUrlParams, useUrlState} from './use-url-state.ts';
 
 /**
  * How row heights are determined:
@@ -122,19 +123,15 @@ export function useEstimateSize(heightMode: HeightMode): () => number {
   );
 }
 
-/**
- * The `?lanes=` column count: a whole number of at least 1. Anything else —
- * `Infinity`, a negative, text — falls back to a plain list.
- */
-function parseLanes(value: string): number {
-  const n = Math.floor(Number(value));
-  return Number.isFinite(n) && n >= 1 ? n : 1;
+// Write a layout select value to the URL (see ../shared/layout.ts).
+function setLayout(value: string): void {
+  setUrlParams(paramsForLayout(value));
 }
 
 /**
  * The URL-driven demo controls shared by both scroller demos (the DevPanel
- * inputs): row-height mode, grid columns (`lanes`; 1 is a plain list),
- * transform-while-scrolling, anchoring mode, the optional exact `count` (for
+ * inputs): row-height mode, layout (`lanes` columns, 1 being a plain list, as
+ * a grid or with `masonry`), transform-while-scrolling, anchoring mode, the optional exact `count` (for
  * an accurate, stable scrollbar — e.g. ?count=5000; without it the estimate
  * grows as rows are discovered and the handle jumps), and follow-bottom
  * (stick-to-bottom for chat).
@@ -142,8 +139,9 @@ function parseLanes(value: string): number {
 export function useDemoControls() {
   const [heightModeStr, setHeightMode] = useUrlState('height', 'uniform');
   const heightMode = heightModeStr as HeightMode;
-  const [lanesStr, setLanes] = useUrlState('lanes', '1');
-  const lanes = parseLanes(lanesStr);
+  const [lanesStr] = useUrlState('lanes', '1');
+  const [masonryStr] = useUrlState('masonry', '');
+  const {lanes, masonry} = layoutFromParams(lanesStr, masonryStr);
   const [anchoringStr, setAnchoring] = useUrlState('anchoring', 'manual');
   const anchoring = anchoringStr as AnchoringMode;
   const [countStr] = useUrlState('count', '');
@@ -157,7 +155,8 @@ export function useDemoControls() {
     heightMode,
     setHeightMode,
     lanes,
-    setLanes,
+    masonry,
+    setLayout,
     anchoring,
     setAnchoring,
     count,

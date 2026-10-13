@@ -8,7 +8,6 @@ import {DevPanel} from './DevPanel.tsx';
 import {ItemRow} from './ItemRow.tsx';
 import {ListHeader} from './ListHeader.tsx';
 import {
-  contentWrapperProps,
   getRowKey,
   getSingleQuery,
   toStartRow,
@@ -17,7 +16,9 @@ import {
   useGetPageQuery,
   useSortState,
 } from './list-shared.ts';
+import {layoutValue} from '../shared/layout.ts';
 import type {ItemStart} from '../shared/queries.ts';
+import {Rows} from './Rows.tsx';
 import {useHash} from './use-hash.ts';
 import styles from './WindowList.module.css';
 
@@ -41,7 +42,8 @@ export function WindowList(): React.ReactNode {
     heightMode,
     setHeightMode,
     lanes,
-    setLanes,
+    masonry,
+    setLayout,
     anchoring,
     setAnchoring,
     count,
@@ -64,6 +66,7 @@ export function WindowList(): React.ReactNode {
     anchoring,
     count,
     lanes,
+    masonry,
     getRowKey,
     estimateSize,
     getPageQuery,
@@ -91,14 +94,15 @@ export function WindowList(): React.ReactNode {
         />
       </div>
 
-      {/* The rows element is the content wrapper. `spaceBefore` / `spaceAfter`
-          stand in for the unloaded rows above and below, rendered as spacer
-          elements (spanning every column when `lanes` makes the wrapper a
-          grid) so scroll anchoring keeps the viewport stable across
-          paging. */}
-      <div ref={rowsRef} {...contentWrapperProps(lanes)}>
-        <div style={{height: spaceBefore, gridColumn: '1 / -1'}} />
-        {items.map(item => (
+      {/* The rows element is the content wrapper (see Rows). */}
+      <Rows
+        wrapperRef={rowsRef}
+        lanes={lanes}
+        masonry={masonry}
+        items={items}
+        spaceBefore={spaceBefore}
+        spaceAfter={spaceAfter}
+        renderRow={item => (
           <ItemRow
             key={item.key}
             item={item}
@@ -106,16 +110,15 @@ export function WindowList(): React.ReactNode {
             sortField={sortField}
             permalinkID={permalinkID}
           />
-        ))}
-        <div style={{height: spaceAfter, gridColumn: '1 / -1'}} />
-      </div>
+        )}
+      />
       <DevPanel
         getScrollElement={getScrollElement}
         windowMode
         heightMode={heightMode}
         onHeightModeChange={setHeightMode}
-        lanes={lanes}
-        onLanesChange={setLanes}
+        layout={layoutValue({lanes, masonry})}
+        onLayoutChange={setLayout}
         sortDirection={sortDirection}
         anchoring={anchoring}
         onAnchoringChange={setAnchoring}
