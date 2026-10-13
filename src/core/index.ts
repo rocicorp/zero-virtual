@@ -12,11 +12,21 @@ export {
   contentWrapper,
   findRow,
   firstRow,
+  laneAttributes,
+  queryLanes,
   queryRows,
   rowAttributes,
+  VLANE_ATTR,
   VROW_INDEX_ATTR,
   VROW_KEY_ATTR,
 } from './dom.ts';
+export {
+  relayout,
+  settleShift,
+  type LaneLayout,
+  type RelayoutInput,
+  type RelayoutResult,
+} from './lanes.ts';
 export {
   getHistoryNavigationSnapshot,
   getHistoryStateServerSnapshot,

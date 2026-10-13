@@ -1,13 +1,16 @@
 import {assert, unreachable} from '../asserts.ts';
 import {memo} from './memo.ts';
 import {
+  contentWrapper,
   findRow,
   firstRow,
+  queryLanes,
   queryRows,
   rectInViewport,
   VROW_INDEX_ATTR,
   VROW_KEY_ATTR,
 } from './dom.ts';
+import {relayout, settleShift, type LaneLayout} from './lanes.ts';
 import type {RowsQueryInputs, RowsSnapshot} from './rows.ts';
 import type {
   ObserveElementOffset,
@@ -136,6 +139,29 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    * to land in the first column, so every loaded row can shift over once.
    */
   lanes?: number | undefined;
+  /**
+   * Lay the `lanes` out as masonry: each card goes to the shortest lane
+   * instead of the next column, so cards of different heights pack without
+   * gaps — a Pinterest-style feed. Needs `lanes` above 1.
+   *
+   * Render one element per lane, marked with `laneAttributes(lane)`, side by
+   * side in the content wrapper (a flex row), and each item inside the lane
+   * element its `lane` names, in list order. Render no spacers: the
+   * virtualizer sizes each lane's `padding-top` and `padding-bottom` itself,
+   * so leave those alone. Space the cards with the lane's `gap` rather than
+   * margins, and keep the lanes equally wide.
+   *
+   * A card keeps its lane while it's loaded and gets it back when it pages
+   * out and in again. Cards are measured before they're placed, in the same
+   * frame. Each lane is kept in place on its own: a card resizing above the
+   * viewport moves the cards above it in its lane, never the ones on screen.
+   * So masonry always anchors manually, and `anchoring` is ignored.
+   *
+   * Opened in the middle of the list (a permalink, a far `scrollToItem`), the
+   * cards above are placed upward, so once the list's start loads the lanes
+   * can start a little unevenly — by up to about a card.
+   */
+  masonry?: boolean | undefined;
   anchoring?: AnchoringMode | undefined;
   getRowKey: (row: TRow) => RowKey;
   listContextParams: TListContextParams;
@@ -369,6 +395,7 @@ function createAttachment<TRow>(
   return {
     el,
     scrollElement,
+    manual,
     cleanups,
     rect: {width: 0, height: 0} as ScrollRect,
     resizeObserver: null as ResizeObserver | null,
@@ -478,18 +505,23 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       first: number,
       length: number,
       getRowKey: (row: TRow) => RowKey,
-      lanes: number,
+      lane: (index: number, key: RowKey) => number,
     ): VirtualRow<TRow>[] =>
       Array.from({length}, (_, offset) => {
         const index = first + offset;
         const row = rowAt(index);
-        return {
-          index,
-          key: row ? getRowKey(row) : index,
-          row,
-          lane: laneOf(index, lanes),
-        };
+        const key = row ? getRowKey(row) : index;
+        return {index, key, row, lane: lane(index, key)};
       }),
+  );
+  // Lane lookups for the items: one function per grid width or per masonry
+  // assignment, so the items memo sees either change.
+  readonly #gridLanes = memo(
+    (lanes: number) => (index: number) => laneOf(index, lanes),
+  );
+  readonly #masonryLanes = memo(
+    (lanes: ReadonlyMap<string, number>) => (_index: number, key: RowKey) =>
+      lanes.get(String(key)) ?? 0,
   );
   readonly #restorableState = memo(
     (
@@ -558,6 +590,23 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // the jump.
   #ownScrollStates: ScrollHistoryState<TStartRow>[] = [];
 
+  // ---- masonry (see #layOutLanes) --------------------------------------------
+  // Cards are keyed by `String(key)`: the DOM hands keys back as strings.
+  // The layout on screen: each lane's cards, and where each lane starts.
+  #laneLayout: LaneLayout | null = null;
+  // Every card's lane, kept while it pages out and back in. Replaced rather
+  // than mutated, so the items memo sees a change.
+  #laneMap: ReadonlyMap<string, number> = new Map();
+  // The footprints the layout was built with.
+  #laneHeights = new Map<string, number>();
+  // The viewport's top in the layout's coordinates, as of the last layout.
+  #laneViewportTop = 0;
+  // What the layout belongs to. A new list or lane count starts afresh.
+  #laneContext: {lanes: number; listContextParams: TListContextParams} | null =
+    null;
+  // A restore's saved cards, pinned until the restore lands.
+  #laneCards: ScrollHistoryState<TStartRow>['laneCards'] = undefined;
+
   // Restore/reset change tracking (the old effect's dependency semantics).
   #appliedScrollState: ScrollHistoryState<TStartRow> | null = null;
   #appliedPermalinkID: string | null | undefined;
@@ -613,7 +662,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       prev.count !== options.count ||
       prev.estimateSize !== options.estimateSize ||
       prev.getRowKey !== options.getRowKey ||
-      prev.lanes !== options.lanes
+      prev.lanes !== options.lanes ||
+      prev.masonry !== options.masonry
     ) {
       this.#version++;
     }
@@ -656,7 +706,14 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
    * per element; call every commit alongside {@linkcode afterDOMUpdate}.
    */
   attach(el: HTMLElement | null): void {
-    if (el === (this.#attachment?.el ?? null)) return;
+    // Re-wire for a new anchoring mode too: it sets `overflow-anchor` and the
+    // touch listeners, and switching to masonry switches it.
+    if (
+      el === (this.#attachment?.el ?? null) &&
+      (el === null || this.#attachment?.manual === this.#manual())
+    ) {
+      return;
+    }
     this.detach();
     if (!el) return;
 
@@ -953,6 +1010,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   #manual(): boolean {
+    // Masonry keeps each lane in place on its own, which native anchoring,
+    // with its one correction for everything, can't.
+    if (this.#masonry()) return true;
     const anchoring = this.#options.anchoring ?? 'auto';
     return (
       anchoring === 'manual' ||
@@ -994,6 +1054,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       : 1;
   }
 
+  // Masonry needs more than one lane to mean anything.
+  #masonry(): boolean {
+    return this.#options.masonry === true && this.#lanes() > 1;
+  }
+
   #effectiveEstimatedTotal(): number {
     const {count} = this.#options;
     const rows = this.#rows;
@@ -1029,12 +1094,15 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
         );
 
     // Keep item identity stable while row data, range and key extraction match.
+    const masonry = this.#masonry();
     const items = this.#items(
       rows.rowAt,
       rows.firstRowIndex,
       rows.rowsLength,
       getRowKey,
-      lanes,
+      masonry
+        ? this.#masonryLanes(this.#provisionalLanes())
+        : this.#gridLanes(lanes),
     );
 
     const total =
@@ -1047,8 +1115,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
     return {
       items,
-      spaceBefore: rows.atStart ? 0 : gridRowsBefore * rowEstimate,
-      spaceAfter: gridRowsAfter * rowEstimate,
+      // Masonry sizes each lane's padding instead (see #layOutLanes).
+      spaceBefore: masonry || rows.atStart ? 0 : gridRowsBefore * rowEstimate,
+      spaceAfter: masonry ? 0 : gridRowsAfter * rowEstimate,
       rowAt: rows.rowAt,
       complete: rows.complete,
       rowsEmpty: count === undefined ? rows.rowsEmpty : count === 0,
@@ -1095,17 +1164,39 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // ---- scroll geometry -------------------------------------------------------
 
+  // Where the loaded rows begin: the first row's top, or in masonry, where
+  // lanes start at different heights, the highest card's.
+  #topmostRowTop(attachment: Attachment<TRow>): number | null {
+    if (!this.#masonry()) {
+      return firstRow(attachment.el)?.getBoundingClientRect().top ?? null;
+    }
+    let top: number | null = null;
+    for (const lane of queryLanes(attachment.el)) {
+      const first = lane && firstRow(lane);
+      if (first) {
+        const t = first.getBoundingClientRect().top;
+        if (top === null || t < top) top = t;
+      }
+    }
+    return top;
+  }
+
   // Shared visibility definition for paging and public visible-item helpers.
-  // Rows are in DOM order, so stop below the viewport.
+  // Rows are in DOM order, so stop below the viewport — except in masonry,
+  // where the DOM goes lane by lane.
   #visibleIndexRange(
     attachment: Attachment<TRow>,
   ): {first: number; last: number} | null {
     const {top: elTop, bottom: elBottom} = attachment.viewport;
+    const masonry = this.#masonry();
     let first = Infinity;
     let last = -Infinity;
     for (const child of queryRows(attachment.el)) {
       const rect = child.getBoundingClientRect();
-      if (rect.top >= elBottom) break;
+      if (rect.top >= elBottom) {
+        if (masonry) continue;
+        break;
+      }
       if (rectInViewport(rect, elTop, elBottom)) {
         const idx = Number(child.getAttribute(VROW_INDEX_ATTR));
         if (idx < first) first = idx;
@@ -1153,8 +1244,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #holdTarget(attachment: Attachment<TRow>): HTMLElement | null {
     const first = firstRow(attachment.el);
     if (!first) return null;
-    const parent = first.parentElement;
-    return parent && parent !== attachment.scrollElement ? parent : first;
+    const wrapper = contentWrapper(attachment.el);
+    return wrapper && wrapper !== attachment.scrollElement ? wrapper : first;
   }
 
   // A negative margin pulls content up by the pending correction.
@@ -1221,6 +1312,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   #measureAndCompensate(): void {
+    // Masonry keeps each lane in place on its own, landing or not.
+    if (this.#masonry()) {
+      this.#layOutLanes();
+      return;
+    }
     // A landing or context reset owns the position until its rows arrive.
     if (
       !this.#manual() ||
@@ -1565,6 +1661,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     }
 
     this.#restoreScrollTop = eff?.scrollTop ?? null;
+    if (eff && this.#masonry()) this.#pinLanes(eff.laneCards);
     if (eff) {
       // A same-position persistence echo must not disturb the live anchor.
       if (this.#setScrollTop(eff.scrollTop)) {
@@ -1773,6 +1870,306 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     }
   }
 
+  // ---- masonry ---------------------------------------------------------------
+  // Masonry lays the cards out itself (see lanes.ts) and places them by
+  // sizing each lane element's padding: the top is where the lane's first card
+  // starts, the bottom the space estimated for the cards not loaded below.
+  // It all happens before paint, on every commit and every card resize, so no
+  // frame ever shows a layout in between.
+
+  // The loaded cards' keys, in list order.
+  #windowKeys(): string[] {
+    const rows = this.#rows;
+    const {getRowKey} = this.#options;
+    return Array.from({length: rows.rowsLength}, (_, offset) => {
+      const index = rows.firstRowIndex + offset;
+      const row = rows.rowAt(index);
+      return String(row ? getRowKey(row) : index);
+    });
+  }
+
+  // Whether the layout belongs to the list and lane count as they are now.
+  #laneStateCurrent(): boolean {
+    const context = this.#laneContext;
+    return (
+      context !== null &&
+      context.lanes === this.#lanes() &&
+      context.listContextParams === this.#options.listContextParams
+    );
+  }
+
+  // The lane to render each card in. A card not measured yet gets the lane it
+  // would have at the estimated size; #layOutLanes measures it and places it
+  // for good, rendering again before paint if that moves it.
+  #provisionalLanes(): ReadonlyMap<string, number> {
+    const current = this.#laneStateCurrent();
+    const laneMap = current ? this.#laneMap : new Map<string, number>();
+    const keys = this.#windowKeys();
+    if (keys.every(key => laneMap.has(key))) return laneMap;
+    const estimate = this.#rowEstimate();
+    const height = (key: RowKey) =>
+      this.#laneHeights.get(String(key)) ?? estimate;
+    return relayout({
+      lanes: this.#lanes(),
+      prev: current ? this.#laneLayout : null,
+      prevHeight: height,
+      keys,
+      height,
+      assigned: key => laneMap.get(String(key)),
+      viewportTop: this.#laneViewportTop,
+      pivot: this.#lanePivot(),
+    }).laneOf as ReadonlyMap<string, number>;
+  }
+
+  // With nothing on screen to keep in place, the card to lay the rest out
+  // from: the one a permalink or a jump is going to.
+  #lanePivot(): string | undefined {
+    const {permalinkRow} = this.#rows;
+    if (permalinkRow !== undefined) {
+      return String(this.#options.getRowKey(permalinkRow));
+    }
+    const key = this.#request?.rowKey;
+    return key === undefined ? undefined : String(key);
+  }
+
+  // The first card in the list that reaches into the viewport, by the layout,
+  // and how far below the viewport's top it starts.
+  #laneTopCard(): readonly [string, number] | null {
+    const layout = this.#laneLayout;
+    if (layout === null) return null;
+    const order = new Map(this.#windowKeys().map((key, i) => [key, i]));
+    const viewportTop = this.#measureLaneViewportTop();
+    const estimate = this.#rowEstimate();
+    let best: {key: string; offset: number; order: number} | null = null;
+    layout.lanes.forEach((lane, l) => {
+      let top = layout.tops[l];
+      for (const key of lane) {
+        const bottom = top + (this.#laneHeights.get(String(key)) ?? estimate);
+        const i = order.get(String(key));
+        if (bottom > viewportTop && i !== undefined) {
+          if (best === null || i < best.order) {
+            best = {key: String(key), offset: top - viewportTop, order: i};
+          }
+          break;
+        }
+        top = bottom;
+      }
+    });
+    const found = best as {key: string; offset: number} | null;
+    return found && [found.key, found.offset];
+  }
+
+  // What a restore needs to put the cards on screen back (see
+  // ScrollHistoryState.laneCards): each lane's cards from the first to the
+  // last card on screen in list order, and where the first of them starts.
+  // A card outside that span can't land between two of them in a lane.
+  #currentLaneCards(): ScrollHistoryState<TStartRow>['laneCards'] {
+    const layout = this.#laneLayout;
+    const attachment = this.#attachment;
+    if (!this.#masonry() || layout === null || !attachment) return undefined;
+    const viewportTop = this.#measureLaneViewportTop();
+    const viewportBottom = viewportTop + attachment.height;
+    const estimate = this.#rowEstimate();
+    const order = new Map(this.#windowKeys().map((key, i) => [key, i]));
+    let first = Infinity;
+    let last = -Infinity;
+    const lanes = layout.lanes.map((lane, l) => {
+      let top = layout.tops[l];
+      return lane.map(laneKey => {
+        const key = String(laneKey);
+        const card = {key, top, order: order.get(key)};
+        const bottom = top + (this.#laneHeights.get(key) ?? estimate);
+        if (
+          card.order !== undefined &&
+          top < viewportBottom &&
+          bottom > viewportTop
+        ) {
+          first = Math.min(first, card.order);
+          last = Math.max(last, card.order);
+        }
+        top = bottom;
+        return card;
+      });
+    });
+    if (first === Infinity) return undefined;
+    return lanes.map(lane => {
+      const inView = lane.filter(
+        card =>
+          card.order !== undefined && card.order >= first && card.order <= last,
+      );
+      return inView.length === 0
+        ? null
+        : {
+            keys: inView.map(card => card.key),
+            offset: inView[0].top - viewportTop,
+          };
+    });
+  }
+
+  // The viewport's top in the lanes' coordinates (from the lane elements'
+  // top), measured now; the last layout's when there are no lanes to measure.
+  #measureLaneViewportTop(): number {
+    const attachment = this.#attachment;
+    const lane = attachment
+      ? queryLanes(attachment.el).find(el => el !== undefined)
+      : undefined;
+    return attachment && lane
+      ? attachment.viewport.top - lane.getBoundingClientRect().top
+      : this.#laneViewportTop;
+  }
+
+  // Put cards back in lanes, the first in each at an offset from the
+  // viewport's top, for the next layout (and, for a restore, every layout
+  // until it lands).
+  #pinLanes(cards: ScrollHistoryState<TStartRow>['laneCards']): void {
+    this.#laneCards = cards;
+    if (cards === undefined) return;
+    const laneMap = new Map(this.#laneMap);
+    cards.forEach((lane, l) => {
+      for (const key of lane?.keys ?? []) laneMap.set(key, l);
+    });
+    this.#laneMap = laneMap;
+  }
+
+  // Lay the cards out in lanes and size the lanes.
+  #layOutLanes(): void {
+    const attachment = this.#attachment;
+    if (!attachment) return;
+    const laneEls = queryLanes(attachment.el);
+    const firstLane = laneEls.find(el => el !== undefined);
+    if (firstLane === undefined) return;
+    const lanes = this.#lanes();
+    const estimate = this.#rowEstimate();
+
+    if (!this.#laneStateCurrent()) {
+      // A new list or lane count starts afresh — for a new lane count, with
+      // the card at the top of the viewport kept where it is.
+      const sameList =
+        this.#laneContext?.listContextParams ===
+        this.#options.listContextParams;
+      const keep = sameList ? this.#laneTopCard() : null;
+      this.#laneContext = {
+        lanes,
+        listContextParams: this.#options.listContextParams,
+      };
+      this.#laneLayout = null;
+      this.#laneMap = new Map();
+      this.#laneHeights = new Map();
+      if (keep !== null) this.#pinLanes([{keys: [keep[0]], offset: keep[1]}]);
+    }
+
+    // Measure the cards as rendered, and note which lane each is in.
+    const viewportTop =
+      attachment.viewport.top - firstLane.getBoundingClientRect().top;
+    const heights = new Map(this.#laneHeights);
+    const rendered = new Map<string, number>();
+    laneEls.forEach((lane, l) => {
+      if (lane === undefined) return;
+      const gap = pixels(getComputedStyle(lane).rowGap);
+      for (const row of queryRows(lane)) {
+        const key = row.getAttribute(VROW_KEY_ATTR) ?? '';
+        heights.set(key, row.getBoundingClientRect().height + gap);
+        rendered.set(key, l);
+      }
+    });
+
+    const prevHeights = this.#laneHeights;
+    const pins = this.#laneCards;
+    const keys = this.#windowKeys();
+    // Whether this layout is the restore's: its saved cards are loaded.
+    const restored =
+      pins?.some(lane => lane !== null && keys.includes(lane.keys[0])) ?? false;
+    // Pins go where the viewport will be. While a restore lands, that's at
+    // its scrollTop, which the browser can still be clamping short: the
+    // content on hand isn't tall enough to scroll there yet.
+    const pinViewportTop =
+      viewportTop +
+      (this.#restoreScrollTop === null
+        ? 0
+        : this.#restoreScrollTop - attachment.scrollTop);
+    const result = relayout({
+      lanes,
+      prev: this.#laneLayout,
+      prevHeight: key => prevHeights.get(String(key)) ?? estimate,
+      keys,
+      height: key => heights.get(String(key)) ?? estimate,
+      assigned: key => this.#laneMap.get(String(key)),
+      viewportTop,
+      pins:
+        pins &&
+        new Map(
+          pins.flatMap(lane =>
+            lane === null
+              ? []
+              : [[lane.keys[0], pinViewportTop + lane.offset] as const],
+          ),
+        ),
+      pivot: this.#lanePivot(),
+    });
+    // A restore's pins hold until it lands; any others were for this layout.
+    if (this.#restoreScrollTop === null) this.#laneCards = undefined;
+
+    const rows = this.#rows;
+    const answering = this.#rowsAnswerQuery();
+    const shift = settleShift(result, {
+      fresh: result.fresh,
+      atStart: answering && rows.atStart,
+      estimatedAbove:
+        Math.ceil(Math.max(0, rows.firstRowIndex) / lanes) * estimate,
+    });
+    const tops = result.tops.map(top => top + shift);
+    this.#laneLayout = {lanes: result.lanes, tops};
+    this.#laneHeights = heights;
+
+    // Size the lanes: where each starts, and room for what's below.
+    const end = rows.firstRowIndex + rows.rowsLength;
+    const below = rows.atEnd
+      ? 0
+      : Math.ceil(Math.max(0, this.#effectiveEstimatedTotal() - end) / lanes) *
+        estimate;
+    laneEls.forEach((el, l) => {
+      if (el === undefined) return;
+      const top = (result.lanes[l]?.length ?? 0) > 0 ? tops[l] : 0;
+      setPx(el, 'paddingTop', top);
+      setPx(el, 'paddingBottom', below);
+    });
+
+    // The shift moved every lane: scroll with it, so what's on screen stays
+    // put. At the very top, as in a list, let content loading above show. A
+    // restore owns the position while it lands, though: only a layout of the
+    // window it restores, with its cards pinned, moves where it lands. The
+    // rows on hand until then are another window's, or part of one.
+    let scrolled = 0;
+    const restoring = this.#restoreScrollTop !== null;
+    if (shift !== 0 && (!restoring || restored)) {
+      if (this.#restoreScrollTop !== null) this.#restoreScrollTop += shift;
+      if (attachment.scrollTop > 0 || this.#landing()) {
+        this.#compensate(shift);
+        scrolled = shift;
+      }
+    }
+    this.#laneViewportTop = viewportTop + scrolled;
+
+    // Cards placed for the first time may belong in other lanes than the ones
+    // they were rendered in: render them again, still before paint.
+    let laneMap: Map<string, number> | null = null;
+    for (const [key, lane] of result.laneOf) {
+      if (this.#laneMap.get(String(key)) !== lane) {
+        laneMap ??= new Map(this.#laneMap);
+        laneMap.set(String(key), lane);
+      }
+    }
+    if (laneMap !== null) {
+      this.#laneMap = laneMap;
+      for (const [key, lane] of rendered) {
+        if (laneMap.get(key) !== lane) {
+          this.#version++;
+          break;
+        }
+      }
+    }
+  }
+
   // ---- paging ----------------------------------------------------------------
 
   #evaluatePaging(): void {
@@ -1820,9 +2217,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     if (firstVisible === Infinity) {
       // A scrollbar jump into unloaded space needs cursor-based page cascading
       // toward the viewport; there is no index query to teleport there.
-      const first = firstRow(attachment.el);
-      if (!first) return;
-      if (first.getBoundingClientRect().top >= elBottom) {
+      const top = this.#topmostRowTop(attachment);
+      if (top === null) return;
+      if (top >= elBottom) {
         // A list below the viewport at its start needs no backward page.
         // Otherwise page upward into the unloaded space.
         if (attachment.scrollTop <= 0 || rows.atStart) {
@@ -1909,6 +2306,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       // jump held in the wrapper margin, fold it in so restore lands right.
       scrollTop: attachment.scrollTop + this.#anchorState.pendingJump,
       listContextParams,
+      ...(this.#masonry() && {laneCards: this.#currentLaneCards()}),
     };
     this.#ownScrollStates.unshift(state);
     this.#ownScrollStates.length = Math.min(
@@ -1951,6 +2349,16 @@ function getNearPageEdgeThreshold(pageSize: number) {
 
 function makeEven(n: number) {
   return n % 2 === 0 ? n : n + 1;
+}
+
+/** Set a px length on an element's style, skipping writes that change nothing. */
+function setPx(
+  el: HTMLElement,
+  prop: 'paddingTop' | 'paddingBottom',
+  px: number,
+): void {
+  const value = `${px}px`;
+  if (el.style[prop] !== value) el.style[prop] = value;
 }
 
 /** The grid column of row `index`; never negative, even mid-renumbering. */

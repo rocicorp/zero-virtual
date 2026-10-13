@@ -39,7 +39,8 @@ export type RelayoutInput = {
   viewportTop: number;
   /**
    * Cards to pin at these positions instead, at most one per lane (a
-   * restore). Each needs a lane from `assigned`; `prev` is then ignored.
+   * restore). Each needs a lane from `assigned`. When any of them is loaded,
+   * `prev` is ignored; when none is yet, they are.
    */
   pins?: ReadonlyMap<RowKey, number> | undefined;
   /** With nothing to keep in place, the card to lay the rest out from. */
@@ -94,14 +95,13 @@ export function relayout(input: RelayoutInput): RelayoutResult {
 
   // What stays loaded keeps its lane and, through the pins, its position.
   const {prev} = input;
-  if (input.pins !== undefined && input.pins.size > 0) {
-    for (const [key, top] of input.pins) {
-      const l = assigned(key);
-      if (l !== undefined && order.has(key) && pins[l] === null) {
-        pinAt(l, key, top);
-      }
+  for (const [key, top] of input.pins ?? []) {
+    const l = assigned(key);
+    if (l !== undefined && order.has(key) && pins[l] === null) {
+      pinAt(l, key, top);
     }
-  } else if (prev !== null) {
+  }
+  if (pins.every(pin => pin === null) && prev !== null) {
     for (let l = 0; l < Math.min(laneCount, prev.lanes.length); l++) {
       const pin = prevPin(prev, l, input.prevHeight, order, input.viewportTop);
       if (pin === null) continue;
@@ -147,8 +147,7 @@ export function relayout(input: RelayoutInput): RelayoutResult {
     }
     const card = {key, order: i, top: bestTop};
     insert(lanes[best], card);
-    pins[best] ??= card;
-    restack(lanes[best], pins[best], height);
+    restack(lanes[best], (pins[best] ??= card), height);
     laneOf.set(key, best);
   };
   let first = keys.length;

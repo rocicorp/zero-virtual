@@ -143,9 +143,10 @@ export type VirtualRow<TRow> = {
   /** The row data, or undefined while the row is still loading. */
   row: TRow | undefined;
   /**
-   * The grid column the row belongs in, from `0` to `lanes - 1` — always `0`
-   * in a plain list. Place the row with it (`gridColumn: lane + 1`); see the
-   * `lanes` option.
+   * The lane the row belongs in, from `0` to `lanes - 1` — always `0` in a
+   * plain list. In a grid it's the column (`gridColumn: lane + 1`); in
+   * masonry, the lane element to render the row in. See the `lanes` and
+   * `masonry` options.
    */
   lane: number;
 };
@@ -183,6 +184,15 @@ export type ScrollHistoryState<
   hasReachedEnd: boolean;
   /** The list context params active when this state was saved (used to invalidate stale state) */
   listContextParams: TListContextParams;
+  /**
+   * Masonry only: each lane's cards in view — those between the first and
+   * the last card on screen, in list order — and how far below the viewport's
+   * top the first of them starts; null for a lane with none. A restore puts
+   * these cards back in their lanes, where they were.
+   */
+  laneCards?:
+    | ReadonlyArray<{readonly keys: readonly string[]; offset: number} | null>
+    | undefined;
 }>;
 
 /**

@@ -21,7 +21,7 @@ export {
   type ScrollRect,
   type VirtualizerScrollOptions,
 } from '../core/scroll.ts';
-export {rowAttributes} from '../core/dom.ts';
+export {laneAttributes, rowAttributes} from '../core/dom.ts';
 export type {
   AnchoringMode,
   RowKey,

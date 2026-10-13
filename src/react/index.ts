@@ -1,4 +1,4 @@
-export {rowAttributes} from '../core/dom.ts';
+export {laneAttributes, rowAttributes} from '../core/dom.ts';
 export {
   observeElementOffset,
   observeElementRect,
