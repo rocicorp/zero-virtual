@@ -108,6 +108,53 @@ export function updateHistoryState(state: unknown): void {
   navigation.updateCurrentEntry({state});
 }
 
+// How long `writeHistoryState` waits for writes to stop before storing them.
+const WRITE_DEBOUNCE_MS = 100;
+
+// Writes waiting out the debounce, by key.
+const pendingWrites = new Map<string, unknown>();
+let writeTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Set one key of the current entry's state, leaving its sibling keys alone.
+ *
+ * Debounced, because a virtualizer reports its position on every scroll
+ * event. The pending write goes out early when a navigation starts:
+ * `navigate` fires while the entry being left is still the current one, so
+ * it keeps the position it was left at. Without that, a click while a scroll
+ * is still moving would leave it holding wherever the list was before that
+ * scroll began, and the write would land in the next entry instead. It also
+ * goes out on `pagehide`, for the ones `navigate` doesn't announce: a reload
+ * from the browser's own button, say.
+ */
+export function writeHistoryState(key: string, value: unknown): void {
+  pendingWrites.set(key, value);
+  clearTimeout(writeTimer);
+  writeTimer = setTimeout(flushHistoryWrites, WRITE_DEBOUNCE_MS);
+  navigation.addEventListener('navigate', onNavigate);
+  addEventListener('pagehide', flushHistoryWrites);
+}
+
+function onNavigate(e: NavigateEvent): void {
+  // A replace keeps the position (see getHistoryNavigationSnapshot), and the
+  // entry it replaces is about to be discarded: what is pending belongs to
+  // the replacing entry, so it waits for that one.
+  if (e.navigationType !== 'replace') flushHistoryWrites();
+}
+
+function flushHistoryWrites(): void {
+  clearTimeout(writeTimer);
+  navigation.removeEventListener('navigate', onNavigate);
+  removeEventListener('pagehide', flushHistoryWrites);
+  // The live state, not a snapshot: this is a read-modify-write over sibling
+  // keys — another virtualizer's, the app's own — so it has to see every
+  // write that came after the last navigation.
+  const state = {...(readHistoryState() as Record<string, unknown>)};
+  for (const [key, value] of pendingWrites) state[key] = value;
+  pendingWrites.clear();
+  updateHistoryState(state);
+}
+
 /** Listen for current-entry changes; returns an unsubscribe fn. */
 export function subscribeHistoryState(onStoreChange: () => void): () => void {
   navigation.addEventListener('currententrychange', onStoreChange);

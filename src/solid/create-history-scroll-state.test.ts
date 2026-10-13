@@ -1,20 +1,23 @@
 import {createComputed, createRoot, createSignal} from 'solid-js';
-import {beforeEach, expect, test} from 'vitest';
+import {afterEach, beforeEach, expect, test, vi} from 'vitest';
 import type {ScrollHistoryState} from '../core/types.ts';
 import {createHistoryScrollState} from './create-history-scroll-state.ts';
 
 // Minimal Navigation API stub (happy-dom doesn't implement it), as in the
-// React hook's test: current-entry state and id, updateCurrentEntry, and
-// `currententrychange` listeners called in the order they were added. The id
-// is regenerated on a new entry and never on updateCurrentEntry — that is how
-// the store tells a navigation from an in-place write.
+// React hook's test: current-entry state and id, updateCurrentEntry, a
+// `navigate` event before a new entry and `currententrychange` listeners
+// after it, called in the order they were added. The id is regenerated on a
+// new entry and never on updateCurrentEntry — that is how the store tells a
+// navigation from an in-place write.
 let nextEntryID = 0;
 let navigate: (state: unknown) => void;
 
 beforeEach(() => {
+  vi.useFakeTimers();
   const entries = new Map<string, unknown>();
   let currentID = '';
   const listeners = new Set<() => void>();
+  const navigateListeners = new Set<(e: {navigationType: string}) => void>();
   const newEntry = (state: unknown) => {
     currentID = `e${++nextEntryID}`;
     entries.set(currentID, structuredClone(state));
@@ -28,15 +31,24 @@ beforeEach(() => {
       entries.set(currentID, structuredClone(state));
       for (const listener of listeners) listener();
     },
-    addEventListener: (_type: string, listener: () => void) =>
-      listeners.add(listener),
-    removeEventListener: (_type: string, listener: () => void) =>
-      listeners.delete(listener),
+    addEventListener: (type: string, listener: () => void) =>
+      (type === 'navigate' ? navigateListeners : listeners).add(listener),
+    removeEventListener: (type: string, listener: () => void) =>
+      (type === 'navigate' ? navigateListeners : listeners).delete(listener),
   };
   navigate = state => {
+    for (const listener of navigateListeners) {
+      listener({navigationType: 'push'});
+    }
     newEntry(state);
     for (const listener of listeners) listener();
   };
+});
+
+afterEach(() => {
+  // Let a write still pending land here rather than in the next test's stub.
+  vi.runOnlyPendingTimers();
+  vi.useRealTimers();
 });
 
 function savedAt(scrollTop: number): ScrollHistoryState<unknown> {

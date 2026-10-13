@@ -2,9 +2,8 @@ import {useCallback, useMemo, useSyncExternalStore} from 'react';
 import {
   getHistoryNavigationSnapshot,
   getHistoryStateServerSnapshot,
-  readHistoryState,
   subscribeHistoryState,
-  updateHistoryState,
+  writeHistoryState,
 } from '../core/history-state.ts';
 import type {ScrollHistoryState} from '../core/types.ts';
 
@@ -79,20 +78,11 @@ export function useHistoryScrollState<TStartRow>(
       null) as ScrollHistoryState<TStartRow> | null;
   }, [state, key]);
 
+  // Called on every scroll event: the write is debounced, and goes out early
+  // when a navigation starts (see writeHistoryState).
   const setScrollState = useCallback(
-    (newState: ScrollHistoryState<TStartRow> | null) => {
-      // Re-read the live history state instead of spreading the render-time
-      // snapshot: the virtualizer calls this from a ~100ms persist debounce,
-      // so another virtualizer (under a different key) or the app itself may
-      // have written a sibling key since this closure was created — spreading
-      // the stale snapshot would silently erase that write. (Mirrors the
-      // Solid binding.)
-      const current = readHistoryState();
-      updateHistoryState({
-        ...(current as Record<string, unknown>),
-        [key]: newState,
-      });
-    },
+    (newState: ScrollHistoryState<TStartRow> | null) =>
+      writeHistoryState(key, newState),
     [key],
   );
 
