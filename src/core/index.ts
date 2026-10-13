@@ -24,6 +24,7 @@ export {
   readHistoryState,
   subscribeHistoryState,
   updateHistoryState,
+  writeHistoryState,
 } from './history-state.ts';
 export {
   assembleRows,

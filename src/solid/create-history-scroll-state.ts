@@ -1,9 +1,8 @@
 import {createSignal, onCleanup, type Accessor} from 'solid-js';
 import {
   getHistoryNavigationSnapshot,
-  readHistoryState,
   subscribeHistoryState,
-  updateHistoryState,
+  writeHistoryState,
 } from '../core/history-state.ts';
 import type {ScrollHistoryState} from '../core/types.ts';
 
@@ -64,20 +63,18 @@ export function createHistoryScrollState<TStartRow>(
       null) as ScrollHistoryState<TStartRow> | null;
   };
 
-  const setScrollState = (newState: ScrollHistoryState<TStartRow> | null) => {
-    // The live state, not the navigation snapshot: this is a read-modify-write
-    // over sibling keys, so it has to see writes that came after the last
-    // navigation — including our own.
-    const state = readHistoryState();
-    updateHistoryState({
-      ...(state as Record<string, unknown>),
+  // Called on every scroll event: the write is debounced, and goes out early
+  // when a navigation starts (see writeHistoryState).
+  const setScrollState = (newState: ScrollHistoryState<TStartRow> | null) =>
+    writeHistoryState(
+      key,
       // Zero's Solid useQuery hands out store proxies, and the anchor's start
       // row is taken straight from a query row — so the state can contain a
       // proxy, which the Navigation API's structured clone rejects. Round-trip
-      // through JSON to get plain data.
-      [key]: newState && JSON.parse(JSON.stringify(newState)),
-    });
-  };
+      // through JSON to get plain data — now, while it still describes this
+      // position, rather than when the debounced write goes out.
+      newState && JSON.parse(JSON.stringify(newState)),
+    );
 
   return [scrollState, setScrollState];
 }

@@ -33,9 +33,6 @@ const MIN_PAGE_SIZE = 50;
 
 const NUM_ROWS_FOR_LOADING_SKELETON = 1;
 
-// Debounce for persisting scroll state via onScrollStateChange.
-const PERSIST_DEBOUNCE_MS = 100;
-
 // Use manual anchoring wherever the browser doesn't implement CSS scroll
 // anchoring - notably older versions of Safari. Feature detection, not UA
 // sniffing; overridable via the `anchoring` option.
@@ -145,7 +142,7 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    *
    * This is an instruction — *put the viewport here* — not a mirror of
    * {@linkcode VirtualizerBindingOptions.onScrollStateChange}. Do not feed
-   * what that callback writes back in: by the time a debounced write has
+   * what that callback reports back in: by the time a stored state has
    * completed the round trip the viewport has often moved on (a
    * `scrollToItem` landing, a permalink resolving), and re-applying it undoes
    * that. Change this only when the user navigated — a load, a reload, a
@@ -158,6 +155,14 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    * {@linkcode VirtualizerQueryOptions.toStartRow}.
    */
   scrollState?: ScrollHistoryState<TStartRow> | null | undefined;
+  /**
+   * Reports the scroll state to persist: on every scroll event, and when
+   * paging moves. Store it on a debounce, and store what is pending before a
+   * navigation takes the page elsewhere — otherwise a click while a scroll is
+   * still moving leaves the entry being left holding a position from before
+   * that scroll. The `useHistoryScrollState` / `createHistoryScrollState`
+   * helpers do both.
+   */
   onScrollStateChange?:
     | ((state: ScrollHistoryState<TStartRow>) => void)
     | undefined;
@@ -299,8 +304,8 @@ export function virtualizerResult<TRow>(
 /**
  * How many of the scroll states the core itself wrote are remembered, so they
  * can be recognised when the host hands them back (see `#isOwnScrollState`).
- * A handful covers the round trip: the write is debounced, the host stores it
- * and re-renders, and the one before it can still be in flight behind it.
+ * A handful covers the round trip: the host stores one and re-renders, and the
+ * one before it can still be in flight behind it.
  */
 const OWN_SCROLL_STATES = 4;
 
@@ -308,9 +313,9 @@ const OWN_SCROLL_STATES = 4;
  * How long after a jump a scroll state the core wrote itself is still treated
  * as an echo rather than a restore (see `#isOwnScrollState`).
  *
- * The core persists on a debounce and the host stores it and re-renders, so
- * the position captured just *before* a jump can come back well after it — on
- * a cold cache the jump's own pages can take seconds to arrive, and the echo
+ * The host stores the state, often on a debounce, and re-renders, so the
+ * position captured just *before* a jump can come back well after it — on a
+ * cold cache the jump's own pages can take seconds to arrive, and the echo
  * trails them. Long enough to cover that; short enough that a back/forward
  * navigation, which is a deliberate act seconds later at the earliest, is
  * taken at face value. Only states this virtualizer wrote are affected either
@@ -499,7 +504,6 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // scrolling means no `scrollend` will ever fire for it.
   #gestureScrolled = false;
   #settleTimer: ReturnType<typeof setTimeout> | undefined;
-  #persistTimer: ReturnType<typeof setTimeout> | undefined;
   // The live anchoring state.
   readonly #anchorState = {isScrolling: false, pendingJump: 0};
   // The element currently carrying the held margin (see #holdTarget).
@@ -524,8 +528,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // What comes back as `scrollState` is usually one of them — the host stores
   // what we persist and hands it straight back — and re-applying our own
   // position is at best a no-op. At worst it is the position from *before* a
-  // jump arriving after it (the write is debounced and the host re-renders
-  // asynchronously), which would re-anchor the list out from under the jump.
+  // jump arriving after it (the host may store it on a debounce, and it
+  // re-renders asynchronously), which would re-anchor the list out from under
+  // the jump.
   #ownScrollStates: ScrollHistoryState<TStartRow>[] = [];
 
   // Restore/reset change tracking (the old effect's dependency semantics).
@@ -659,7 +664,6 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.#attachment?.detach();
     this.#attachment = null;
     clearTimeout(this.#settleTimer);
-    clearTimeout(this.#persistTimer);
   }
 
   /**
@@ -876,7 +880,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // suppressed until the next commit renders its rows.
     this.#resolveProbe();
     this.#evaluatePaging();
-    this.#schedulePersist(true);
+    this.#persist(true);
 
     // Cover slow loads and their landing commit, even if the old window expired.
     if (wasJumping || this.#request !== null) {
@@ -1269,8 +1273,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // A landing is done: anchoring takes over from where it put the viewport,
   // with a reference adopted now, before anything else can move the rows.
+  // And the host hears where that is, having heard nothing while it landed.
   #landed(): void {
     if (!this.#anchorSuppressed) this.#refreshAnchor();
+    this.#persist();
   }
 
   // ---- event handlers --------------------------------------------------------
@@ -1294,6 +1300,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.#withNotify(() => {
       this.#resetSettleTimer();
       this.#evaluate();
+      this.#persist();
     });
   };
 
@@ -1303,9 +1310,6 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       if (this.#fingerDown) return;
       this.#withNotify(() => this.#endScrolling());
     }
-    // Persist synchronously at scrollend so navigation during the debounce
-    // window does not lose the final position.
-    this.#persistNow();
   };
 
   #onTouchStart = (): void => {
@@ -1330,7 +1334,6 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #evaluate(): void {
     this.#updatePageSize();
     this.#evaluatePaging();
-    this.#schedulePersist();
   }
 
   // ---- settle ----------------------------------------------------------------
@@ -1802,8 +1805,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // ---- persistence -----------------------------------------------------------
 
-  // The persist-relevant slice of paging state: what a scheduled persist would
-  // write, minus the live scroll offset (which scroll events handle).
+  // The persist-relevant slice of paging state: what a persist writes, minus
+  // the live scroll offset (which scroll events handle).
   #persistState(): PersistState<TStartRow> {
     const s = this.#paging;
     return {
@@ -1827,45 +1830,25 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     );
   }
 
-  // DOM commits schedule only on paging changes; scroll events always debounce.
-  #schedulePersist(onlyIfChanged = false): void {
+  // Scroll events report every time, DOM commits only when paging changed.
+  // Not debounced: only the host knows when the position must be stored by
+  // (a navigation, say), so it gets every position and debounces itself.
+  #persist(onlyIfChanged = false): void {
+    // A landing owns the position until it lands (see #landed). What is on
+    // screen meanwhile is neither where the user was nor where they're going.
+    if (this.#landing()) return;
     const next = this.#persistState();
     if (onlyIfChanged && this.#samePersistState(this.#lastPersisted, next))
       return;
-    const {onScrollStateChange} = this.#options;
-    // Do not persist or record a detached state: a zero offset would clobber
-    // the saved position before a lazy container can restore it.
-    if (
-      !this.#attachment ||
-      !this.#isListContextCurrent() ||
-      !onScrollStateChange
-    ) {
-      return;
-    }
-    this.#lastPersisted = next;
-    clearTimeout(this.#persistTimer);
-    this.#persistTimer = setTimeout(() => {
-      this.#persistTimer = undefined;
-      this.#writeScrollState();
-    }, PERSIST_DEBOUNCE_MS);
-  }
-
-  // Flush on scrollend, before navigation can lose a debounced position.
-  #persistNow(): void {
-    clearTimeout(this.#persistTimer);
-    this.#persistTimer = undefined;
-    this.#lastPersisted = this.#persistState();
-    this.#writeScrollState();
-  }
-
-  // Read the live position; detachment may have happened since scheduling.
-  #writeScrollState(): void {
     const {onScrollStateChange, listContextParams} = this.#options;
     const attachment = this.#attachment;
+    // Do not persist or record a detached state: a zero offset would clobber
+    // the saved position before a lazy container can restore it.
     if (!attachment || !this.#isListContextCurrent() || !onScrollStateChange)
       return;
+    this.#lastPersisted = next;
     const state: ScrollHistoryState<TStartRow> = {
-      ...this.#persistState(),
+      ...next,
       // The logical committed offset: if a gesture is mid-flight with an owed
       // jump held in the wrapper margin, fold it in so restore lands right.
       scrollTop: attachment.scrollTop + this.#anchorState.pendingJump,
