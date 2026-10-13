@@ -380,6 +380,32 @@ describe('masonry', () => {
     expect(pagedAway).toBe(true);
   });
 
+  test('under a finger, a shift of every lane is held until the gesture ends', () => {
+    // Writing scrollTop mid-momentum is ignored on iOS, or ends the fling.
+    // Opened mid-list, paging back up shifts every lane; while a finger is
+    // down that waits in the content wrapper's margin, and goes into
+    // scrollTop when the gesture ends.
+    const h = harness({rowCount: 1000, options: {permalinkID: 'r300'}});
+    h.settle();
+    h.scroller.dispatchEvent(new Event('touchstart'));
+    let held = false;
+    for (let i = 0; i < 40 && !held; i++) {
+      h.userScroll(Math.max(400, h.scroller.scrollTop - 300));
+      const before = h.onScreen();
+      h.settle();
+      expect(h.onScreen()).toMatchObject(before);
+      held = h.wrapper.style.marginTop !== '';
+    }
+    expect(held).toBe(true);
+
+    const before = h.onScreen();
+    h.scroller.dispatchEvent(new Event('touchend'));
+    h.scroller.dispatchEvent(new Event('scrollend'));
+    h.tick();
+    expect(h.wrapper.style.marginTop).toBe('');
+    expect(h.onScreen()).toEqual(before);
+  });
+
   test('a card growing above the viewport moves only its lane, above it', () => {
     const h = harness({rowCount: 1000});
     h.settle();
@@ -542,6 +568,21 @@ describe('masonry', () => {
 
     h.setOptions({...h.coreOptions, masonry: true});
     h.settle();
+
+    expect(h.cardTop(key)).toBe(top);
+  });
+
+  test('leaving masonry keeps the row at the top of the viewport where it is', () => {
+    const h = harness({rowCount: 1000, options: {anchoring: 'manual'}});
+    h.settle();
+    h.userScroll(2000);
+    h.settle();
+    const [key, top] = Object.entries(h.onScreen()).sort(
+      (a, b) => Number(a[0].slice(1)) - Number(b[0].slice(1)),
+    )[0];
+
+    h.setOptions({...h.coreOptions, masonry: false});
+    h.tick();
 
     expect(h.cardTop(key)).toBe(top);
   });

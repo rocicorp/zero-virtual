@@ -620,9 +620,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     null;
   // A restore's saved cards, pinned until the restore lands.
   #laneCards: ScrollHistoryState<TStartRow>['laneCards'] = undefined;
-  // Switching into masonry: the row that was at the top of the viewport,
-  // and its offset, to keep in place (see setOptions).
-  #laneEntry: readonly [string, number] | null = null;
+  // Switching masonry on or off: the row that was at the top of the
+  // viewport, and its offset, to keep in place (see setOptions).
+  #switchEntry: readonly [string, number] | null = null;
 
   // Restore/reset change tracking (the old effect's dependency semantics).
   #appliedScrollState: ScrollHistoryState<TStartRow> | null = null;
@@ -673,14 +673,18 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   ): void {
     const prev = this.#options;
     const wasMasonry = this.#masonry();
+    // Switching masonry on or off keeps the row at the top of the viewport
+    // where it is: read it now, while the DOM still shows the layout being
+    // left. Going in, masonry lays its lanes out afresh around it; going out,
+    // the next commit scrolls it back into place (see #measureAndCompensate).
+    const switching = isMasonry(options) !== wasMasonry;
     this.#options = options;
-    // Switching masonry on or off lays the lanes out afresh next time. Going
-    // in, keep the row at the top of the viewport where it is: read it now,
-    // while the DOM still shows the list or grid it's leaving.
-    if (this.#masonry() !== wasMasonry) {
+    if (switching) {
+      this.#switchEntry = this.#topRowNow();
       this.#laneContext = null;
       this.#laneLayout = null;
-      this.#laneEntry = wasMasonry ? null : this.#topRowNow();
+      // The list's reference row is from before masonry.
+      this.#anchorKey = null;
     }
     // Invalidate only options used by the snapshot. Ingestion stays silent
     // so callers can safely read the updated snapshot during render.
@@ -1077,17 +1081,12 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     return Math.max(1, this.#options.estimateSize(0));
   }
 
-  // Grid columns; anything but a finite positive count is a plain list.
   #lanes(): number {
-    const {lanes} = this.#options;
-    return lanes !== undefined && Number.isFinite(lanes) && lanes >= 1
-      ? Math.floor(lanes)
-      : 1;
+    return lanesOf(this.#options);
   }
 
-  // Masonry needs more than one lane to mean anything.
   #masonry(): boolean {
-    return this.#options.masonry === true && this.#lanes() > 1;
+    return isMasonry(this.#options);
   }
 
   #effectiveEstimatedTotal(): number {
@@ -1211,25 +1210,26 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   // Shared visibility definition for paging and public visible-item helpers.
-  // Rows are in DOM order, so stop below the viewport — except in masonry,
-  // where the DOM goes lane by lane.
+  // Rows are in DOM order, top to bottom, so stop below the viewport — in
+  // masonry, lane by lane.
   #visibleIndexRange(
     attachment: Attachment<TRow>,
   ): {first: number; last: number} | null {
     const {top: elTop, bottom: elBottom} = attachment.viewport;
-    const masonry = this.#masonry();
     let first = Infinity;
     let last = -Infinity;
-    for (const child of queryRows(attachment.el)) {
-      const rect = child.getBoundingClientRect();
-      if (rect.top >= elBottom) {
-        if (masonry) continue;
-        break;
-      }
-      if (rectInViewport(rect, elTop, elBottom)) {
-        const idx = Number(child.getAttribute(VROW_INDEX_ATTR));
-        if (idx < first) first = idx;
-        if (idx > last) last = idx;
+    const columns = this.#masonry()
+      ? queryLanes(attachment.el).filter(lane => lane !== undefined)
+      : [attachment.el];
+    for (const column of columns) {
+      for (const child of queryRows(column)) {
+        const rect = child.getBoundingClientRect();
+        if (rect.top >= elBottom) break;
+        if (rectInViewport(rect, elTop, elBottom)) {
+          const idx = Number(child.getAttribute(VROW_INDEX_ATTR));
+          if (idx < first) first = idx;
+          if (idx > last) last = idx;
+        }
       }
     }
     return first === Infinity ? null : {first, last};
@@ -1309,6 +1309,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   #refreshAnchor(): void {
+    // Masonry keeps each lane in place itself (see #layOutLanes).
+    if (this.#masonry()) return;
     const attachment = this.#attachment;
     if (!attachment) return;
     const vTop = attachment.viewport.top;
@@ -1346,6 +1348,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       this.#layOutLanes();
       return;
     }
+    this.#returnFromMasonry();
     // A landing or context reset owns the position until its rows arrive.
     if (
       !this.#manual() ||
@@ -1377,6 +1380,24 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       this.#anchorOffset;
     if (Math.abs(delta) < 0.5) return;
     this.#compensate(delta);
+  }
+
+  // Out of masonry: put the row that was at the top of the viewport back
+  // where it was. By where it is on screen now, not by content offsets: the
+  // browser has likely clamped scrollTop to the shorter list in between.
+  #returnFromMasonry(): void {
+    const entry = this.#switchEntry;
+    const attachment = this.#attachment;
+    if (entry === null || !attachment) return;
+    this.#switchEntry = null;
+    const row = findRow(attachment.el, entry[0]);
+    if (!row) return;
+    const moved =
+      row.getBoundingClientRect().top - attachment.viewport.top - entry[1];
+    if (Math.abs(moved) >= 0.5) {
+      this.#setScrollTop(attachment.scrollTop + moved);
+    }
+    this.#refreshAnchor();
   }
 
   // Commit the held correction to scrollTop before clearing its margin.
@@ -1457,6 +1478,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.#programmaticScroll = false;
     // The user has taken the position over from a restore still landing.
     if (!programmatic) this.#restoreScrollTop = null;
+    // Cards placed before they're measured go by where the viewport is now.
+    if (this.#masonry()) {
+      this.#laneViewportTop = this.#measureLaneViewportTop();
+    }
     // User/momentum scrolls rebase the anchor; our own scrollTop writes do not.
     if (this.#manual() && !programmatic) {
       this.#anchorState.isScrolling = true;
@@ -1927,20 +1952,23 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   // The row in the list that reaches into the viewport first, as rendered
-  // now, and how far below the viewport's top it starts.
+  // now, and how far below the viewport's top it starts. Only for switching
+  // layouts, so it scans every row rather than trust the DOM order of the
+  // layout it's leaving.
   #topRowNow(): readonly [string, number] | null {
     const attachment = this.#attachment;
-    const range = attachment && this.#visibleIndexRange(attachment);
-    if (!attachment || !range) return null;
+    if (!attachment) return null;
+    const {top, bottom} = attachment.viewport;
+    let best: {index: number; key: string; offset: number} | null = null;
     for (const row of queryRows(attachment.el)) {
-      if (Number(row.getAttribute(VROW_INDEX_ATTR)) === range.first) {
-        return [
-          row.getAttribute(VROW_KEY_ATTR) ?? '',
-          row.getBoundingClientRect().top - attachment.viewport.top,
-        ];
+      const rect = row.getBoundingClientRect();
+      const index = Number(row.getAttribute(VROW_INDEX_ATTR));
+      if (rectInViewport(rect, top, bottom) && (!best || index < best.index)) {
+        const key = row.getAttribute(VROW_KEY_ATTR) ?? '';
+        best = {index, key, offset: rect.top - top};
       }
     }
-    return null;
+    return best && [best.key, best.offset];
   }
 
   // Whether the layout belongs to the list and lane count as they are now.
@@ -2101,11 +2129,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       const sameList =
         this.#laneContext?.listContextParams ===
         this.#options.listContextParams;
-      const keep = (sameList ? this.#laneTopCard() : null) ?? this.#laneEntry;
+      const keep = (sameList ? this.#laneTopCard() : null) ?? this.#switchEntry;
       // A restore already landing keeps its own pins.
       const restore =
         this.#restoreScrollTop !== null ? this.#laneCards : undefined;
-      this.#laneEntry = null;
+      this.#switchEntry = null;
       this.#laneContext = {
         lanes,
         listContextParams: this.#options.listContextParams,
@@ -2427,6 +2455,21 @@ function setPx(
 ): void {
   const value = `${px}px`;
   if (el.style[prop] !== value) el.style[prop] = value;
+}
+
+/** Grid columns; anything but a finite positive count is a plain list. */
+function lanesOf({lanes}: {lanes?: number | undefined}): number {
+  return lanes !== undefined && Number.isFinite(lanes) && lanes >= 1
+    ? Math.floor(lanes)
+    : 1;
+}
+
+/** Masonry needs more than one lane to mean anything. */
+function isMasonry(options: {
+  lanes?: number | undefined;
+  masonry?: boolean | undefined;
+}): boolean {
+  return options.masonry === true && lanesOf(options) > 1;
 }
 
 /** The grid column of row `index`; never negative, even mid-renumbering. */

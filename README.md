@@ -411,8 +411,8 @@ return (
 - Opened in the middle of the list (a permalink, a far `scrollToItem`), the
   cards above are placed upward, so once the list's true start has loaded the
   lanes can start a little unevenly — by up to about one card.
-- Changing `lanes` lays the cards out afresh, keeping the first card on screen
-  where it is.
+- Changing `lanes`, or switching `masonry` on or off, lays the cards out
+  afresh, keeping the first card on screen where it is.
 
 ### Scroll anchoring modes
 

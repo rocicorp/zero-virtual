@@ -93,8 +93,8 @@ cards pack like a grid.
 - Open a permalink far down the list in a fresh tab: the card lands at the top
   and stays there while the cards above load. Scroll up to the start — the
   lanes may start a little unevenly there, by up to about a card.
-- Switch between 2, 3 and 4 columns mid-list: the first card on screen stays
-  put.
+- Switch between 2, 3 and 4 columns mid-list, and between masonry and the
+  list or a grid: the first card on screen stays put.
 - Try it under `Window scroll` as well, and on iOS: momentum scrolling up
   through pages loading above must not stall or jump.
 
