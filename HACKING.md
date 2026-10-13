@@ -94,7 +94,9 @@ cards pack like a grid.
   and stays there while the cards above load. Scroll up to the start — the
   lanes may start a little unevenly there, by up to about a card.
 - Switch between 2, 3 and 4 columns mid-list, and between masonry and the
-  list or a grid: the first card on screen stays put.
+  list or a grid: the cards re-flow into the new lanes. The scroll position
+  stays, so what's under the viewport can shift; nothing else should move
+  afterwards.
 - Try it under `Window scroll` as well, and on iOS: momentum scrolling up
   through pages loading above must not stall or jump.
 

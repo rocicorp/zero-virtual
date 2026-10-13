@@ -634,9 +634,6 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // how far below the viewport's top it goes, until it renders.
   #laneCards: ScrollHistoryState<TStartRow>['laneCards'] = undefined;
   readonly #lanePins = new Map<string, number>();
-  // Switching layouts: the row that was at the top of the viewport, and its
-  // offset, to keep in place (see setOptions).
-  #switchEntry: readonly [string, number] | null = null;
 
   // Restore/reset change tracking (the old effect's dependency semantics).
   #appliedScrollState: ScrollHistoryState<TStartRow> | null = null;
@@ -686,17 +683,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     options: VirtualizerOptions<TListContextParams, TRow, TStartRow>,
   ): void {
     const prev = this.#options;
-    // Switching layouts — masonry on or off, or another lane count — keeps
-    // the row at the top of the viewport where it is: read it now, while the
-    // DOM still shows the layout being left (see #keepSwitchEntry). The
-    // lanes start afresh, and so does the reference row.
-    const switching =
-      isMasonry(options) !== isMasonry(prev) ||
-      (isMasonry(options) && lanesOf(options) !== lanesOf(prev));
-    if (switching) {
-      // A restore landing says where to go already.
-      this.#switchEntry =
-        this.#restoreScrollTop === null ? this.#topRowNow() : null;
+    // Switching masonry on or off lays the lanes out afresh, and the list's
+    // reference row is from before.
+    if (isMasonry(options) !== isMasonry(prev)) {
       this.#laneContext = null;
       this.#anchorKey = null;
     }
@@ -1363,13 +1352,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #measureAndCompensate(): void {
     // Masonry keeps each lane in place itself, landing or not, and scrolls
     // with a shift of every lane; a reference row would only re-measure the
-    // cards the layout moves on purpose. Nothing else runs until a render
-    // the layout asked for is in.
+    // cards the layout moves on purpose.
     if (this.#masonry()) {
-      if (!this.#layOutLanes()) this.#keepSwitchEntry();
+      this.#layOutLanes();
       return;
     }
-    this.#keepSwitchEntry();
     // A landing or context reset owns the position until its rows arrive.
     if (
       !this.#manual() ||
@@ -1456,15 +1443,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     return this.#rowsAnswerQuery() && this.#rows.complete;
   }
 
-  // A jump to a row, a restore, or a layout switch owns the scroll position
-  // while it lands: anchoring compensation and paging stand down until its
-  // window settles.
+  // A jump to a row, or a restore, owns the scroll position while it lands:
+  // anchoring compensation and paging stand down until its window settles.
   #landing(): boolean {
-    return (
-      this.#request?.phase === 'scroll' ||
-      this.#restoreScrollTop !== null ||
-      this.#switchEntry !== null
-    );
+    return this.#request?.phase === 'scroll' || this.#restoreScrollTop !== null;
   }
 
   // A landing is done: anchoring takes over from where it put the viewport,
@@ -1720,11 +1702,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     }
 
     this.#restoreScrollTop = eff?.scrollTop ?? null;
-    if (eff && this.#masonry()) {
-      this.#seedLanes(eff.laneCards);
-      // The restore says where to go; a layout switch underway doesn't.
-      this.#switchEntry = null;
-    }
+    if (eff && this.#masonry()) this.#seedLanes(eff.laneCards);
     if (eff) {
       // A same-position persistence echo must not disturb the live anchor.
       if (this.#setScrollTop(eff.scrollTop)) {
@@ -2037,15 +2015,14 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   // Keep every lane in place and size the lanes, from what the DOM shows now
-  // against what it showed last time. Returns whether a render was asked
-  // for: cards placed at the estimate and now measured belong in other lanes.
-  #layOutLanes(): boolean {
+  // against what it showed last time.
+  #layOutLanes(): void {
     const attachment = this.#attachment;
-    if (!attachment) return false;
+    if (!attachment) return;
     this.#resetLanesIfStale();
     const laneEls = queryLanes(attachment.el);
     const firstLane = laneEls.find(el => el !== undefined);
-    if (firstLane === undefined) return false;
+    if (firstLane === undefined) return;
     const lanes = this.#lanes();
     const estimate = this.#rowEstimate();
     const rows = this.#rows;
@@ -2207,53 +2184,13 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // Cards placed at the estimate, now measured: place them again by their
     // real heights, and render once more, still before paint, if that moves
     // any. The next pass keeps the lanes in place around the moves.
-    if (placed.size === 0) return false;
+    if (placed.size === 0) return;
     for (const key of placed) this.#laneOf.delete(key);
     const laneOf = this.#assignLanes();
     const moved = now.some((lane, l) =>
       lane.some(card => placed.has(card.key) && laneOf.get(card.key) !== l),
     );
     if (moved) this.#version++;
-    return moved;
-  }
-
-  // Switching layouts: put the row that was at the top of the viewport back
-  // where it was, by where it is on screen now (see setOptions).
-  #keepSwitchEntry(): void {
-    const entry = this.#switchEntry;
-    const attachment = this.#attachment;
-    if (entry === null || !attachment) return;
-    const row = findRow(attachment.el, entry[0]);
-    if (!row) return;
-    const moved =
-      row.getBoundingClientRect().top - attachment.viewport.top - entry[1];
-    if (Math.abs(moved) >= 0.5) {
-      this.#setScrollTop(attachment.scrollTop + moved);
-    }
-    // Until the window the switch queried is in, the content can be too
-    // short to scroll that far: keep putting the row back.
-    if (!this.#rowsSettled()) return;
-    this.#switchEntry = null;
-    this.#refreshAnchor();
-  }
-
-  // The row in the list that reaches into the viewport first, as rendered
-  // now, and how far below the viewport's top it starts. Scans every row,
-  // since the DOM order of the layout being left may go lane by lane.
-  #topRowNow(): readonly [string, number] | null {
-    const attachment = this.#attachment;
-    if (!attachment) return null;
-    const {top, bottom} = attachment.viewport;
-    let best: {index: number; key: string; offset: number} | null = null;
-    for (const row of queryRows(attachment.el)) {
-      const rect = row.getBoundingClientRect();
-      const index = Number(row.getAttribute(VROW_INDEX_ATTR));
-      if (rectInViewport(rect, top, bottom) && (!best || index < best.index)) {
-        const key = row.getAttribute(VROW_KEY_ATTR) ?? '';
-        best = {index, key, offset: rect.top - top};
-      }
-    }
-    return best && [best.key, best.offset];
   }
 
   // What a restore needs to put the cards on screen back (see

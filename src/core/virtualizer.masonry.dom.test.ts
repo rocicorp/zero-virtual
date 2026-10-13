@@ -267,58 +267,6 @@ describe('masonry', () => {
     expect(h.scroller.style.overflowAnchor).toBe('none');
   });
 
-  test('switching to masonry keeps the row at the top of the viewport where it is', () => {
-    const h = harness({rowCount: 1000, options: {masonry: false}});
-    h.settle();
-    h.userScroll(300);
-    h.settle();
-    const [key, top] = Object.entries(h.onScreen()).sort(
-      (a, b) => Number(a[0].slice(1)) - Number(b[0].slice(1)),
-    )[0];
-
-    h.setOptions({...h.coreOptions, masonry: true});
-    h.settle();
-
-    expect(h.cardTop(key)).toBe(top);
-  });
-
-  test('more lanes keep the first card where it is when the lanes are short at first', () => {
-    // Twice the lanes make the loaded cards half as tall: until the bigger
-    // page the new count queries is in, the content doesn't reach the card's
-    // position and the browser clamps the viewport short of it. Paging must
-    // not re-anchor on the clamped viewport meanwhile, and the card goes
-    // back once the window has settled.
-    const h = harness({rowCount: 1000, lanes: 2});
-    h.settle();
-    h.userScroll(2000);
-    h.settle();
-    const [key, top] = Object.entries(h.onScreen()).sort(
-      (a, b) => Number(a[0].slice(1)) - Number(b[0].slice(1)),
-    )[0];
-
-    h.setOptions({...h.coreOptions, lanes: 4});
-    h.tick();
-    expect(h.scroller.scrollTop + 600).toBe(h.scroller.scrollHeight);
-    h.settle();
-
-    expect(h.cardTop(key)).toBe(top);
-  });
-
-  test('leaving masonry keeps the row at the top of the viewport where it is', () => {
-    const h = harness({rowCount: 1000, options: {anchoring: 'manual'}});
-    h.settle();
-    h.userScroll(2000);
-    h.settle();
-    const [key, top] = Object.entries(h.onScreen()).sort(
-      (a, b) => Number(a[0].slice(1)) - Number(b[0].slice(1)),
-    )[0];
-
-    h.setOptions({...h.coreOptions, masonry: false});
-    h.tick();
-
-    expect(h.cardTop(key)).toBe(top);
-  });
-
   test('a restore keeps its cards when the lane count arrives a commit later', () => {
     const states: ScrollHistoryState<TestRow>[] = [];
     const h = harness({
@@ -347,6 +295,23 @@ describe('masonry', () => {
     expect(h.onScreen()).toEqual(before);
   });
 
+  test('a new lane count lays the cards out afresh', () => {
+    const h = harness({rowCount: 1000});
+    h.settle();
+    h.userScroll(2000);
+    h.settle();
+
+    h.setOptions({...h.coreOptions, lanes: 4});
+    h.settle();
+
+    expect(h.lanes()).toHaveLength(4);
+    const {items} = h.core.getSnapshot();
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      expect(h.laneKeys()[item.lane]).toContain(String(item.key));
+    }
+  });
+
   test('more lanes at the end of the list land at the end, like a grid', () => {
     // In four lanes the same cards end well above where the viewport was:
     // the browser clamps scrollTop to the shorter content, and the view
@@ -363,7 +328,11 @@ describe('masonry', () => {
     h.settle();
 
     expect(h.lanes()).toHaveLength(4);
-    expect(h.scroller.scrollTop + 600).toBe(h.scroller.scrollHeight);
+    // Within a card of the end: the browser clamps while the content is at
+    // its shortest, and the cards measured after that can add a little.
+    const short = h.scroller.scrollHeight - (h.scroller.scrollTop + 600);
+    expect(short).toBeGreaterThanOrEqual(0);
+    expect(short).toBeLessThan(128);
     expect(h.laneKeys().flat()).toContain('r99');
   });
 
@@ -391,23 +360,5 @@ describe('masonry', () => {
       expect(h.onScreen()).toMatchObject(before);
     }
     expect(lagged).toBeGreaterThan(3);
-  });
-
-  test('a new lane count keeps the first card on screen where it is', () => {
-    const h = harness({rowCount: 1000});
-    h.settle();
-    h.userScroll(2000);
-    h.settle();
-    // The first card in the list that reaches into the viewport, partly
-    // above its top or not.
-    const [key, top] = Object.entries(h.onScreen()).sort(
-      (a, b) => Number(a[0].slice(1)) - Number(b[0].slice(1)),
-    )[0];
-
-    h.setOptions({...h.coreOptions, lanes: 4});
-    h.settle();
-
-    expect(h.lanes()).toHaveLength(4);
-    expect(h.cardTop(key)).toBe(top);
   });
 });

@@ -412,7 +412,8 @@ return (
   cards above are placed upward, so once the list's true start has loaded the
   lanes can start a little unevenly — by up to about one card.
 - Changing `lanes`, or switching `masonry` on or off, lays the cards out
-  afresh, keeping the first card on screen where it is.
+  afresh. The scroll position stays, so the cards under the viewport can
+  shift.
 
 ### Scroll anchoring modes
 
