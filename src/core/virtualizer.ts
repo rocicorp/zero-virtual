@@ -144,9 +144,10 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
   settleTime?: number | undefined;
   /**
    * Floor for the query page size. The page size is derived from the viewport
-   * (about three viewports' worth of rows at `estimateSize`), but never drops
-   * below this floor. Defaults to 50 — sized for short rows; lower it for
-   * tall rows (cards, comments) where 50 rows is many viewports of content.
+   * (about three viewports' worth of rows at `estimateSize`, times `lanes` in
+   * a grid), but never drops below this floor. Defaults to 50 — sized for
+   * short rows; lower it for tall rows (cards, comments) where 50 rows is
+   * many viewports of content.
    * Rounded up to an even number (paging halves pages around permalinks).
    */
   minPageSize?: number | undefined;

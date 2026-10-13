@@ -80,6 +80,12 @@ export function DevPanel(props: {
               <option value="2">Grid · 2 columns</option>
               <option value="3">Grid · 3 columns</option>
               <option value="4">Grid · 4 columns</option>
+              {/* A wider grid asked for in the URL (`?lanes=`). */}
+              <Show when={props.lanes > 4}>
+                <option value={props.lanes}>
+                  Grid · {props.lanes} columns
+                </option>
+              </Show>
             </select>
           </label>
           <AddControls sortDirection={props.sortDirection} />

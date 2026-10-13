@@ -122,6 +122,8 @@ export function DevPanel({
             <option value="2">Grid · 2 columns</option>
             <option value="3">Grid · 3 columns</option>
             <option value="4">Grid · 4 columns</option>
+            {/* A wider grid asked for in the URL (`?lanes=`). */}
+            {lanes > 4 && <option value={lanes}>Grid · {lanes} columns</option>}
           </select>
         </label>
         <AddControls sortDirection={sortDirection} />
