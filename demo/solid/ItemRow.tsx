@@ -51,7 +51,9 @@ function rowPresentation(
 
 // Reads props via accessors (no destructuring): `item` is a store node the
 // binding keeps stable per row key, so the same DOM node survives paging
-// while its index/heightMode/permalink props update in place.
+// while its index/lane/heightMode/permalink props update in place. In a grid
+// the row places itself in its column (`lane`); a plain list's block layout
+// ignores that.
 export function ItemRow(props: {
   item: VirtualRow<Item>;
   heightMode: HeightMode;
@@ -61,7 +63,8 @@ export function ItemRow(props: {
   const presentation = () => rowPresentation(props.heightMode, props.item.row);
   const style = () => {
     const {height} = presentation();
-    return height === undefined ? undefined : `height: ${height}px;`;
+    const column = `grid-column: ${props.item.lane + 1};`;
+    return height === undefined ? column : `height: ${height}px; ${column}`;
   };
 
   return (

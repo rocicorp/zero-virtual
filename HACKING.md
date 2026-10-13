@@ -64,6 +64,22 @@ field falls back to the hash when left empty.)
   land just below the sticky header, not behind it (the demo keeps
   `scroll-padding-top` on the document in sync with the header's height).
 
+## Grids (`lanes`)
+
+The dev panel's `layout` select (`?lanes=N` in the URL) renders the list as a
+grid with N columns.
+
+- Scroll down several pages and back up, with both `manual` and `native`
+  anchoring: rows on screen must not jump as pages load above or below, and a
+  row must never move to another column.
+- Open a permalink far down the list in a fresh tab (a cold load, so row
+  numbers start out relative), then scroll up: rows keep their columns while
+  pages load above. When the very first row loads it lands in the first
+  column, and the grid re-flows once — that one shift is expected.
+- Switch between `List` and the grid layouts mid-list: the rows re-flow into
+  the new columns without the list resetting to the top.
+- Try it under `Window scroll` as well.
+
 ## Releasing
 
 Releases are published to npm automatically via CI when a version tag is pushed. To cut a new patch release:

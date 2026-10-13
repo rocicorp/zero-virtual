@@ -4,6 +4,7 @@ import type {
   GetSingleQueryOptions,
 } from '../../src/solid/index.ts';
 import {createMemo} from 'solid-js';
+import styles from '../shared/App.module.css';
 import {
   queries,
   type ItemStart,
@@ -16,6 +17,22 @@ export type HeightMode = 'uniform' | 'fixed' | 'dynamic';
 
 export const ITEM_HEIGHT = 48;
 export const SIZE_ESTIMATE = 80;
+
+/**
+ * Props for the rows' content wrapper. As a grid (`lanes` > 1) each row places
+ * itself in its column (see `ItemRow`) and the spacers span every column.
+ */
+export function contentWrapperProps(lanes: number): {
+  class?: string;
+  style?: string;
+} {
+  return lanes > 1
+    ? {
+        class: styles.grid,
+        style: `grid-template-columns: repeat(${lanes}, minmax(0, 1fr));`,
+      }
+    : {};
+}
 
 export function getRowKey(item: Item): string {
   return item.id;
@@ -82,8 +99,18 @@ export function createEstimateSize(heightMode: () => HeightMode): () => number {
   return () => (heightMode() === 'uniform' ? ITEM_HEIGHT : SIZE_ESTIMATE);
 }
 
+/**
+ * The `?lanes=` column count: a whole number of at least 1. Anything else —
+ * `Infinity`, a negative, text — falls back to a plain list.
+ */
+function parseLanes(value: string): number {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
 export function createDemoControls() {
   const [heightModeStr, setHeightMode] = createUrlState('height', 'uniform');
+  const [lanesStr, setLanes] = createUrlState('lanes', '1');
   const [anchoringStr, setAnchoring] = createUrlState('anchoring', 'manual');
   const [countStr] = createUrlState('count', '');
   const [follow, setFollow] = createUrlState('follow', 'off');
@@ -97,6 +124,8 @@ export function createDemoControls() {
   return {
     heightMode: () => heightModeStr() as HeightMode,
     setHeightMode,
+    lanes: () => parseLanes(lanesStr()),
+    setLanes,
     anchoring: () => anchoringStr() as AnchoringMode,
     setAnchoring,
     count,

@@ -142,6 +142,12 @@ export type VirtualRow<TRow> = {
   key: RowKey;
   /** The row data, or undefined while the row is still loading. */
   row: TRow | undefined;
+  /**
+   * The grid column the row belongs in, from `0` to `lanes - 1` — always `0`
+   * in a plain list. Place the row with it (`gridColumn: lane + 1`); see the
+   * `lanes` option.
+   */
+  lane: number;
 };
 
 /**

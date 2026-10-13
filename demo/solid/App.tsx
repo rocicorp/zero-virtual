@@ -10,6 +10,7 @@ import {ItemDetail} from './ItemDetail.tsx';
 import {ItemRow} from './ItemRow.tsx';
 import {ListHeader} from './ListHeader.tsx';
 import {
+  contentWrapperProps,
   createDemoControls,
   createEstimateSize,
   createGetPageQuery,
@@ -36,6 +37,8 @@ export function App() {
   const {
     heightMode,
     setHeightMode,
+    lanes,
+    setLanes,
     anchoring,
     setAnchoring,
     count,
@@ -56,6 +59,7 @@ export function App() {
     getScrollElement,
     anchoring: anchoring(),
     count: count(),
+    lanes: lanes(),
     getRowKey,
     estimateSize,
     getPageQuery,
@@ -86,10 +90,16 @@ export function App() {
         />
         <div ref={parentRef} class={styles.viewport}>
           {/* Content wrapper. `spaceBefore` / `spaceAfter` stand in for the
-              unloaded rows above and below, rendered as spacer elements so
-              scroll anchoring keeps the viewport stable across paging. */}
-          <div>
-            <div style={{height: `${virtualizer().spaceBefore}px`}} />
+              unloaded rows above and below, rendered as spacer elements
+              (spanning every column when `lanes` makes the wrapper a grid)
+              so scroll anchoring keeps the viewport stable across paging. */}
+          <div {...contentWrapperProps(lanes())}>
+            <div
+              style={{
+                'height': `${virtualizer().spaceBefore}px`,
+                'grid-column': '1 / -1',
+              }}
+            />
             {/* Plain <For> is safe here: the binding exposes items as a store
                 reconciled by row key, so a row's VirtualRow instance — and
                 with it the DOM node scroll anchoring measures against —
@@ -104,7 +114,12 @@ export function App() {
                 />
               )}
             </For>
-            <div style={{height: `${virtualizer().spaceAfter}px`}} />
+            <div
+              style={{
+                'height': `${virtualizer().spaceAfter}px`,
+                'grid-column': '1 / -1',
+              }}
+            />
           </div>
         </div>
       </div>
@@ -117,6 +132,8 @@ export function App() {
         getScrollElement={getScrollElement}
         heightMode={heightMode()}
         onHeightModeChange={setHeightMode}
+        lanes={lanes()}
+        onLanesChange={setLanes}
         sortDirection={sortDirection() as 'asc' | 'desc'}
         anchoring={anchoring()}
         onAnchoringChange={setAnchoring}

@@ -2,9 +2,12 @@ import {afterEach, describe, expect, test, vi} from 'vitest';
 import {assembleRows, type RowsQueryInputs} from './rows.ts';
 import {VROW_INDEX_ATTR, VROW_KEY_ATTR} from './dom.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
-import type {Anchor, ScrollHistoryState} from './types.ts';
+import type {Anchor, ScrollHistoryState, VirtualRow} from './types.ts';
 
 type TestRow = {id: string; rowid?: bigint};
+
+// Where the harness records each rendered row's grid column (`item.lane`).
+const LANE_ATTR = 'data-test-lane';
 
 /**
  * A DOM-attached harness for the imperative side of the core, which the
@@ -35,6 +38,7 @@ function createHarness({
   viewportTop = 0,
   windowScroll = false,
   bigintRows = false,
+  lanes = 1,
   options = {},
 }: {
   rowCount: number;
@@ -44,6 +48,8 @@ function createHarness({
   windowScroll?: boolean;
   /** Give rows an int64-ish column, which JSON can't serialize. */
   bigintRows?: boolean;
+  /** Lay the rows out as a grid with this many columns. */
+  lanes?: number;
   options?: Partial<VirtualizerOptions<unknown, TestRow, TestRow>>;
 }) {
   const data: TestRow[] = Array.from({length: rowCount}, (_, i) => ({
@@ -59,13 +65,34 @@ function createHarness({
   document.body.appendChild(scroller);
 
   const paddingPx = (v: string) => (v ? Number.parseFloat(v) : 0);
+
+  // Lay the rows out the way CSS grid places cells with explicit columns
+  // (`gridColumn: lane + 1`): a row whose column isn't right of the previous
+  // row's starts a new grid row, and a grid row is as tall as its tallest
+  // cell. With one lane every row is its own grid row — a plain list.
+  const layout = () => {
+    const cells = new Map<Element, {top: number; height: number}>();
+    let gridRowTop = 0;
+    let gridRowHeight = 0;
+    let prevLane = Infinity;
+    for (const child of wrapper.children) {
+      const lane = Number(child.getAttribute(LANE_ATTR));
+      if (lane <= prevLane) {
+        gridRowTop += gridRowHeight;
+        gridRowHeight = 0;
+      }
+      prevLane = lane;
+      const height = heightOf(child.getAttribute(VROW_KEY_ATTR) ?? '');
+      gridRowHeight = Math.max(gridRowHeight, height);
+      cells.set(child, {top: gridRowTop, height});
+    }
+    return {cells, height: gridRowTop + gridRowHeight};
+  };
+
   const contentHeight = () =>
     paddingPx(wrapper.style.paddingTop) +
     paddingPx(wrapper.style.marginTop) +
-    [...wrapper.children].reduce(
-      (sum, c) => sum + heightOf(c.getAttribute(VROW_KEY_ATTR) ?? ''),
-      0,
-    ) +
+    layout().height +
     paddingPx(wrapper.style.paddingBottom);
 
   // scrollTop with browser-style clamping; writes queue a scroll event.
@@ -112,17 +139,16 @@ function createHarness({
     rect(windowScroll ? -scrollTop : viewportTop, viewportHeight);
 
   const rowRect = (el: Element): DOMRect => {
-    let top =
+    const cell = layout().cells.get(el);
+    if (!cell) throw new Error('row not in wrapper');
+    return rect(
       viewportTop -
-      scrollTop +
-      paddingPx(wrapper.style.paddingTop) +
-      paddingPx(wrapper.style.marginTop);
-    for (const child of wrapper.children) {
-      const h = heightOf(child.getAttribute(VROW_KEY_ATTR) ?? '');
-      if (child === el) return rect(top, h);
-      top += h;
-    }
-    throw new Error('row not in wrapper');
+        scrollTop +
+        paddingPx(wrapper.style.paddingTop) +
+        paddingPx(wrapper.style.marginTop) +
+        cell.top,
+      cell.height,
+    );
   };
 
   // The injected observers: rect reports immediately (like a ResizeObserver's
@@ -137,6 +163,7 @@ function createHarness({
     // spaceBefore) stay fixed to a 100-row page rather than tracking the
     // minPageSize default.
     minPageSize: 100,
+    lanes,
     observeElementRect: (_instance, cb) => {
       cb({width: 300, height: viewportHeight});
     },
@@ -261,6 +288,7 @@ function createHarness({
       }
       el.setAttribute(VROW_KEY_ATTR, key);
       el.setAttribute(VROW_INDEX_ATTR, String(item.index));
+      el.setAttribute(LANE_ATTR, String(item.lane));
       return el;
     });
     wrapper.replaceChildren(...next);
@@ -549,6 +577,121 @@ describe('manual scroll anchoring against a real (fake-geometry) container', () 
 
     expect(h.scroller.scrollTop).toBe(1000);
     expect(h.rowTop('r50')).toBe(0);
+  });
+});
+
+describe('a grid (lanes) against a real (fake-geometry) container', () => {
+  // Three columns of 20px grid rows in a 400px viewport: 20 grid rows, 60
+  // rows on screen.
+
+  // Every row's column as first seen; a later sighting must agree.
+  const columnTracker = () => {
+    const columns = new Map<string, number>();
+    return (items: ReadonlyArray<VirtualRow<TestRow>>) => {
+      for (const {key, lane} of items) {
+        const seen = columns.get(String(key));
+        if (seen === undefined) columns.set(String(key), lane);
+        else expect(lane, `column of ${key}`).toBe(seen);
+      }
+    };
+  };
+
+  test('pages hold three viewports of grid rows', () => {
+    const h = harness({rowCount: 1000, lanes: 3});
+    h.settle();
+
+    // 20 grid rows per viewport × 3 viewports × 3 columns.
+    expect(h.core.getQueryInputs().pageSize).toBe(180);
+    const {items} = h.core.getSnapshot();
+    expect(items).toHaveLength(180);
+    expect(items.slice(0, 4).map(it => it.lane)).toEqual([0, 1, 2, 0]);
+    expect(h.visibleIndexes()).toEqual(range(0, 59));
+  });
+
+  test('paging down and back up moves no row, on screen or between columns', () => {
+    const h = harness({rowCount: 1000, lanes: 3});
+    const track = columnTracker();
+    h.settle();
+    track(h.core.getSnapshot().items);
+
+    for (const scrollTop of [1100, 2200, 3300, 2200, 1100, 0]) {
+      h.userScroll(scrollTop);
+      const onScreen = h
+        .visibleIndexes()
+        .map(i => [`r${i}`, h.rowTop(`r${i}`)]);
+      h.settle();
+      // Whole grid rows of spacer replace exactly the rows paged out (and
+      // the window's partly loaded edge rows keep their grid row), so every
+      // row that was on screen stays put.
+      expect(onScreen.map(([key]) => [key, h.rowTop(String(key))])).toEqual(
+        onScreen,
+      );
+      const {items} = h.core.getSnapshot();
+      track(items);
+      for (const item of items) {
+        expect(item.row).toEqual({id: `r${item.index}`});
+        expect(item.lane).toBe(item.index % 3);
+      }
+    }
+  });
+
+  test('a list opened mid-way keeps every row in its column until it pages back to the start', () => {
+    const h = harness({
+      rowCount: 1000,
+      lanes: 3,
+      options: {permalinkID: 'r500', anchoring: 'manual'},
+    });
+    const track = columnTracker();
+    h.settle();
+    // Within a grid row of the top, as for a list (the skeleton row).
+    expect(h.rowTop('r500')).toBeGreaterThanOrEqual(0);
+    expect(h.rowTop('r500')).toBeLessThan(40);
+
+    // Page back up a little at a time. Row numbering is relative to the
+    // permalink until the true start loads, so it's renumbered as pages land
+    // above — always by whole grid rows, so no row ever changes column. Stay
+    // off scrollTop 0: there prepended rows are revealed, not compensated,
+    // and paging would cascade to the start in one go, unobserved.
+    const atStart = () =>
+      h.core.getSnapshot().items.some(it => it.key === 'r0');
+    let steps = 0;
+    for (; !atStart(); steps++) {
+      expect(steps).toBeLessThan(200);
+      track(h.core.getSnapshot().items);
+      h.userScroll(Math.max(1, h.scroller.scrollTop - 200));
+      h.settle();
+    }
+    // Enough steps for several pages, each renumbering the window.
+    expect(steps).toBeGreaterThan(10);
+
+    // At the true start the first row lands in the first column — the one
+    // renumbering allowed to move rows between columns.
+    for (const item of h.core.getSnapshot().items) {
+      expect(item.row).toEqual({id: `r${item.index}`});
+      expect(item.lane).toBe(item.index % 3);
+    }
+  });
+
+  test('growth in a grid row above the viewport is compensated into scrollTop', () => {
+    const h = harness({
+      rowCount: 1000,
+      lanes: 3,
+      options: {anchoring: 'manual'},
+    });
+    h.settle();
+
+    // Grid row 30 (rows 90-92) at the top of the viewport; the loaded window
+    // (rows 0-179) covers the viewport with room to spare, so nothing pages.
+    h.userScroll(600);
+    h.settle();
+    expect(h.rowTop('r90')).toBe(0);
+
+    // One cell of grid row 20 grows 30px taller, and the grid row with it.
+    h.setRowHeight('r61', 50);
+    h.tick();
+
+    expect(h.scroller.scrollTop).toBe(630);
+    expect(h.rowTop('r90')).toBe(0);
   });
 });
 

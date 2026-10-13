@@ -8,6 +8,7 @@ import {DevPanel} from './DevPanel.tsx';
 import {ItemRow} from './ItemRow.tsx';
 import {ListHeader} from './ListHeader.tsx';
 import {
+  contentWrapperProps,
   getRowKey,
   getSingleQuery,
   toStartRow,
@@ -39,6 +40,8 @@ export function WindowList(): React.ReactNode {
   const {
     heightMode,
     setHeightMode,
+    lanes,
+    setLanes,
     anchoring,
     setAnchoring,
     count,
@@ -60,6 +63,7 @@ export function WindowList(): React.ReactNode {
     getScrollElement,
     anchoring,
     count,
+    lanes,
     getRowKey,
     estimateSize,
     getPageQuery,
@@ -89,10 +93,11 @@ export function WindowList(): React.ReactNode {
 
       {/* The rows element is the content wrapper. `spaceBefore` / `spaceAfter`
           stand in for the unloaded rows above and below, rendered as spacer
-          elements so scroll anchoring keeps the viewport stable across
+          elements (spanning every column when `lanes` makes the wrapper a
+          grid) so scroll anchoring keeps the viewport stable across
           paging. */}
-      <div ref={rowsRef}>
-        <div style={{height: spaceBefore}} />
+      <div ref={rowsRef} {...contentWrapperProps(lanes)}>
+        <div style={{height: spaceBefore, gridColumn: '1 / -1'}} />
         {items.map(item => (
           <ItemRow
             key={item.key}
@@ -102,13 +107,15 @@ export function WindowList(): React.ReactNode {
             permalinkID={permalinkID}
           />
         ))}
-        <div style={{height: spaceAfter}} />
+        <div style={{height: spaceAfter, gridColumn: '1 / -1'}} />
       </div>
       <DevPanel
         getScrollElement={getScrollElement}
         windowMode
         heightMode={heightMode}
         onHeightModeChange={setHeightMode}
+        lanes={lanes}
+        onLanesChange={setLanes}
         sortDirection={sortDirection}
         anchoring={anchoring}
         onAnchoringChange={setAnchoring}

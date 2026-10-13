@@ -118,6 +118,24 @@ function permalinkPagingState<TListContextParams, TStartRow>(
 export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
   estimateSize: (index: number) => number;
   overscan?: number | undefined;
+  /**
+   * Lay the rows out as a grid with this many columns (default 1, a plain
+   * list). Rows fill the grid row by row, and each row's
+   * {@linkcode VirtualRow.lane} names its column: render the content wrapper
+   * as a CSS grid and place each row with `gridColumn: lane + 1`, with the
+   * spacers spanning every column (`gridColumn: '1 / -1'`).
+   *
+   * In a grid, `estimateSize` estimates the height of one grid row,
+   * `overscan` counts grid rows, and `spaceBefore` / `spaceAfter` stand in
+   * for whole grid rows.
+   *
+   * A row keeps its column while the list pages, with one exception. A list
+   * opened in the middle (a permalink, a far `scrollToItem`), or one that had
+   * rows inserted above the loaded window, numbers its rows relatively until
+   * paging reaches the true start. When the start loads, the first row has
+   * to land in the first column, so every loaded row can shift over once.
+   */
+  lanes?: number | undefined;
   anchoring?: AnchoringMode | undefined;
   getRowKey: (row: TRow) => RowKey;
   listContextParams: TListContextParams;
@@ -126,9 +144,10 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
   settleTime?: number | undefined;
   /**
    * Floor for the query page size. The page size is derived from the viewport
-   * (about three viewports' worth of rows at `estimateSize`), but never drops
-   * below this floor. Defaults to 50 — sized for short rows; lower it for
-   * tall rows (cards, comments) where 50 rows is many viewports of content.
+   * (about three viewports' worth of rows at `estimateSize`, times `lanes` in
+   * a grid), but never drops below this floor. Defaults to 50 — sized for
+   * short rows; lower it for tall rows (cards, comments) where 50 rows is
+   * many viewports of content.
    * Rounded up to an even number (paging halves pages around permalinks).
    */
   minPageSize?: number | undefined;
@@ -459,11 +478,17 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       first: number,
       length: number,
       getRowKey: (row: TRow) => RowKey,
+      lanes: number,
     ): VirtualRow<TRow>[] =>
       Array.from({length}, (_, offset) => {
         const index = first + offset;
         const row = rowAt(index);
-        return {index, key: row ? getRowKey(row) : index, row};
+        return {
+          index,
+          key: row ? getRowKey(row) : index,
+          row,
+          lane: laneOf(index, lanes),
+        };
       }),
   );
   readonly #restorableState = memo(
@@ -587,7 +612,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     if (
       prev.count !== options.count ||
       prev.estimateSize !== options.estimateSize ||
-      prev.getRowKey !== options.getRowKey
+      prev.getRowKey !== options.getRowKey ||
+      prev.lanes !== options.lanes
     ) {
       this.#version++;
     }
@@ -955,8 +981,17 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       : (TOP_ANCHOR as Anchor<TStartRow>);
   }
 
+  // The estimated height of one grid row (of one row, in a plain list).
   #rowEstimate(): number {
     return Math.max(1, this.#options.estimateSize(0));
+  }
+
+  // Grid columns; anything but a finite positive count is a plain list.
+  #lanes(): number {
+    const {lanes} = this.#options;
+    return lanes !== undefined && Number.isFinite(lanes) && lanes >= 1
+      ? Math.floor(lanes)
+      : 1;
   }
 
   #effectiveEstimatedTotal(): number {
@@ -977,14 +1012,20 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     const {estimatedTotal, hasReachedStart, hasReachedEnd} = this.#paging;
     const effectiveEstimatedTotal = this.#effectiveEstimatedTotal();
 
-    // Estimate unloaded space above and below the rendered window.
+    // Estimate unloaded space above and below the rendered window, in grid
+    // rows (single rows in a plain list). Row `i` sits in grid row
+    // `floor(i / lanes)`; the window's first and last grid rows may be only
+    // partly loaded, so the spacers stand in for the whole grid rows outside
+    // them.
+    const lanes = this.#lanes();
     const rowEstimate = this.#rowEstimate();
-    const rowsBefore = Math.max(0, rows.firstRowIndex);
-    const rowsAfter = rows.atEnd
+    const end = rows.firstRowIndex + rows.rowsLength;
+    const gridRowsBefore = Math.floor(Math.max(0, rows.firstRowIndex) / lanes);
+    const gridRowsAfter = rows.atEnd
       ? 0
       : Math.max(
           0,
-          effectiveEstimatedTotal - (rows.firstRowIndex + rows.rowsLength),
+          Math.ceil(effectiveEstimatedTotal / lanes) - Math.ceil(end / lanes),
         );
 
     // Keep item identity stable while row data, range and key extraction match.
@@ -993,6 +1034,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       rows.firstRowIndex,
       rows.rowsLength,
       getRowKey,
+      lanes,
     );
 
     const total =
@@ -1005,8 +1047,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
     return {
       items,
-      spaceBefore: rows.atStart ? 0 : rowsBefore * rowEstimate,
-      spaceAfter: rowsAfter * rowEstimate,
+      spaceBefore: rows.atStart ? 0 : gridRowsBefore * rowEstimate,
+      spaceAfter: gridRowsAfter * rowEstimate,
       rowAt: rows.rowAt,
       complete: rows.complete,
       rowsEmpty: count === undefined ? rows.rowsEmpty : count === 0,
@@ -1361,12 +1403,19 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     return min === undefined ? MIN_PAGE_SIZE : makeEven(Math.max(2, min));
   }
 
+  // About three viewports of rows: grid rows per viewport, times the rows
+  // in each.
   #updatePageSize(): void {
     const min = this.#minPageSize();
     const height = this.#attachment?.height ?? 0;
     const newPageSize =
       height > 0
-        ? Math.max(min, makeEven(Math.ceil(height / this.#rowEstimate()) * 3))
+        ? Math.max(
+            min,
+            makeEven(
+              Math.ceil(height / this.#rowEstimate()) * 3 * this.#lanes(),
+            ),
+          )
         : min;
     if (newPageSize > this.#pageSize) {
       this.#pageSize = newPageSize;
@@ -1393,9 +1442,15 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     }
     if (!rows.rowsEmpty) {
       if (rows.firstRowIndex < 0) {
-        const offset =
-          -rows.firstRowIndex +
-          (rows.atStart ? 0 : NUM_ROWS_FOR_LOADING_SKELETON);
+        // Renumber so the window starts at 0, or below a skeleton grid row
+        // when there is more above. Mid-list, the shift is whole grid rows,
+        // so no loaded row changes column (lane is index mod lanes).
+        const lanes = this.#lanes();
+        const offset = rows.atStart
+          ? -rows.firstRowIndex
+          : lanes *
+            (NUM_ROWS_FOR_LOADING_SKELETON +
+              Math.ceil(-rows.firstRowIndex / lanes));
         anchor = {...anchor, index: anchor.index + offset};
         estimatedTotal += offset;
       } else if (rows.atStart && rows.firstRowIndex > 0) {
@@ -1737,8 +1792,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     const lastVisible = visible?.last ?? -Infinity;
     const elBottom = attachment.viewport.bottom;
     // Both distances are 0 when the corresponding edge row is visible.
+    // `overscan` counts grid rows.
     const threshold = Math.max(
-      this.#options.overscan ?? 5,
+      (this.#options.overscan ?? 5) * this.#lanes(),
       getNearPageEdgeThreshold(this.#pageSize),
     );
 
@@ -1895,4 +1951,9 @@ function getNearPageEdgeThreshold(pageSize: number) {
 
 function makeEven(n: number) {
   return n % 2 === 0 ? n : n + 1;
+}
+
+/** The grid column of row `index`; never negative, even mid-renumbering. */
+function laneOf(index: number, lanes: number): number {
+  return ((index % lanes) + lanes) % lanes;
 }
