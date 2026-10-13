@@ -530,6 +530,13 @@ your own persistence layer instead, hold it to the same rule: feed
 `scrollState` a new value when the user navigated, not when
 `onScrollStateChange` fired.
 
+`onScrollStateChange` fires on every scroll event. The helpers store on a
+short debounce, and store what is still pending as soon as a navigation
+starts (`navigate`) or the page goes away (`pagehide`), so the entry being
+left keeps the position it was left at — even when the click or reload that
+leaves it comes while a scroll is still moving. A layer of your own should do
+both.
+
 These helpers store through the Navigation API, which structured-clones, and
 they never look inside the state they carry — so what `toStartRow` returns
 only has to be JSON-serializable if you leave the virtualizer comparing start

@@ -582,35 +582,47 @@ describe('scroll-state restore when the container mounts lazily', () => {
   });
 
   test('does not persist a spurious scrollTop:0 while detached, clobbering the saved position', () => {
-    vi.useFakeTimers();
-    try {
-      const persisted: Array<ScrollHistoryState<TestRow>> = [];
-      const h = harness({
-        rowCount: 100,
-        options: {
-          scrollState: savedState(300),
-          onScrollStateChange: s =>
-            persisted.push(s as ScrollHistoryState<TestRow>),
-        },
-      });
+    const persisted: Array<ScrollHistoryState<TestRow>> = [];
+    const h = harness({
+      rowCount: 100,
+      options: {
+        scrollState: savedState(300),
+        onScrollStateChange: s =>
+          persisted.push(s as ScrollHistoryState<TestRow>),
+      },
+    });
 
-      h.tickDetached();
-      h.tickDetached();
-      // Fire any pending persist debounce: nothing should have been written
-      // while detached (a write here would be a scrollTop:0 over the saved 300).
-      vi.advanceTimersByTime(1000);
-      expect(persisted).toEqual([]);
+    h.tickDetached();
+    h.tickDetached();
+    // Nothing may be written while detached: a write here would be a
+    // scrollTop:0 over the saved 300.
+    expect(persisted).toEqual([]);
 
-      h.settle();
-      vi.advanceTimersByTime(1000);
-      // Once attached, the restored position is persisted — and never a
-      // spurious 0.
-      expect(persisted.length).toBeGreaterThan(0);
-      expect(persisted.map(s => s.scrollTop)).not.toContain(0);
-      expect(h.scroller.scrollTop).toBe(300);
-    } finally {
-      vi.useRealTimers();
-    }
+    h.settle();
+    // Once attached, the restored position is persisted — and never a
+    // spurious 0, not even from attaching before the restore has landed.
+    expect(persisted.length).toBeGreaterThan(0);
+    expect(persisted.map(s => s.scrollTop)).not.toContain(0);
+    expect(h.scroller.scrollTop).toBe(300);
+  });
+});
+
+describe('reporting the scroll state', () => {
+  test('every scroll is reported as it happens, not once the scroll ends', () => {
+    // A navigation can start while a scroll is still moving — a click
+    // mid-fling — and whatever stores the state needs the position by then.
+    // Only the host knows when that is; no scrollend has fired yet.
+    const reported: number[] = [];
+    const h = harness({
+      rowCount: 500,
+      options: {onScrollStateChange: s => reported.push(s.scrollTop)},
+    });
+    h.settle();
+
+    h.userScroll(400);
+    expect(reported.at(-1)).toBe(400);
+    h.userScroll(900);
+    expect(reported.at(-1)).toBe(900);
   });
 });
 
@@ -805,16 +817,14 @@ describe('a restore that moves the loaded window', () => {
       // over a list that hasn't paged that far yet: the write comes up short
       // until the restored window, and its spacers, have rendered.
       const {h: far} = scrolledAwayFromSaved(anchoring);
-      far.userScroll(4600);
-      far.scroller.dispatchEvent(new Event('scrollend'));
-      far.settle();
       const persisted: ScrollHistoryState<TestRow>[] = [];
       far.core.setOptions({
         ...far.coreOptions,
         onScrollStateChange: s =>
           persisted.push(s as ScrollHistoryState<TestRow>),
       });
-      far.scroller.dispatchEvent(new Event('scrollend'));
+      far.userScroll(4600);
+      far.settle();
       const saved = {...persisted.at(-1)!};
       const firstRow = Math.floor(saved.scrollTop / 20);
 
