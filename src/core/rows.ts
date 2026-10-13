@@ -33,6 +33,19 @@ export type RowsQueryInputs<TStartRow> = {
  * virtualizer consumes. (The return shape of the framework `useRows` hooks.)
  */
 export type RowsSnapshot<TRow> = {
+  /**
+   * The anchor these rows were assembled for: the query inputs' anchor, whose
+   * index frame `firstRowIndex` and {@linkcode rowAt} count in. A snapshot
+   * lags a re-anchor by at least a commit, and until one for the new anchor
+   * arrives these are the previous window's rows, laid out in its frame.
+   */
+  anchor: Anchor<unknown>;
+  /**
+   * The page size these rows were assembled for. Like {@linkcode anchor} it
+   * lags the query inputs: the page size grows once the viewport is measured,
+   * and until the larger page's answer arrives these are the smaller one's.
+   */
+  pageSize: number;
   rowAt: (index: number) => TRow | undefined;
   rowsLength: number;
   complete: boolean;
@@ -235,6 +248,8 @@ export function assembleRows<TRow, TStartRow>(
 
   if (kind === 'permalink') {
     return {
+      anchor,
+      pageSize,
       rowAt,
       rowsLength: permalinkNotFound
         ? 0
@@ -265,6 +280,8 @@ export function assembleRows<TRow, TStartRow>(
   const pageStart = anchor.startRow ?? null;
   assert(forward || pageStart !== null);
   return {
+    anchor,
+    pageSize,
     rowAt,
     rowsLength: paginatedRowsLength,
     complete: mainComplete,

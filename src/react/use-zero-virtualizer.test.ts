@@ -22,6 +22,8 @@ function makeUseRowsResult(
   overrides: Partial<ReturnType<typeof useRows>>,
 ): ReturnType<typeof useRows> {
   return {
+    anchor: {index: 0, kind: 'forward', startRow: undefined},
+    pageSize: 50,
     rowAt: () => undefined,
     rowsLength: 0,
     complete: false,

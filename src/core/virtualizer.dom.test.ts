@@ -178,17 +178,35 @@ function createHarness({
     return data.slice(Math.max(0, startIdx - limit), startIdx).reverse();
   };
 
+  // Zero answers a page query it hasn't synced from what the client already
+  // holds: for an ordered page that need not be a prefix — rows that other
+  // queries no longer kept are missing — and the result stays incomplete
+  // until the server fills them in. `partialNext` plays that once, for the
+  // next page query that differs from the current one.
+  const pageKey = (anchor: Anchor<TestRow>) =>
+    anchor.kind === 'permalink'
+      ? `permalink:${anchor.id}`
+      : `${anchor.kind}:${anchor.startRow?.id ?? ''}`;
+  let partial: {skip: number; from: string; key?: string} | null = null;
+  // The permalink twin of `partial`: the next permalink answer holds the
+  // target and the rows after it, with the page before it still incomplete.
+  let permalinkBeforePending = false;
+
   const answerQueries = (inputs: RowsQueryInputs<TestRow>) => {
     const anchor: Anchor<TestRow> = inputs.anchor;
     if (anchor.kind === 'permalink') {
       const singleRow = data.find(r => r.id === anchor.id);
+      const beforePending = permalinkBeforePending;
+      permalinkBeforePending = false;
       return assembleRows<TestRow, TestRow>(inputs, {
         singleRow,
         singleComplete: true,
         mainRows: singleRow
-          ? page(singleRow, 'backward', inputs.pageSize / 2 + 1)
+          ? beforePending
+            ? []
+            : page(singleRow, 'backward', inputs.pageSize / 2 + 1)
           : undefined,
-        mainComplete: true,
+        mainComplete: !beforePending,
         afterRows: singleRow
           ? page(singleRow, 'forward', inputs.pageSize / 2)
           : undefined,
@@ -200,11 +218,28 @@ function createHarness({
     const probeRow = inputs.probeID
       ? data.find(r => r.id === inputs.probeID)
       : undefined;
+    const key = pageKey(anchor);
+    const limit = inputs.pageSize + 1;
+    let mainRows = page(anchor.startRow ?? null, anchor.kind, limit);
+    let mainComplete = true;
+    if (partial && key !== partial.from && (partial.key ?? key) === key) {
+      if (partial.key === undefined) {
+        partial.key = key;
+        mainRows = page(
+          anchor.startRow ?? null,
+          anchor.kind,
+          limit + partial.skip,
+        ).slice(partial.skip);
+        mainComplete = false;
+      } else {
+        partial = null;
+      }
+    }
     return assembleRows<TestRow, TestRow>(inputs, {
       singleRow: probeRow,
       singleComplete: !!inputs.probeID,
-      mainRows: page(anchor.startRow ?? null, anchor.kind, inputs.pageSize + 1),
-      mainComplete: true,
+      mainRows,
+      mainComplete,
       afterRows: undefined,
       afterComplete: false,
     });
@@ -233,15 +268,17 @@ function createHarness({
     wrapper.style.paddingBottom = `${snapshot.spaceAfter}px`;
   };
 
-  const tick = () => {
+  const tick = ({scroll = true}: {scroll?: boolean} = {}) => {
     core.setRows(answerQueries(core.getQueryInputs()));
     syncDOM();
     core.attach(windowScroll ? wrapper : scroller);
     core.afterDOMUpdate();
     // The browser fires the scroll event for any scrollTop write the update
     // performed (compensation, restore); this is what clears the
-    // programmatic-scroll flag.
-    deliverScroll();
+    // programmatic-scroll flag. `scroll: false` holds it back for a framework
+    // that re-renders with the new query inputs before the event lands, as
+    // Solid and React both do.
+    if (scroll) deliverScroll();
   };
 
   // A commit before the scroll container is mounted: rows are staged but the
@@ -253,22 +290,24 @@ function createHarness({
     core.afterDOMUpdate();
   };
 
-  // Settled = the queries stopped changing: the anchor holds still and no
-  // id lookup (`probeID`) is in flight. Spelled out field by field rather
-  // than stringified, so the harness imposes no serializability requirement
-  // of its own on the rows under test (see `bigintRows`).
+  // Settled = the queries stopped changing: the anchor and page size hold
+  // still and no id lookup (`probeID`) is in flight. Spelled out field by
+  // field rather than stringified, so the harness imposes no serializability
+  // requirement of its own on the rows under test (see `bigintRows`).
   const queryKey = () => {
-    const {anchor, probeID} = core.getQueryInputs();
+    const {anchor, pageSize, probeID} = core.getQueryInputs();
     const cursor =
       anchor.kind === 'permalink' ? anchor.id : (anchor.startRow?.id ?? '');
-    return `${anchor.kind}:${anchor.index}:${cursor}:${probeID ?? ''}`;
+    return `${anchor.kind}:${anchor.index}:${cursor}:${pageSize}:${probeID ?? ''}`;
   };
 
+  // Settled also means the answers are in: a query still completing (see
+  // `partialNext`) has more rows on the way.
   const settle = (maxTicks = 20) => {
     for (let i = 0; i < maxTicks; i++) {
       const before = queryKey();
       tick();
-      if (queryKey() === before) return;
+      if (queryKey() === before && core.getSnapshot().complete) return;
     }
     throw new Error('paging did not settle');
   };
@@ -298,6 +337,14 @@ function createHarness({
     userScroll,
     deliverScroll,
     visibleIndexes,
+    /** Answer the next new page query partially once (see `partial`). */
+    partialNext: (skip: number) => {
+      partial = {skip, from: pageKey(core.getQueryInputs().anchor)};
+    },
+    /** Answer the next permalink query without the rows before its target. */
+    partialPermalinkNext: () => {
+      permalinkBeforePending = true;
+    },
     moveViewportTo: (top: number) => {
       viewportTop = top;
     },
@@ -588,6 +635,43 @@ describe('permalink scroll', () => {
     expect(top).toBeGreaterThanOrEqual(0);
     expect(top).toBeLessThan(40); // within ~a row of the top
   });
+
+  test.each(['manual', 'native'] as const)(
+    '%s anchoring: the row stays on top when the page grows under it',
+    anchoring => {
+      // The first page is queried before the viewport is measured, at the
+      // page-size floor; once the 800px viewport is, the page grows (100 ->
+      // 120 rows) and the larger answer adds rows before the target. The jump
+      // has to hold on until that answer is in.
+      const h = harness({
+        rowCount: 1000,
+        viewportHeight: 800,
+        options: {permalinkID: 'r500', anchoring},
+      });
+      h.settle();
+
+      expect(h.core.getQueryInputs().pageSize).toBe(120);
+      // Natively the browser's anchoring absorbs the skeleton row that the
+      // window's renumbering adds above the target; this harness has none.
+      expect(h.rowTop('r500')).toBe(anchoring === 'manual' ? 0 : 20);
+    },
+  );
+
+  test('the jump holds on while the rows before its target are still on their way', () => {
+    // A first answer holding just the target and the rows after it can leave
+    // the target exactly where the jump wants it — here, below a 20px sticky
+    // header. Letting the jump go then leaves the rows before it, still to
+    // land, to push the target off the screen.
+    const h = harness({
+      rowCount: 1000,
+      options: {permalinkID: 'r500', anchoring: 'manual'},
+    });
+    h.scroller.style.scrollPaddingTop = '20px';
+    h.partialPermalinkNext();
+    h.settle();
+
+    expect(h.rowTop('r500')).toBe(20);
+  });
 });
 
 describe('scroll-state restore of a position we wrote ourselves', () => {
@@ -661,6 +745,106 @@ describe('scroll-state restore of a position we wrote ourselves', () => {
 
     expect(h.scroller.scrollTop).toBe(400);
   });
+});
+
+describe('a restore that moves the loaded window', () => {
+  // A restore re-anchors paging in the frame its state was saved in: row
+  // indices, and so the spacer standing in for the rows above, count from its
+  // anchor. Until the restored window's own rows are in, what the core has to
+  // go on is laid out in another frame — the outgoing window, or a first
+  // answer that is still missing rows which will land above it.
+  function scrolledAwayFromSaved(anchoring: 'manual' | 'native') {
+    const persisted: ScrollHistoryState<TestRow>[] = [];
+    const h = harness({
+      rowCount: 500,
+      options: {
+        anchoring,
+        onScrollStateChange: s =>
+          persisted.push(s as ScrollHistoryState<TestRow>),
+      },
+    });
+    const scrollTo = (px: number) => {
+      h.userScroll(px);
+      h.scroller.dispatchEvent(new Event('scrollend'));
+      h.settle();
+    };
+    h.settle();
+    scrollTo(600);
+    const saved = {...persisted.at(-1)!};
+    expect(saved.scrollTop).toBe(600);
+    // Scroll on until the loaded window no longer reaches back to row 30.
+    for (const px of [1600, 2600, 3600, 4600]) scrollTo(px);
+    expect(h.core.getSnapshot().items[0].index).toBeGreaterThan(30);
+    return {h, saved};
+  }
+
+  test.each([0, 30])(
+    'manual anchoring lands it where it was saved (first answer missing %i rows)',
+    skip => {
+      // Rows that land above a reference row pinned in an unfinished answer
+      // move it, and "compensating" for that undoes the restore.
+      const {h, saved} = scrolledAwayFromSaved('manual');
+
+      h.partialNext(skip);
+      h.core.setOptions({...h.coreOptions, scrollState: saved});
+      h.tick({scroll: false}); // the restore, over the outgoing window
+      h.tick({scroll: false}); // the restored window's first answer renders
+      h.deliverScroll();
+      h.settle();
+
+      expect(h.scroller.scrollTop).toBe(600);
+      expect(h.rowTop('r30')).toBe(0);
+    },
+  );
+
+  test.each(['manual', 'native'] as const)(
+    '%s anchoring: a position the outgoing window was too short to reach still lands',
+    anchoring => {
+      // The scroll container clamps the restore's write to the content on
+      // screen at the time — the outgoing window's. Saved far down, restored
+      // over a list that hasn't paged that far yet: the write comes up short
+      // until the restored window, and its spacers, have rendered.
+      const {h: far} = scrolledAwayFromSaved(anchoring);
+      far.userScroll(4600);
+      far.scroller.dispatchEvent(new Event('scrollend'));
+      far.settle();
+      const persisted: ScrollHistoryState<TestRow>[] = [];
+      far.core.setOptions({
+        ...far.coreOptions,
+        onScrollStateChange: s =>
+          persisted.push(s as ScrollHistoryState<TestRow>),
+      });
+      far.scroller.dispatchEvent(new Event('scrollend'));
+      const saved = {...persisted.at(-1)!};
+      const firstRow = Math.floor(saved.scrollTop / 20);
+
+      const h = harness({rowCount: 500, options: {anchoring}});
+      h.settle();
+      h.core.setOptions({...h.coreOptions, scrollState: saved});
+      h.settle();
+
+      expect(h.scroller.scrollTop).toBe(saved.scrollTop);
+      expect(h.rowTop(`r${firstRow}`)).toBe(0);
+    },
+  );
+
+  test.each(['manual', 'native'] as const)(
+    '%s anchoring: paging leaves the restored window alone until its rows are in',
+    anchoring => {
+      // The restore's own scroll event can land before the restored rows have
+      // rendered. Paging evaluated then sees the outgoing window below the
+      // viewport and starts paging backward from it, replacing the restore.
+      const {h, saved} = scrolledAwayFromSaved(anchoring);
+
+      h.core.setOptions({...h.coreOptions, scrollState: saved});
+      h.tick();
+
+      expect(h.core.getQueryInputs().anchor).toEqual(saved.anchor);
+      h.settle();
+      expect(h.scroller.scrollTop).toBe(600);
+      expect(h.rowTop('r30')).toBe(0);
+    },
+  );
 });
 
 describe('compareStartRows', () => {

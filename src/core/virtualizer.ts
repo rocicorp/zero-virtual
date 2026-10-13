@@ -394,6 +394,8 @@ type PersistState<TStartRow> = {
 };
 
 const EMPTY_ROWS: RowsSnapshot<unknown> = {
+  anchor: TOP_ANCHOR,
+  pageSize: 0,
   rowAt: () => undefined,
   rowsLength: 0,
   complete: false,
@@ -483,8 +485,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // viewport-relative: scrolling must not read as content movement (see
   // #anchorOffsetOf).
   #anchorOffset = 0;
-  // True from a list reset (context change / restore / permalink) until the new
-  // data has loaded, so we don't adopt or pin a stale reference row.
+  // True from a list reset (context change / permalink) until the new
+  // window's rows have loaded (see #rowsAnswerQuery), so we don't adopt or pin
+  // a reference row laid out in another window.
   #anchorSuppressed = false;
   // Whether the in-flight scroll was initiated by touch. Only then do we take
   // the momentum-safe margin-hold path — wheel / trackpad / programmatic
@@ -505,6 +508,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // A request either probes without disturbing the list or owns the scroll
   // position while its page loads. These phases cannot coexist.
   #request: (PendingScroll & {phase: 'probe' | 'scroll'}) | null;
+  // A restore's scrollTop while it lands: like a jump in its scroll phase, it
+  // owns the position until its window has settled (see #landRestore).
+  #restoreScrollTop: number | null = null;
 
   // Until when a scroll state of our own coming back counts as an echo of the
   // jump rather than a restore (see JUMP_ECHO_WINDOW_MS).
@@ -756,6 +762,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     const {id} = request;
     if (request.source === 'imperative') {
       this.#jumpEchoUntil = Date.now() + JUMP_ECHO_WINDOW_MS;
+      this.#restoreScrollTop = null;
     }
     // Rendered targets scroll synchronously; no query or later commit is needed.
     const attachment = this.#attachment;
@@ -856,12 +863,14 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.#measureAndCompensate();
     this.#reobserveRows();
     this.#restoreOrReset();
+    // Before landing: a page about to grow still has rows to add.
+    this.#updatePageSize();
+    this.#landRestore();
     this.#retryPendingScroll();
     this.#recoverFromMissingPermalink();
 
     // -- passive-effect phase --
     this.#liftAnchorSuppression();
-    this.#updatePageSize();
     this.#updatePaging();
     // Resolve probes after lifting suppression: a new anchor must stay
     // suppressed until the next commit renders its rows.
@@ -1166,12 +1175,12 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   #measureAndCompensate(): void {
-    // A jump or context reset owns the position until its rows arrive.
+    // A landing or context reset owns the position until its rows arrive.
     if (
       !this.#manual() ||
       this.#anchorSuppressed ||
       !this.#isListContextCurrent() ||
-      this.#request?.phase === 'scroll'
+      this.#landing()
     ) {
       return;
     }
@@ -1224,14 +1233,44 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // Adopt an anchor only after the reset list has loaded.
   #liftAnchorSuppression(): void {
-    if (
-      this.#anchorSuppressed &&
-      this.#isListContextCurrent() &&
-      this.#rows.complete
-    ) {
+    if (this.#anchorSuppressed && this.#rowsSettled()) {
       this.#anchorSuppressed = false;
       this.#refreshAnchor();
     }
+  }
+
+  // Whether the loaded rows answer the query as it is now: its anchor and its
+  // page size. Rows lag the query by at least a commit — every re-anchor
+  // leaves the previous window's rows in place until its own arrive, counting
+  // positions from somewhere else, and the page size grows once the viewport
+  // is measured — so nothing may read them as the current window's until
+  // they do.
+  #rowsAnswerQuery(): boolean {
+    return (
+      this.#isListContextCurrent() &&
+      this.#rows.pageSize === this.#pageSize &&
+      this.#anchorsEqual(
+        this.#rows.anchor as Anchor<TStartRow>,
+        this.#paging.anchor,
+      )
+    );
+  }
+
+  // The current window is in: answering the query, and complete.
+  #rowsSettled(): boolean {
+    return this.#rowsAnswerQuery() && this.#rows.complete;
+  }
+
+  // A jump to a row, or a restore, owns the scroll position while it lands:
+  // anchoring compensation and paging stand down until its window settles.
+  #landing(): boolean {
+    return this.#request?.phase === 'scroll' || this.#restoreScrollTop !== null;
+  }
+
+  // A landing is done: anchoring takes over from where it put the viewport,
+  // with a reference adopted now, before anything else can move the rows.
+  #landed(): void {
+    if (!this.#anchorSuppressed) this.#refreshAnchor();
   }
 
   // ---- event handlers --------------------------------------------------------
@@ -1243,6 +1282,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #onScrollOffset = (): void => {
     const programmatic = this.#programmaticScroll;
     this.#programmaticScroll = false;
+    // The user has taken the position over from a restore still landing.
+    if (!programmatic) this.#restoreScrollTop = null;
     // User/momentum scrolls rebase the anchor; our own scrollTop writes do not.
     if (this.#manual() && !programmatic) {
       this.#anchorState.isScrolling = true;
@@ -1332,6 +1373,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // Apply the loaded window's extent and relabel its coordinates atomically.
   #updatePaging(): void {
+    // Rows answering an earlier query belong to another window: relabelling
+    // or extending this one from them corrupts it.
+    if (!this.#rowsAnswerQuery()) return;
     const s = this.#paging;
     const rows = this.#rows;
     let {anchor, estimatedTotal} = s;
@@ -1344,7 +1388,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
           : rows.firstRowIndex + rows.rowsLength;
       if (extent > estimatedTotal) estimatedTotal = extent;
     }
-    if (!rows.rowsEmpty && this.#isListContextCurrent()) {
+    if (!rows.rowsEmpty) {
       if (rows.firstRowIndex < 0) {
         const offset =
           -rows.firstRowIndex +
@@ -1462,6 +1506,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       this.#anchorSuppressed = true;
     }
 
+    this.#restoreScrollTop = eff?.scrollTop ?? null;
     if (eff) {
       // A same-position persistence echo must not disturb the live anchor.
       if (this.#setScrollTop(eff.scrollTop)) {
@@ -1504,6 +1549,20 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
         anchor: TOP_ANCHOR,
         listContextParams,
       });
+    }
+  }
+
+  // Land a restore like a jump: put its scrollTop back on every commit until
+  // its window has settled. The first write is clamped to whatever content is
+  // on screen then — the outgoing window's — and rows still to land above
+  // would otherwise move it.
+  #landRestore(): void {
+    const top = this.#restoreScrollTop;
+    if (top === null || !this.#rowsAnswerQuery()) return;
+    this.#setScrollTop(top);
+    if (this.#rows.complete) {
+      this.#restoreScrollTop = null;
+      this.#landed();
     }
   }
 
@@ -1624,14 +1683,13 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.#flushHold();
     const before = attachment.scrollTop;
     const delta = this.#alignDelta(attachment, target, pending.align);
-    if (Math.abs(delta) <= 1) {
-      this.#setRequest(null); // in place
-      return;
-    }
-    this.#setScrollTop(before + delta);
-    // Keep retrying while surrounding rows are still streaming in.
-    if (this.#rows.complete) {
+    if (Math.abs(delta) > 1) this.#setScrollTop(before + delta);
+    // Keep retrying until the target's window has settled, even when it is in
+    // place now: a partial first answer can put it on top with the rows
+    // before it still to land.
+    if (this.#rowsSettled()) {
       this.#setRequest(null);
+      this.#landed();
     }
   }
 
@@ -1661,13 +1719,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   #evaluatePaging(): void {
     const rows = this.#rows;
-    if (!this.#isListContextCurrent() || rows.rowsEmpty || !rows.complete) {
-      return;
-    }
+    if (!this.#rowsSettled() || rows.rowsEmpty) return;
     if (this.#programmaticScroll) return;
-    if (this.#request?.phase === 'scroll') {
-      // A jump to a row is settling: don't re-anchor to the window edge while
-      // the target's context is still loading.
+    if (this.#landing()) {
+      // A jump or a restore is landing: don't re-anchor to the window edge
+      // while its window is still loading.
       return;
     }
     const attachment = this.#attachment;
