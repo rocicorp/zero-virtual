@@ -531,6 +531,49 @@ describe('masonry', () => {
     expect(h.scroller.style.overflowAnchor).toBe('none');
   });
 
+  test('switching to masonry keeps the row at the top of the viewport where it is', () => {
+    const h = harness({rowCount: 1000, options: {masonry: false}});
+    h.settle();
+    h.userScroll(300);
+    h.settle();
+    const [key, top] = Object.entries(h.onScreen()).sort(
+      (a, b) => Number(a[0].slice(1)) - Number(b[0].slice(1)),
+    )[0];
+
+    h.setOptions({...h.coreOptions, masonry: true});
+    h.settle();
+
+    expect(h.cardTop(key)).toBe(top);
+  });
+
+  test('a restore keeps its cards when the lane count arrives a commit later', () => {
+    const states: ScrollHistoryState<TestRow>[] = [];
+    const h = harness({
+      rowCount: 1000,
+      lanes: 4,
+      options: {onScrollStateChange: s => states.push(s)},
+    });
+    h.settle();
+    h.userScroll(3000);
+    h.settle();
+    const saved = states.at(-1)!;
+    const before = h.onScreen();
+
+    // Elsewhere, in three lanes.
+    h.setOptions({...h.coreOptions, lanes: 3});
+    h.settle();
+    h.userScroll(6000);
+    h.settle();
+
+    // Back: the saved state lands a commit before its lane count does.
+    h.setOptions({...h.coreOptions, lanes: 3, scrollState: saved});
+    h.tick();
+    h.setOptions({...h.coreOptions, scrollState: saved});
+    h.settle();
+
+    expect(h.onScreen()).toEqual(before);
+  });
+
   test('a new lane count keeps the first card on screen where it is', () => {
     const h = harness({rowCount: 1000});
     h.settle();

@@ -18,6 +18,24 @@ export function setUrlParams(updates: Record<string, string | null>): void {
   });
 }
 
+/**
+ * Like {@linkcode createUrlState}, for parameters a navigation sets together:
+ * read as one value, so they change in one update rather than one at a time.
+ */
+export function createUrlParams<T>(
+  read: (params: URLSearchParams) => T,
+  equals: (a: T, b: T) => boolean,
+): () => T {
+  const get = () => read(new URLSearchParams(location.search));
+  const [value, setValue] = createSignal(get(), {equals});
+  const onEntryChange = () => setValue(() => get());
+  navigation.addEventListener('currententrychange', onEntryChange);
+  onCleanup(() =>
+    navigation.removeEventListener('currententrychange', onEntryChange),
+  );
+  return value;
+}
+
 function readParam(key: string, defaultValue: string): string {
   return new URLSearchParams(location.search).get(key) ?? defaultValue;
 }

@@ -520,8 +520,21 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     (lanes: number) => (index: number) => laneOf(index, lanes),
   );
   readonly #masonryLanes = memo(
-    (lanes: ReadonlyMap<string, number>) => (_index: number, key: RowKey) =>
-      lanes.get(String(key)) ?? 0,
+    (lanes: ReadonlyMap<string, number>, _version: number) =>
+      (_index: number, key: RowKey) =>
+        lanes.get(String(key)) ?? 0,
+  );
+  // The loaded rows' keys in list order (masonry's cards), and the reverse.
+  readonly #windowKeysOf = memo(
+    (rows: RowsSnapshot<TRow>, getRowKey: (row: TRow) => RowKey): string[] =>
+      Array.from({length: rows.rowsLength}, (_, offset) => {
+        const index = rows.firstRowIndex + offset;
+        const row = rows.rowAt(index);
+        return String(row ? getRowKey(row) : index);
+      }),
+  );
+  readonly #windowOrderOf = memo(
+    (keys: readonly string[]) => new Map(keys.map((key, i) => [key, i])),
   );
   readonly #restorableState = memo(
     (
@@ -594,10 +607,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // Cards are keyed by `String(key)`: the DOM hands keys back as strings.
   // The layout on screen: each lane's cards, and where each lane starts.
   #laneLayout: LaneLayout | null = null;
-  // Every card's lane, kept while it pages out and back in. Replaced rather
-  // than mutated, so the items memo sees a change.
-  #laneMap: ReadonlyMap<string, number> = new Map();
-  // The footprints the layout was built with.
+  // Every card's lane, kept while it pages out and back in, and a version
+  // bumped on every change so the items memo sees one.
+  readonly #laneMap = new Map<string, number>();
+  #laneMapVersion = 0;
+  // The footprints the layout was built with, for the cards in it.
   #laneHeights = new Map<string, number>();
   // The viewport's top in the layout's coordinates, as of the last layout.
   #laneViewportTop = 0;
@@ -606,6 +620,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     null;
   // A restore's saved cards, pinned until the restore lands.
   #laneCards: ScrollHistoryState<TStartRow>['laneCards'] = undefined;
+  // Switching into masonry: the row that was at the top of the viewport,
+  // and its offset, to keep in place (see setOptions).
+  #laneEntry: readonly [string, number] | null = null;
 
   // Restore/reset change tracking (the old effect's dependency semantics).
   #appliedScrollState: ScrollHistoryState<TStartRow> | null = null;
@@ -655,7 +672,16 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     options: VirtualizerOptions<TListContextParams, TRow, TStartRow>,
   ): void {
     const prev = this.#options;
+    const wasMasonry = this.#masonry();
     this.#options = options;
+    // Switching masonry on or off lays the lanes out afresh next time. Going
+    // in, keep the row at the top of the viewport where it is: read it now,
+    // while the DOM still shows the list or grid it's leaving.
+    if (this.#masonry() !== wasMasonry) {
+      this.#laneContext = null;
+      this.#laneLayout = null;
+      this.#laneEntry = wasMasonry ? null : this.#topRowNow();
+    }
     // Invalidate only options used by the snapshot. Ingestion stays silent
     // so callers can safely read the updated snapshot during render.
     if (
@@ -713,6 +739,11 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       (el === null || this.#attachment?.manual === this.#manual())
     ) {
       return;
+    }
+    // Re-wiring mid-gesture drops the listeners that would end it, leaving a
+    // held correction stranded: end it now.
+    if (el !== null && el === this.#attachment?.el) {
+      this.#withNotify(() => this.#endScrolling());
     }
     this.detach();
     if (!el) return;
@@ -1100,9 +1131,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       rows.firstRowIndex,
       rows.rowsLength,
       getRowKey,
-      masonry
-        ? this.#masonryLanes(this.#provisionalLanes())
-        : this.#gridLanes(lanes),
+      masonry ? this.#masonryItemLanes() : this.#gridLanes(lanes),
     );
 
     const total =
@@ -1879,13 +1908,39 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // The loaded cards' keys, in list order.
   #windowKeys(): string[] {
-    const rows = this.#rows;
-    const {getRowKey} = this.#options;
-    return Array.from({length: rows.rowsLength}, (_, offset) => {
-      const index = rows.firstRowIndex + offset;
-      const row = rows.rowAt(index);
-      return String(row ? getRowKey(row) : index);
-    });
+    return this.#windowKeysOf(this.#rows, this.#options.getRowKey);
+  }
+
+  // Where each loaded card is in the list.
+  #windowOrder(): ReadonlyMap<string, number> {
+    return this.#windowOrderOf(this.#windowKeys());
+  }
+
+  // The items' lane lookup: the lanes given out, or provisional ones while
+  // cards wait to be measured.
+  #masonryItemLanes(): (index: number, key: RowKey) => number {
+    const lanes = this.#provisionalLanes();
+    return this.#masonryLanes(
+      lanes,
+      lanes === this.#laneMap ? this.#laneMapVersion : -1,
+    );
+  }
+
+  // The row in the list that reaches into the viewport first, as rendered
+  // now, and how far below the viewport's top it starts.
+  #topRowNow(): readonly [string, number] | null {
+    const attachment = this.#attachment;
+    const range = attachment && this.#visibleIndexRange(attachment);
+    if (!attachment || !range) return null;
+    for (const row of queryRows(attachment.el)) {
+      if (Number(row.getAttribute(VROW_INDEX_ATTR)) === range.first) {
+        return [
+          row.getAttribute(VROW_KEY_ATTR) ?? '',
+          row.getBoundingClientRect().top - attachment.viewport.top,
+        ];
+      }
+    }
+    return null;
   }
 
   // Whether the layout belongs to the list and lane count as they are now.
@@ -1937,7 +1992,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #laneTopCard(): readonly [string, number] | null {
     const layout = this.#laneLayout;
     if (layout === null) return null;
-    const order = new Map(this.#windowKeys().map((key, i) => [key, i]));
+    const order = this.#windowOrder();
     const viewportTop = this.#measureLaneViewportTop();
     const estimate = this.#rowEstimate();
     let best: {key: string; offset: number; order: number} | null = null;
@@ -1970,7 +2025,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     const viewportTop = this.#measureLaneViewportTop();
     const viewportBottom = viewportTop + attachment.height;
     const estimate = this.#rowEstimate();
-    const order = new Map(this.#windowKeys().map((key, i) => [key, i]));
+    const order = this.#windowOrder();
     let first = Infinity;
     let last = -Infinity;
     const lanes = layout.lanes.map((lane, l) => {
@@ -2024,11 +2079,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #pinLanes(cards: ScrollHistoryState<TStartRow>['laneCards']): void {
     this.#laneCards = cards;
     if (cards === undefined) return;
-    const laneMap = new Map(this.#laneMap);
     cards.forEach((lane, l) => {
-      for (const key of lane?.keys ?? []) laneMap.set(key, l);
+      for (const key of lane?.keys ?? []) this.#laneMap.set(key, l);
     });
-    this.#laneMap = laneMap;
+    this.#laneMapVersion++;
   }
 
   // Lay the cards out in lanes and size the lanes.
@@ -2047,21 +2101,35 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       const sameList =
         this.#laneContext?.listContextParams ===
         this.#options.listContextParams;
-      const keep = sameList ? this.#laneTopCard() : null;
+      const keep = (sameList ? this.#laneTopCard() : null) ?? this.#laneEntry;
+      // A restore already landing keeps its own pins.
+      const restore =
+        this.#restoreScrollTop !== null ? this.#laneCards : undefined;
+      this.#laneEntry = null;
       this.#laneContext = {
         lanes,
         listContextParams: this.#options.listContextParams,
       };
       this.#laneLayout = null;
-      this.#laneMap = new Map();
+      this.#laneMap.clear();
+      this.#laneMapVersion++;
       this.#laneHeights = new Map();
-      if (keep !== null) this.#pinLanes([{keys: [keep[0]], offset: keep[1]}]);
+      if (restore !== undefined) this.#pinLanes(restore);
+      else if (keep !== null) {
+        this.#pinLanes([{keys: [keep[0]], offset: keep[1]}]);
+      }
     }
 
     // Measure the cards as rendered, and note which lane each is in.
     const viewportTop =
       attachment.viewport.top - firstLane.getBoundingClientRect().top;
-    const heights = new Map(this.#laneHeights);
+    const keys = this.#windowKeys();
+    // The loaded cards' footprints: as measured last, then as rendered now.
+    const heights = new Map<string, number>();
+    for (const key of keys) {
+      const h = this.#laneHeights.get(key);
+      if (h !== undefined) heights.set(key, h);
+    }
     const rendered = new Map<string, number>();
     laneEls.forEach((lane, l) => {
       if (lane === undefined) return;
@@ -2075,10 +2143,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
     const prevHeights = this.#laneHeights;
     const pins = this.#laneCards;
-    const keys = this.#windowKeys();
+    const order = this.#windowOrder();
     // Whether this layout is the restore's: its saved cards are loaded.
     const restored =
-      pins?.some(lane => lane !== null && keys.includes(lane.keys[0])) ?? false;
+      pins?.some(lane => lane !== null && order.has(lane.keys[0])) ?? false;
     // Pins go where the viewport will be. While a restore lands, that's at
     // its scrollTop, which the browser can still be clamping short: the
     // content on hand isn't tall enough to scroll there yet.
@@ -2152,17 +2220,17 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
     // Cards placed for the first time may belong in other lanes than the ones
     // they were rendered in: render them again, still before paint.
-    let laneMap: Map<string, number> | null = null;
+    let placed = false;
     for (const [key, lane] of result.laneOf) {
       if (this.#laneMap.get(String(key)) !== lane) {
-        laneMap ??= new Map(this.#laneMap);
-        laneMap.set(String(key), lane);
+        this.#laneMap.set(String(key), lane);
+        placed = true;
       }
     }
-    if (laneMap !== null) {
-      this.#laneMap = laneMap;
+    if (placed) {
+      this.#laneMapVersion++;
       for (const [key, lane] of rendered) {
-        if (laneMap.get(key) !== lane) {
+        if (this.#laneMap.get(key) !== lane) {
           this.#version++;
           break;
         }

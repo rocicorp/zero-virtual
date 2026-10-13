@@ -12,7 +12,11 @@ import {
 } from '../shared/queries.ts';
 import type {Item} from '../shared/schema.ts';
 import {layoutFromParams, paramsForLayout} from '../shared/layout.ts';
-import {createUrlState, setUrlParams} from './use-url-state.ts';
+import {
+  createUrlParams,
+  createUrlState,
+  setUrlParams,
+} from './use-url-state.ts';
 
 export type HeightMode = 'uniform' | 'fixed' | 'dynamic';
 
@@ -102,9 +106,13 @@ export function createEstimateSize(heightMode: () => HeightMode): () => number {
 
 export function createDemoControls() {
   const [heightModeStr, setHeightMode] = createUrlState('height', 'uniform');
-  const [lanesStr] = createUrlState('lanes', '1');
-  const [masonryStr] = createUrlState('masonry', '');
-  const layout = createMemo(() => layoutFromParams(lanesStr(), masonryStr()));
+  // Read together: a layout change sets both parameters in one navigation,
+  // and taking them one at a time would render the layout in between.
+  const layout = createUrlParams(
+    params =>
+      layoutFromParams(params.get('lanes') ?? '1', params.get('masonry') ?? ''),
+    (a, b) => a.lanes === b.lanes && a.masonry === b.masonry,
+  );
   const [anchoringStr, setAnchoring] = createUrlState('anchoring', 'manual');
   const [countStr] = createUrlState('count', '');
   const [follow, setFollow] = createUrlState('follow', 'off');
