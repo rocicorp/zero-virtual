@@ -1,22 +1,5 @@
 import {useCallback, useSyncExternalStore} from 'react';
-
-/**
- * Set several URL query parameters in one replace navigation (`null` removes
- * one), keeping the entry's state — see {@linkcode useUrlState}.
- */
-export function setUrlParams(updates: Record<string, string | null>): void {
-  const params = new URLSearchParams(location.search);
-  for (const [key, value] of Object.entries(updates)) {
-    if (value === null) params.delete(key);
-    else params.set(key, value);
-  }
-  const search = params.toString();
-  const url = location.pathname + (search ? `?${search}` : '') + location.hash;
-  navigation.navigate(url, {
-    history: 'replace',
-    state: navigation.currentEntry?.getState(),
-  });
-}
+import {setUrlParams} from '../shared/url-params.ts';
 
 function subscribe(callback: () => void): () => void {
   navigation.addEventListener('currententrychange', callback);

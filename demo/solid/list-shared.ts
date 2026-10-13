@@ -12,11 +12,8 @@ import {
 } from '../shared/queries.ts';
 import type {Item} from '../shared/schema.ts';
 import {layoutFromParams, paramsForLayout} from '../shared/layout.ts';
-import {
-  createUrlParams,
-  createUrlState,
-  setUrlParams,
-} from './use-url-state.ts';
+import {setUrlParams} from '../shared/url-params.ts';
+import {createUrlParams, createUrlState} from './use-url-state.ts';
 
 export type HeightMode = 'uniform' | 'fixed' | 'dynamic';
 

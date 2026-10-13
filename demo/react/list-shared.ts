@@ -12,7 +12,8 @@ import {
 } from '../shared/queries.ts';
 import type {Item} from '../shared/schema.ts';
 import {layoutFromParams, paramsForLayout} from '../shared/layout.ts';
-import {setUrlParams, useUrlState} from './use-url-state.ts';
+import {setUrlParams} from '../shared/url-params.ts';
+import {useUrlState} from './use-url-state.ts';
 
 /**
  * How row heights are determined:
