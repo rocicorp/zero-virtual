@@ -439,11 +439,7 @@ const EMPTY_ROWS: RowsSnapshot<unknown> = {
   atEnd: false,
   firstRowIndex: 0,
   permalinkNotFound: false,
-  permalinkRow: undefined,
-  permalinkID: null,
-  probeID: null,
-  probeRow: undefined,
-  probeComplete: false,
+  lookup: null,
 };
 
 /**
@@ -880,16 +876,16 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       return;
     }
     // A snapshot may still answer a superseded lookup: check its id first.
-    if (this.#rows.probeID !== probe.id) return;
-    if (!this.#rows.probeComplete) return;
-    if (this.#rows.probeRow === undefined) {
+    const {lookup} = this.#rows;
+    if (lookup?.id !== probe.id || !lookup.complete) return;
+    if (lookup.row === undefined) {
       this.#setTarget(null); // no such row — do nothing
       return;
     }
     // The lookup supplies the DOM key and proves that re-anchoring is safe.
     this.#startOrScroll({
       ...probe,
-      rowKey: this.#options.getRowKey(this.#rows.probeRow),
+      rowKey: this.#options.getRowKey(lookup.row),
     });
   }
 
@@ -1725,7 +1721,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       !this.#isListContextCurrent() ||
       anchor.kind !== 'permalink' ||
       // Ignore stale lookup results from a previous target.
-      this.#rows.permalinkID !== anchor.id
+      this.#rows.lookup?.id !== anchor.id
     ) {
       this.#permalinkMissingCommits = 0;
       return;
@@ -1825,10 +1821,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     let el = this.#findTarget(attachment.el, pending);
     if (el === null && pending.rowKey === undefined) {
       // Resolve the DOM key once its own page queries have completed.
-      const {permalinkRow, permalinkID, complete} = this.#rows;
+      const {lookup, complete} = this.#rows;
       const rowKey =
-        permalinkRow !== undefined && permalinkID === pending.id && complete
-          ? this.#options.getRowKey(permalinkRow)
+        lookup?.id === pending.id && lookup.row !== undefined && complete
+          ? this.#options.getRowKey(lookup.row)
           : undefined;
       if (rowKey !== undefined) {
         this.#setTarget({...pending, rowKey, kind: 'row'});
@@ -1840,7 +1836,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       // A permanently pending request would disable paging and anchoring.
       if (
         (this.#rows.permalinkNotFound &&
-          this.#rows.permalinkID === pending.id) ||
+          this.#rows.lookup?.id === pending.id) ||
         (this.#rows.complete && !this.#isTargeting(pending.id))
       ) {
         this.#setTarget(null);

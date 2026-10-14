@@ -25,7 +25,7 @@ export type RowsQueryInputs<TStartRow> = {
    * Null when the anchor is a permalink (which runs its own lookup) or when
    * nothing is being probed.
    */
-  probeID?: string | null | undefined;
+  probeID: string | null;
 };
 
 /**
@@ -53,36 +53,18 @@ export type RowsSnapshot<TRow> = {
   atStart: boolean;
   atEnd: boolean;
   firstRowIndex: number;
+  /** A permalink anchor's row doesn't exist: its lookup completed empty. */
   permalinkNotFound: boolean;
   /**
-   * The id {@linkcode probeRow} and {@linkcode probeComplete} are about, or
-   * null when nothing is being probed. A snapshot lags the request it is read
-   * for, so a reader has to check this before trusting either of them for a
-   * particular id — they may still be answering the previous one.
+   * The single-row lookup — a permalink anchor's row, or under a page anchor
+   * the probe's: the id looked up, the row it resolved to (`undefined` while
+   * loading or when there is none), and whether it completed. Null when
+   * nothing is looked up. A snapshot lags the inputs it is read for, so a
+   * reader has to check the id before trusting the rest — it may still be
+   * answering the previous lookup. The row's `getRowKey` locates it in the
+   * DOM: the id need not equal the row key.
    */
-  probeID: string | null;
-  /**
-   * The row `probeID` resolved to, when the probe has completed and found
-   * one; `undefined` while it is loading, when it found nothing, or when
-   * nothing is being probed. Read together with {@linkcode probeComplete}.
-   */
-  probeRow: TRow | undefined;
-  /** Whether the `probeID` lookup has completed (false when not probing). */
-  probeComplete: boolean;
-  /**
-   * The resolved permalink target row (the single-row lookup result), when the
-   * current anchor is a permalink and the row has loaded; `undefined`
-   * otherwise. Its `getRowKey` locates the DOM row to scroll to — the
-   * permalink id need not equal the row key.
-   */
-  permalinkRow: TRow | undefined;
-  /**
-   * The id {@linkcode permalinkRow} and {@linkcode permalinkNotFound} are
-   * about, or null under a page anchor. A snapshot can lag a re-anchor by a
-   * commit or two, so a reader has to check this before trusting either of
-   * them for a particular id — they may still be answering the previous one.
-   */
-  permalinkID: string | null;
+  lookup: {id: string; row: TRow | undefined; complete: boolean} | null;
 };
 
 /** The raw results of the (up to) three staged queries. */
@@ -116,74 +98,45 @@ export function buildSingleQuery<TQuery, TOptions, TStartRow>(
       'probeID must be null while the anchor is a permalink: they share a query slot',
     );
   }
-  const id = anchor.kind === 'permalink' ? anchor.id : (probeID ?? null);
+  const id = anchor.kind === 'permalink' ? anchor.id : probeID;
   return id === null ? null : getSingleQuery({id, settled});
 }
 
 /**
- * Stage 2: the main page query — page-before rows for a permalink (depends on
- * stage 1's result), or the whole page for forward/backward anchors.
+ * Stages 2 and 3, the page queries. Under a page anchor, the whole page.
+ * Under a permalink anchor, the pages before and after its row, once stage 1
+ * has found it.
  */
-export function buildMainQuery<TQuery, TOptions, TStartRow>(
+export function buildPageQueries<TRow, TQuery, TOptions, TStartRow>(
   inputs: RowsQueryInputs<TStartRow>,
   getPageQuery: GetPageQuery<TQuery, TOptions, TStartRow>,
-  singleStart: TStartRow | null,
-  permalinkNotFound: boolean,
-): QueryResult<TQuery, TOptions> | null {
-  const {anchor, pageSize, settled} = inputs;
-  if (anchor.kind === 'permalink') {
-    assert(pageSize % 2 === 0);
-    return !permalinkNotFound && singleStart
-      ? getPageQuery({
-          limit: pageSize / 2 + 1,
-          start: singleStart,
-          dir: 'backward',
-          settled,
-        })
-      : null;
-  }
-  return getPageQuery({
-    limit: pageSize + 1,
-    start: anchor.startRow ?? null,
-    dir: anchor.kind,
-    settled,
-  });
-}
-
-/**
- * Stage 3: the page-after query (permalink anchors only; depends on stage 1's
- * result).
- */
-export function buildAfterQuery<TQuery, TOptions, TStartRow>(
-  inputs: RowsQueryInputs<TStartRow>,
-  getPageQuery: GetPageQuery<TQuery, TOptions, TStartRow>,
-  singleStart: TStartRow | null,
-  permalinkNotFound: boolean,
-): QueryResult<TQuery, TOptions> | null {
-  const {anchor, pageSize, settled} = inputs;
-  if (anchor.kind !== 'permalink') return null;
-  assert(pageSize % 2 === 0);
-  return !permalinkNotFound && singleStart
-    ? getPageQuery({
-        limit: pageSize / 2,
-        start: singleStart,
-        dir: 'forward',
-        settled,
-      })
-    : null;
-}
-
-/** Whether a permalink anchor's target row is complete-and-missing. */
-export function permalinkMissing<TRow, TStartRow>(
-  inputs: RowsQueryInputs<TStartRow>,
+  toStartRow: (row: TRow) => TStartRow,
   singleRow: TRow | undefined,
-  singleComplete: boolean,
-): boolean {
-  return (
-    inputs.anchor.kind === 'permalink' &&
-    singleComplete &&
-    singleRow === undefined
-  );
+): {
+  main: QueryResult<TQuery, TOptions> | null;
+  after: QueryResult<TQuery, TOptions> | null;
+} {
+  const {anchor, pageSize, settled} = inputs;
+  if (anchor.kind !== 'permalink') {
+    const start = anchor.startRow ?? null;
+    return {
+      main: getPageQuery({
+        limit: pageSize + 1,
+        start,
+        dir: anchor.kind,
+        settled,
+      }),
+      after: null,
+    };
+  }
+  assert(pageSize % 2 === 0);
+  if (singleRow === undefined) return {main: null, after: null};
+  const start = toStartRow(singleRow);
+  const half = pageSize / 2;
+  return {
+    main: getPageQuery({limit: half + 1, start, dir: 'backward', settled}),
+    after: getPageQuery({limit: half, start, dir: 'forward', settled}),
+  };
 }
 
 /**
@@ -207,16 +160,13 @@ export function assembleRows<TRow, TStartRow>(
     afterComplete,
   } = results;
 
-  const permalinkNotFound = permalinkMissing(inputs, singleRow, singleComplete);
-
-  // Under a page anchor the single-row slot is the probe's, so
-  // its result is the probe's answer.
-  const probing = anchor.kind !== 'permalink' && !!inputs.probeID;
-  const probe = {
-    probeID: probing ? (inputs.probeID ?? null) : null,
-    probeRow: probing ? singleRow : undefined,
-    probeComplete: probing && singleComplete,
-  };
+  const permalinkNotFound =
+    kind === 'permalink' && singleComplete && singleRow === undefined;
+  const lookupID = kind === 'permalink' ? anchor.id : inputs.probeID;
+  const lookup =
+    lookupID === null
+      ? null
+      : {id: lookupID, row: singleRow, complete: singleComplete};
 
   const rowsBeforeLength = mainRows?.length ?? 0;
   const rowsAfterLength = afterRows?.length ?? 0;
@@ -270,9 +220,7 @@ export function assembleRows<TRow, TStartRow>(
         ? anchorIndex
         : anchorIndex - rowsBeforeSize,
       permalinkNotFound,
-      permalinkRow: singleRow,
-      permalinkID: anchor.id,
-      ...probe,
+      lookup,
     };
   }
 
@@ -292,8 +240,6 @@ export function assembleRows<TRow, TStartRow>(
     atEnd: forward && mainComplete && !hasMoreRows,
     firstRowIndex: forward ? anchorIndex : anchorIndex - paginatedRowsLength,
     permalinkNotFound,
-    permalinkRow: undefined,
-    permalinkID: null,
-    ...probe,
+    lookup,
   };
 }

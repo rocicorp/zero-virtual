@@ -18,6 +18,7 @@ describe('row window boundaries', () => {
         {
           pageSize: 4,
           settled: false,
+          probeID: null,
           anchor: {kind, index: 10, startRow: 'cursor'},
         },
         {...complete, mainRows: ['a', 'b', 'c', 'd', 'sentinel']},
@@ -40,6 +41,7 @@ describe('row window boundaries', () => {
       {
         pageSize: 4,
         settled: false,
+        probeID: null,
         anchor: {kind: 'permalink', index: 1, id: 'center'},
       },
       {
@@ -68,6 +70,7 @@ describe('row window boundaries', () => {
       {
         pageSize: 4,
         settled: false,
+        probeID: null,
         anchor: {kind: 'permalink', index: 1, id: 'only'},
       },
       {...complete, singleRow: 'only', mainRows: [], afterRows: []},
@@ -84,6 +87,7 @@ describe('row window boundaries', () => {
       {
         pageSize: 4,
         settled: false,
+        probeID: null,
         anchor: {kind: 'backward', index: 10, startRow: 'cursor'},
       },
       {...complete, mainRows},

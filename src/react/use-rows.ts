@@ -2,10 +2,8 @@ import {useQuery} from '@rocicorp/zero/react';
 import {useMemo} from 'react';
 import {
   assembleRows,
-  buildAfterQuery,
-  buildMainQuery,
+  buildPageQueries,
   buildSingleQuery,
-  permalinkMissing,
   type RowsSnapshot,
 } from '../core/rows.ts';
 import type {Anchor} from '../core/types.ts';
@@ -45,16 +43,19 @@ export function useRows<TRow, TStartRow>({
   const typedSingleRow = singleRow as TRow | undefined;
   const singleComplete = singleResult.type === 'complete';
 
-  const notFound = permalinkMissing(inputs, typedSingleRow, singleComplete);
-  const singleStart = typedSingleRow ? toStartRow(typedSingleRow) : null;
-
-  // Stage 2: page-before rows (permalink) OR the main page rows.
-  const q2 = buildMainQuery(inputs, getPageQuery, singleStart, notFound);
-  const [mainRows, mainResult] = useQuery(q2?.query ?? null, q2?.options);
-
-  // Stage 3: page-after rows (permalink only).
-  const q3 = buildAfterQuery(inputs, getPageQuery, singleStart, notFound);
-  const [afterRows, afterResult] = useQuery(q3?.query ?? null, q3?.options);
+  // Stage 2: page-before rows (permalink) OR the main page rows. Stage 3:
+  // page-after rows (permalink only).
+  const {main, after} = buildPageQueries(
+    inputs,
+    getPageQuery,
+    toStartRow,
+    typedSingleRow,
+  );
+  const [mainRows, mainResult] = useQuery(main?.query ?? null, main?.options);
+  const [afterRows, afterResult] = useQuery(
+    after?.query ?? null,
+    after?.options,
+  );
 
   const mainComplete = mainResult.type === 'complete';
   const afterComplete = afterResult.type === 'complete';

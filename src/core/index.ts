@@ -31,10 +31,8 @@ export {
 } from './history-state.ts';
 export {
   assembleRows,
-  buildAfterQuery,
-  buildMainQuery,
+  buildPageQueries,
   buildSingleQuery,
-  permalinkMissing,
   type RowsQueryInputs,
   type RowsQueryResults,
   type RowsSnapshot,
