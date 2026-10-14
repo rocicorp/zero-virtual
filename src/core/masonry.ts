@@ -384,11 +384,15 @@ class Masonry implements Layout {
     const vBottom = vTop + host.viewportHeight;
     const placed = this.#laneRendered.map((lane, l) => {
       let top = this.#laneStart[l] ?? 0;
-      return lane.map(key => {
-        const card = {key, order: order.get(key) ?? Infinity, top};
+      const cards: {key: string; order: number; top: number}[] = [];
+      for (const key of lane) {
+        const o = order.get(key);
+        // A card the DOM still shows of a window the rows have left (the
+        // DOM can be a commit behind) is not the list's to save.
+        if (o !== undefined) cards.push({key, order: o, top});
         top += this.#cardHeight.get(key) ?? estimate;
-        return card;
-      });
+      }
+      return cards;
     });
     let first = Infinity;
     let last = -Infinity;

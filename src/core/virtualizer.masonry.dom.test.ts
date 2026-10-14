@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'vitest';
 import {createHarness, harness} from './masonry-harness.ts';
-import {masonryLayout} from './masonry.ts';
+import {masonryLayout, type MasonryState} from './masonry.ts';
 import type {ScrollHistoryState} from './types.ts';
 
 type TestRow = {id: string};
@@ -390,5 +390,35 @@ describe('masonry', () => {
       expect(h.onScreen()).toMatchObject(before);
     }
     expect(lagged).toBeGreaterThan(3);
+  });
+
+  test('saves only cards of the loaded window when the rows run ahead of the DOM', () => {
+    const states: ScrollHistoryState<TestRow>[] = [];
+    const h = harness({
+      rowCount: 1000,
+      options: {onScrollStateChange: s => states.push(s)},
+    });
+    h.settle();
+    h.userScroll(2400);
+    h.settle();
+
+    // Page with the DOM a commit behind the rows: what's saved then must be
+    // of the rows, not of the cards the DOM still shows of the old window.
+    h.userScroll(4400);
+    h.lagDOMNext();
+    let lagged = false;
+    const saved = states.length;
+    for (let t = 0; t < 10 && !lagged; t++) lagged = h.tick();
+    expect(lagged).toBe(true);
+    expect(states.length).toBeGreaterThan(saved);
+
+    const loaded = new Set(
+      h.core.getSnapshot().items.map(item => String(item.key)),
+    );
+    const layout = states.at(-1)!.layout as MasonryState;
+    expect(layout.some(lane => lane !== null)).toBe(true);
+    for (const lane of layout) {
+      for (const key of lane?.keys ?? []) expect(loaded, key).toContain(key);
+    }
   });
 });
