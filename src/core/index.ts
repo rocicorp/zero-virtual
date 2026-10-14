@@ -3,30 +3,18 @@
  * here depends on `@rocicorp/zero`: the query types are opaque generics, so
  * wrappers can bind the core to any fetching library.
  *
+ * It exports what a framework binding is built from — what the `./react`
+ * and `./solid` ones use — and nothing of the core's internals.
+ *
  * @experimental This entry point is public but UNSTABLE: it exists so
  * framework wrappers (react, solid, yours) can share one implementation, and
  * its API may change in breaking ways in any release while it settles. The
  * `./react` and `./solid` entry points are the stable surfaces.
  */
-export {
-  contentWrapper,
-  findRow,
-  firstRow,
-  laneAttributes,
-  queryLanes,
-  queryRows,
-  rowAttributes,
-  VLANE_ATTR,
-  VROW_INDEX_ATTR,
-  VROW_KEY_ATTR,
-} from './dom.ts';
+export {laneAttributes, rowAttributes} from './dom.ts';
 export {
   getHistoryNavigationSnapshot,
-  getHistoryStateServerSnapshot,
-  getHistoryStateSnapshot,
-  readHistoryState,
   subscribeHistoryState,
-  updateHistoryState,
   writeHistoryState,
 } from './history-state.ts';
 export {
@@ -38,12 +26,10 @@ export {
   type RowsSnapshot,
 } from './rows.ts';
 export {
-  createStickToBottom,
   createStickToBottomCache,
   DEFAULT_STICK_SLACK,
   type StickOptions,
   type StickToBottomCache,
-  type StickToBottomController,
 } from './stick-to-bottom.ts';
 export type {Layout, LayoutFactory, LayoutHost} from './layout.ts';
 export {masonryLayout, type MasonryState} from './masonry.ts';

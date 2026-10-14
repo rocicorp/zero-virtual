@@ -1,33 +1,12 @@
 /**
  * A framework-free external store over the Navigation API's current-entry
- * state: subscribe / snapshot / update. The React wrapper bridges it with
+ * state: subscribe / snapshot / write. The React wrapper bridges it with
  * `useSyncExternalStore`; the Solid wrapper with a signal.
  *
  * The Navigation API needs Firefox 147+ (all supported Chromium and Safari
  * versions have it) — see the history-state helpers' docs for the fallback
  * story on older Firefox.
  */
-
-let currentSnapshot: unknown = null;
-let currentSnapshotString = 'null';
-
-/**
- * The current history-entry state. Cached by JSON identity so an unchanged
- * state returns the same object (required by `useSyncExternalStore`, and what
- * keeps downstream memoization stable) — which means the whole
- * `history.state`, every key of it, has to be JSON-serializable. Prefer
- * {@linkcode getHistoryNavigationSnapshot} for reading and
- * {@linkcode readHistoryState} for writing; neither has that requirement.
- */
-export function getHistoryStateSnapshot(): unknown {
-  const newSnapshot = navigation.currentEntry?.getState();
-  const newSnapshotString = JSON.stringify(newSnapshot);
-  if (newSnapshotString !== currentSnapshotString) {
-    currentSnapshot = newSnapshot;
-    currentSnapshotString = newSnapshotString;
-  }
-  return currentSnapshot;
-}
 
 // The entry the navigation snapshot below was taken from, and that snapshot.
 let navigationRead = false;
@@ -104,7 +83,7 @@ export function getHistoryStateServerSnapshot(): unknown {
 }
 
 /** Replace the current history entry's state. */
-export function updateHistoryState(state: unknown): void {
+function updateHistoryState(state: unknown): void {
   navigation.updateCurrentEntry({state});
 }
 
