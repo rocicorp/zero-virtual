@@ -7,7 +7,7 @@ import type {RowKey} from './types.ts';
 // should spread {@linkcode rowAttributes} onto each row element.
 export const VROW_INDEX_ATTR = 'data-vrow-index';
 export const VROW_KEY_ATTR = 'data-vrow-key';
-// Masonry's lane elements (see the `masonry` option) carry this one, with the
+// A layout's lane elements (see `masonryLayout`) carry this one, with the
 // lane's number.
 export const VLANE_ATTR = 'data-vlane';
 
@@ -25,13 +25,13 @@ export function rowAttributes(
 
 /**
  * The attribute every masonry lane element must carry, as an object to spread
- * onto it: `<div {...laneAttributes(lane)}>`. See the `masonry` option.
+ * onto it: `<div {...laneAttributes(lane)}>`. See `masonryLayout`.
  */
 export function laneAttributes(lane: number): {'data-vlane': number} {
   return {[VLANE_ATTR]: lane};
 }
 
-/** The rendered masonry lane elements, by lane number (holes for any missing). */
+/** The rendered lane elements, by lane number (holes for any missing). */
 export function queryLanes(el: HTMLElement): (HTMLElement | undefined)[] {
   const lanes: (HTMLElement | undefined)[] = [];
   for (const lane of el.querySelectorAll<HTMLElement>(`[${VLANE_ATTR}]`)) {
@@ -55,7 +55,7 @@ export function firstRow(el: HTMLElement): HTMLElement | null {
  * The rows' content wrapper: the parent of the first rendered row — the
  * element that contains the loaded rows (and any spacer elements rendered from
  * `spaceBefore`/`spaceAfter`), whose border-box grows and shrinks with the
- * content. In masonry, where rows sit in lane elements, the lanes' parent.
+ * content. With rows in lane elements (masonry), the lanes' parent.
  * Null until rows render.
  */
 export function contentWrapper(el: HTMLElement): HTMLElement | null {

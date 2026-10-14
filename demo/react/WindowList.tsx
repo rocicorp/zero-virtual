@@ -1,4 +1,5 @@
 import {
+  masonryLayout,
   useHistoryScrollState,
   useStickToBottom,
   useZeroWindowVirtualizer,
@@ -66,7 +67,7 @@ export function WindowList(): React.ReactNode {
     anchoring,
     count,
     lanes,
-    masonry,
+    layout: masonry ? masonryLayout : undefined,
     getRowKey,
     estimateSize,
     getPageQuery,

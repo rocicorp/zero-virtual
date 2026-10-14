@@ -1,6 +1,7 @@
 import {afterEach} from 'vitest';
 import {assembleRows, type RowsQueryInputs} from './rows.ts';
 import {VLANE_ATTR, VROW_INDEX_ATTR, VROW_KEY_ATTR} from './dom.ts';
+import {masonryLayout} from './masonry.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
 import type {Anchor} from './types.ts';
 
@@ -114,7 +115,7 @@ export function createHarness({
     listContextParams: 'ctx',
     minPageSize: 60,
     lanes,
-    masonry: true,
+    layout: masonryLayout,
     observeElementRect: (_instance, cb) => {
       cb({width: 300, height: viewportHeight});
     },

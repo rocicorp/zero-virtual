@@ -15,7 +15,7 @@ Features:
 - Bidirectional infinite scrolling (load more items at top or bottom)
 - Uniform, non-uniform, or fully dynamic (content-measured) row heights
 - Element scrolling or window scrolling (`useZeroWindowVirtualizer`)
-- Lists, grids of equal columns (`lanes`), or masonry (`masonry`)
+- Lists, grids of equal columns (`lanes`), or masonry (`masonryLayout`)
 - Native or manual (momentum-safe) scroll anchoring, auto-detected per platform
 - Permalink support (jump to and highlight a specific item by ID)
 - Imperative `scrollToItem(id, {align})`, loading the row's page if needed
@@ -352,18 +352,20 @@ return (
 
 ### Masonry
 
-Add `masonry: true` to `lanes` for a masonry feed: each card goes to the
-shortest lane rather than the next column, so cards of different heights pack
-without gaps. Render one element per lane, marked with `laneAttributes(lane)`,
-side by side, and each item inside the lane its `lane` names. Render no
-spacers — the virtualizer sizes each lane's `padding-top` and `padding-bottom`
-itself:
+Pass `layout: masonryLayout` with `lanes` for a masonry feed: each card goes
+to the shortest lane rather than the next column, so cards of different
+heights pack without gaps. Render one element per lane, marked with
+`laneAttributes(lane)`, side by side, and each item inside the lane its `lane`
+names. Render no spacers — the layout sizes each lane's `padding-top` and
+`padding-bottom` itself:
 
 ```tsx
+import {masonryLayout, useZeroVirtualizer} from '@rocicorp/zero-virtual/react';
+
 const {items} = useZeroVirtualizer({
   // ...
   lanes: 3,
-  masonry: true,
+  layout: masonryLayout,
   estimateSize: useCallback(() => 240, []), // the height of one card
 });
 
@@ -396,8 +398,10 @@ return (
 );
 ```
 
-- Keep the lanes equally wide, leave their vertical padding to the
-  virtualizer, and space the cards with the lane's `gap` rather than margins.
+- Masonry is a separate module: apps that don't import `masonryLayout` don't
+  bundle it.
+- Keep the lanes equally wide, leave their vertical padding to the layout, and
+  space the cards with the lane's `gap` rather than margins.
 - Cards are measured before they're placed, in the same frame, so they're
   placed by their real heights. A card keeps its lane while it's loaded and
   gets it back when it pages out and in again.
@@ -405,15 +409,14 @@ return (
   image loading, say) moves the cards above it in its lane, never the ones on
   screen. Native scroll anchoring can only make one correction for the whole
   list, so masonry always anchors manually and `anchoring` is ignored.
-- The scroll state records the cards in view in each lane (`laneCards`), so
+- The scroll state records the cards in view in each lane (its `layout`), so
   back/forward and reload restores put every card on screen back in its lane,
   where it was.
 - Opened in the middle of the list (a permalink, a far `scrollToItem`), the
   cards above are placed upward, so once the list's true start has loaded the
   lanes can start a little unevenly — by up to about one card.
-- Changing `lanes`, or switching `masonry` on or off, lays the cards out
-  afresh. The scroll position stays, so the cards under the viewport can
-  shift.
+- Changing `lanes`, or switching the layout, lays the cards out afresh. The
+  scroll position stays, so the cards under the viewport can shift.
 
 ### Scroll anchoring modes
 

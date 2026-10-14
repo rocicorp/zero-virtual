@@ -3,6 +3,7 @@ import {
   createStickToBottom,
   createZeroVirtualizer,
   laneAttributes,
+  masonryLayout,
 } from '../../src/solid/index.ts';
 import {For, Show, createMemo} from 'solid-js';
 import styles from '../shared/App.module.css';
@@ -63,7 +64,7 @@ export function App() {
     anchoring: anchoring(),
     count: count(),
     lanes: lanes(),
-    masonry: masonry(),
+    layout: masonry() ? masonryLayout : undefined,
     getRowKey,
     estimateSize,
     getPageQuery,

@@ -1,5 +1,6 @@
 import {describe, expect, test, vi} from 'vitest';
 import type {RowsSnapshot} from './rows.ts';
+import {masonryLayout} from './masonry.ts';
 import {observeElementOffset, observeElementRect} from './scroll.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
 
@@ -538,7 +539,7 @@ describe('masonry', () => {
   test('lanes carry the space instead of spacers', () => {
     const v = makeVirtualizer(loaded({firstRowIndex: 30, rowsLength: 9}), {
       lanes: 3,
-      masonry: true,
+      layout: masonryLayout,
     });
     const {items, spaceBefore, spaceAfter} = v.getSnapshot();
     expect(spaceBefore).toBe(0);
@@ -548,12 +549,13 @@ describe('masonry', () => {
     expect(items.map(it => it.lane)).toEqual([0, 1, 2, 0, 1, 2, 0, 1, 2]);
   });
 
-  test('needs more than one lane', () => {
+  test('one lane is a lane too', () => {
     const v = makeVirtualizer(loaded({firstRowIndex: 5, rowsLength: 2}), {
-      lanes: 1,
-      masonry: true,
+      layout: masonryLayout,
     });
-    expect(v.getSnapshot().spaceBefore).toBe(5 * EST);
+    const {items, spaceBefore} = v.getSnapshot();
+    expect(spaceBefore).toBe(0);
+    expect(items.map(it => it.lane)).toEqual([0, 0]);
   });
 });
 

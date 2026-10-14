@@ -1,5 +1,6 @@
 import {describe, expect, test} from 'vitest';
 import {createHarness, harness} from './masonry-harness.ts';
+import {masonryLayout} from './masonry.ts';
 import type {ScrollHistoryState} from './types.ts';
 
 type TestRow = {id: string};
@@ -159,7 +160,7 @@ describe('masonry', () => {
     h.userScroll(3000);
     h.settle();
     const saved = states.at(-1)!;
-    expect(saved.laneCards).toHaveLength(3);
+    expect(saved.layout).toHaveLength(3);
     const before = h.onScreen();
 
     // Somewhere else entirely, then back.
@@ -286,12 +287,12 @@ describe('masonry', () => {
   test('switching to masonry switches native anchoring off', () => {
     const h = harness({
       rowCount: 300,
-      options: {masonry: false, anchoring: 'native'},
+      options: {layout: undefined, anchoring: 'native'},
     });
     h.settle();
     expect(h.scroller.style.overflowAnchor).toBe('auto');
 
-    h.setOptions({...h.coreOptions, masonry: true});
+    h.setOptions({...h.coreOptions, layout: masonryLayout});
     h.settle();
     expect(h.scroller.style.overflowAnchor).toBe('none');
   });

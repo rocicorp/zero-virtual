@@ -80,7 +80,7 @@ grid with N columns.
   the new columns without the list resetting to the top.
 - Try it under `Window scroll` as well.
 
-## Masonry (`masonry`)
+## Masonry (`masonryLayout`)
 
 The `layout` select's `Masonry` choices (`?lanes=N&masonry=1`) render the list
 as masonry lanes. Use `Fixed non-uniform` or `Dynamic` item sizing; uniform

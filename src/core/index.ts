@@ -47,6 +47,8 @@ export {
   type StickToBottomCache,
   type StickToBottomController,
 } from './stick-to-bottom.ts';
+export type {Layout, LayoutFactory, LayoutHost} from './layout.ts';
+export {masonryLayout, type MasonryState} from './masonry.ts';
 export {
   virtualizerResult,
   ZeroVirtualizer,

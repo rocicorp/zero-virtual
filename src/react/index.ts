@@ -1,4 +1,6 @@
 export {laneAttributes, rowAttributes} from '../core/dom.ts';
+export type {Layout, LayoutFactory, LayoutHost} from '../core/layout.ts';
+export {masonryLayout, type MasonryState} from '../core/masonry.ts';
 export {
   observeElementOffset,
   observeElementRect,
