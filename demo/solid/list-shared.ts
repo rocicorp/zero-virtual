@@ -1,24 +1,14 @@
 import type {
   AnchoringMode,
   GetPageQueryOptions,
-  GetSingleQueryOptions,
 } from '../../src/solid/index.ts';
 import {createMemo} from 'solid-js';
 import styles from '../shared/App.module.css';
-import {
-  queries,
-  type ItemStart,
-  type ListContextParams,
-} from '../shared/queries.ts';
-import type {Item} from '../shared/schema.ts';
+import {estimateFor, getPageQuery, type HeightMode} from '../shared/items.ts';
+import type {ItemStart, ListContextParams} from '../shared/queries.ts';
 import {layoutFromParams, paramsForLayout} from '../shared/layout.ts';
 import {setUrlParams} from '../shared/url-params.ts';
 import {createUrlParams, createUrlState} from './use-url-state.ts';
-
-export type HeightMode = 'uniform' | 'fixed' | 'dynamic';
-
-export const ITEM_HEIGHT = 48;
-export const SIZE_ESTIMATE = 80;
 
 /**
  * Props for the rows' content wrapper. As a grid (`lanes` > 1) each row places
@@ -34,29 +24,6 @@ export function contentWrapperProps(lanes: number): {
         style: `grid-template-columns: repeat(${lanes}, minmax(0, 1fr));`,
       }
     : {};
-}
-
-export function getRowKey(item: Item): string {
-  return item.id;
-}
-
-export function toStartRow(item: Item): ItemStart {
-  return {
-    id: item.id,
-    created: item.created,
-    modified: item.modified,
-  };
-}
-
-function getQueryOptions(settled: boolean) {
-  return {ttl: settled ? '5m' : 'none'} as const;
-}
-
-export function getSingleQuery({id, settled}: GetSingleQueryOptions) {
-  return {
-    query: queries.item.getSingleQuery({id}),
-    options: getQueryOptions(settled),
-  } as const;
 }
 
 export function createSortState() {
@@ -86,19 +53,12 @@ export function createSortState() {
 }
 
 export function createGetPageQuery(listContextParams: () => ListContextParams) {
-  return ({limit, start, dir, settled}: GetPageQueryOptions<ItemStart>) => ({
-    query: queries.item.getPageQuery({
-      limit,
-      start,
-      dir,
-      listContextParams: listContextParams(),
-    }),
-    options: getQueryOptions(settled),
-  });
+  return (options: GetPageQueryOptions<ItemStart>) =>
+    getPageQuery(listContextParams(), options);
 }
 
 export function createEstimateSize(heightMode: () => HeightMode): () => number {
-  return () => (heightMode() === 'uniform' ? ITEM_HEIGHT : SIZE_ESTIMATE);
+  return () => estimateFor(heightMode());
 }
 
 export function createDemoControls() {

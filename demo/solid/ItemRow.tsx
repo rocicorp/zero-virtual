@@ -1,53 +1,12 @@
 import {rowAttributes, type VirtualRow} from '../../src/solid/index.ts';
 import {Show} from 'solid-js';
 import styles from '../shared/App.module.css';
-import {ITEM_HEIGHT, SIZE_ESTIMATE, type HeightMode} from './list-shared.ts';
+import {
+  dateFormatter,
+  rowPresentation,
+  type HeightMode,
+} from '../shared/items.ts';
 import type {Item} from '../shared/schema.ts';
-
-const dateFormatter = new Intl.DateTimeFormat('en-US', {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-});
-
-const FIXED_HEIGHTS = [44, 60, 76, 92, 120, 140];
-
-function hashString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-function fixedHeightForId(id: string): number {
-  return FIXED_HEIGHTS[hashString(id) % FIXED_HEIGHTS.length];
-}
-
-function rowPresentation(
-  heightMode: HeightMode,
-  row: Item | undefined,
-): {className: string; height: number | undefined} {
-  switch (heightMode) {
-    case 'uniform':
-      return {
-        className: `${styles.row} ${styles.rowCompact}`,
-        height: ITEM_HEIGHT,
-      };
-    case 'fixed':
-      return {
-        className: `${styles.row} ${styles.rowFixed}`,
-        height: row ? fixedHeightForId(row.id) : SIZE_ESTIMATE,
-      };
-    case 'dynamic':
-      return {
-        className: `${styles.row} ${styles.rowDynamic}`,
-        height: undefined,
-      };
-  }
-}
 
 // Reads props via accessors (no destructuring): `item` is a store node the
 // binding keeps stable per row key, so the same DOM node survives paging
