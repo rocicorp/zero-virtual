@@ -112,6 +112,7 @@ export function createHarness({
   const coreOptions: VirtualizerOptions<unknown, TestRow, TestRow> = {
     estimateSize: () => 80,
     getRowKey: row => row.id,
+    toStartRow: row => row,
     listContextParams: 'ctx',
     minPageSize: 60,
     lanes,
@@ -306,16 +307,20 @@ export function createHarness({
     settle,
     heightOf,
     setHeight: (key: string, h: number) => heights.set(key, h),
-    /** Answer the next new page query with only its first `rows` rows. */
+    /** Render the next tick's new rows a commit late (see `tick`). */
     lagDOMNext: () => {
       lagDOM = true;
     },
+    /** Answer the next `times` page queries with nothing, still loading. */
     emptyNext: (times = 1) => {
       empty = times;
     },
+    /** Answer the next new page query with only its first `rows` rows. */
     partialNext: (rows: number) => {
       const {anchor} = core.getQueryInputs();
-      partial = {rows, from: `${anchor.kind}:${anchor.startRow?.id ?? ''}`};
+      const from =
+        anchor.kind === 'permalink' ? '' : (anchor.startRow?.id ?? '');
+      partial = {rows, from: `${anchor.kind}:${from}`};
     },
     userScroll: (top: number) => {
       scroller.scrollTop = top;

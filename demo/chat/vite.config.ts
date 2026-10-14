@@ -3,7 +3,7 @@ import {fileURLToPath} from 'node:url';
 import {defineConfig, loadEnv, type ViteDevServer} from 'vite';
 
 // The stack (postgres, zero-cache, API handlers, .env) is shared with the
-// Solid demo and lives in demo/shared.
+// other demos and lives in demo/shared.
 const sharedDir = fileURLToPath(new URL('../shared', import.meta.url));
 
 export default defineConfig(({mode}) => {

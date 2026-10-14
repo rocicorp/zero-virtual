@@ -7,5 +7,5 @@
     }
   },
   "include": ["./*.tsx", "./*.ts"],
-  "exclude": ["./playwright.config.ts", "./vite.config.ts"]
+  "exclude": ["./vite.config.ts"]
 }

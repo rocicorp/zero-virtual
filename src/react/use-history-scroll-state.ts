@@ -43,7 +43,7 @@ const DEFAULT_KEY = 'scrollState';
  * ```tsx
  * const [scrollState, setScrollState] = useHistoryScrollState<MyStartRow>();
  *
- * const {virtualizer, rowAt} = useZeroVirtualizer({
+ * const {items, spaceBefore, spaceAfter} = useZeroVirtualizer({
  *   scrollState,
  *   onScrollStateChange: setScrollState,
  *   // ...

@@ -35,6 +35,7 @@ function makeOptions(
   return {
     estimateSize: () => EST,
     getRowKey: row => (row as {id: string}).id,
+    toStartRow: row => row,
     listContextParams: {},
     observeElementRect,
     observeElementOffset,

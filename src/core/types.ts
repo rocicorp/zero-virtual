@@ -95,13 +95,11 @@ export type GetSingleQuery<TQuery, TOptions> = (
  * `@rocicorp/zero/solid`); a custom wrapper can use any other library's
  * query type.
  *
- * @typeParam TRow - The type of row data returned from queries
  * @typeParam TStartRow - The type of data needed to anchor pagination
  * @typeParam TPageQuery - The query type returned by `getPageQuery`
  * @typeParam TSingleQuery - The query type returned by `getSingleQuery`
  */
 export type VirtualizerQueryOptions<
-  TRow,
   TStartRow,
   TPageQuery,
   TPageOptions,
@@ -112,20 +110,6 @@ export type VirtualizerQueryOptions<
   getPageQuery: GetPageQuery<TPageQuery, TPageOptions, TStartRow>;
   /** Function that returns a query for fetching a single row by ID */
   getSingleQuery: GetSingleQuery<TSingleQuery, TSingleOptions>;
-  /**
-   * Function to extract the start row data from a full row (for pagination
-   * anchoring).
-   *
-   * The result rides in the paging anchor, which is persisted through
-   * `onScrollStateChange` and compared against what comes back. That
-   * comparison is `JSON.stringify` unless you supply
-   * {@linkcode VirtualizerOptions.compareStartRows}, so by default the result
-   * must be **JSON-serializable** — a `bigint` from an int64 column is the
-   * one to watch for. Either narrow it here (`Number(row.id)`,
-   * `String(row.id)`) and widen it again in `getPageQuery`, or hand over the
-   * comparator you already sort by.
-   */
-  toStartRow: (row: TRow) => TStartRow;
 };
 
 /**

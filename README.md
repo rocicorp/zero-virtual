@@ -268,8 +268,8 @@ export function ItemList() {
 
 The window scroller is `createZeroWindowVirtualizer`, scroll persistence is
 `createHistoryScrollState` (returns `[Accessor, setter]`), and stick-to-bottom
-is `createStickToBottom(snapshot, options?, deps?)` where `snapshot` is the
-accessor returned by the virtualizer. See
+is `createStickToBottom(snapshot, options?)` where `snapshot` is the accessor
+returned by the virtualizer and `options` an accessor of the stick options. See
 [demo/solid/App.tsx](demo/solid/App.tsx) for all of them in one place.
 
 ### Element vs window scrolling
@@ -731,9 +731,9 @@ First, install dependencies from the repo root:
 pnpm i
 ```
 
-The demo is split into three packages: the shared stack (postgres, zero-cache,
-API handlers) in `demo/shared`, and two front ends over it — `demo/react` and
-`demo/solid`.
+The demo is split into four packages: the shared stack (postgres, zero-cache,
+API handlers) in `demo/shared`, and three front ends over it — `demo/react`,
+`demo/solid` and the [chat app](#chat-demo) in `demo/chat`.
 
 Run Docker:
 
