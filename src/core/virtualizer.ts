@@ -1913,7 +1913,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       this.#setAnchor({
         index: index + indexOffset,
         kind: type,
-        startRow: row && this.#options.toStartRow(row),
+        startRow: row === undefined ? undefined : this.#options.toStartRow(row),
       } as Anchor<TStartRow>);
     };
 
