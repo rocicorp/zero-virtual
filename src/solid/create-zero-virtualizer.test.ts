@@ -1,7 +1,6 @@
 import {createRoot, createSignal, type Accessor} from 'solid-js';
 import {beforeEach, describe, expect, test, vi} from 'vitest';
 import type {RowsQueryInputs, RowsSnapshot} from '../core/rows.ts';
-import {observeElementOffset, observeElementRect} from '../core/scroll.ts';
 import {
   createZeroVirtualizer,
   type CreateZeroVirtualizerOptions,
@@ -187,7 +186,7 @@ describe('createZeroVirtualizer (solid wrapper wiring)', () => {
     });
   });
 
-  test('result exposes the resolved wiring with stable identity', () => {
+  test('result exposes the scrolling element', () => {
     const el = document.createElement('div');
     const rowsData = [{id: 'a'}];
     const [rows, setRows] = createSignal(makeRows({}));
@@ -200,15 +199,9 @@ describe('createZeroVirtualizer (solid wrapper wiring)', () => {
         getScrollElement,
       }));
 
-      expect(snap().options.getScrollElement).toBe(getScrollElement);
-      expect(snap().options.observeElementRect).toBe(observeElementRect);
-      expect(snap().options.observeElementOffset).toBe(observeElementOffset);
-      // TanStack-style: the resolved current scrolling element.
       expect(snap().scrollElement).toBe(el);
 
-      // A content change produces a fresh snapshot but must not churn the
-      // options bag (stick-to-bottom keys its controller on it).
-      const before = snap().options;
+      // And still after a content change.
       setRows(
         makeRows({
           rowsLength: 1,
@@ -221,7 +214,7 @@ describe('createZeroVirtualizer (solid wrapper wiring)', () => {
         }),
       );
       expect(snap().items).toHaveLength(1);
-      expect(snap().options).toBe(before);
+      expect(snap().scrollElement).toBe(el);
       dispose();
     });
   });

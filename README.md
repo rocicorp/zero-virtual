@@ -288,14 +288,9 @@ const {items, spaceBefore, spaceAfter} = useZeroWindowVirtualizer({
 });
 ```
 
-Both hooks accept TanStack-style scroll wiring directly in their options:
-`getScrollElement` plus optional `observeElementRect` / `observeElementOffset`
-overrides. They default per hook — the defaults are exported as
-`observeElementRect` / `observeElementOffset` and their window twins
-`observeWindowRect` / `observeWindowOffset`. Override them to observe a
-custom container. The result echoes the resolved wiring as `options` and
-exposes the current scrolling element as `scrollElement`, also TanStack-style.
-The Solid equivalent is `createZeroWindowVirtualizer`.
+The result exposes the current scrolling element as `scrollElement`: the
+element `getScrollElement` returns, or `document.scrollingElement` for the
+window. The Solid equivalent is `createZeroWindowVirtualizer`.
 
 ### Grids
 
@@ -553,8 +548,8 @@ useStickToBottom(virtualizer);
 
 It only follows while the user is parked at the bottom: scroll away and the
 following stops (read history in peace); scroll back down and it re-arms. The
-hook reuses the virtualizer's scroll wiring (via `virtualizer.options` /
-`virtualizer.scrollElement`), so it works unchanged with window scrolling.
+hook finds the scroll container through `virtualizer.scrollElement`, so it
+works unchanged with window scrolling.
 
 The full signature is `useStickToBottom(virtualizer, options?)`, with
 `enabled` and `slack` in the options. Re-pinning is driven purely by the DOM

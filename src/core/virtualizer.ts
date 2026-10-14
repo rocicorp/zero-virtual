@@ -12,14 +12,7 @@ import {
 } from './dom.ts';
 import type {Layout, LayoutFactory, LayoutHost} from './layout.ts';
 import type {RowsQueryInputs, RowsSnapshot} from './rows.ts';
-import type {
-  ObserveElementOffset,
-  ObserveElementRect,
-  ResolvedScrollOptions,
-  ResolveScrollElement,
-  ScrollRect,
-  VirtualizerScrollOptions,
-} from './scroll.ts';
+import {elementScroller, type Scroller, type ScrollRect} from './scroll.ts';
 import type {
   Anchor,
   AnchoringMode,
@@ -242,13 +235,6 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    */
   compareStartRows?: ((a: TStartRow, b: TStartRow) => number) | undefined;
   onSettled?: (() => void) | undefined;
-  /**
-   * The scroll observers, TanStack Virtual style. Required here; the
-   * framework bindings make them optional and default them per entry-point
-   * variant (element vs window).
-   */
-  observeElementRect: ObserveElementRect;
-  observeElementOffset: ObserveElementOffset;
 };
 
 /** What {@linkcode ZeroVirtualizer.getSnapshot} returns — see the react hook's
@@ -274,12 +260,10 @@ export type VirtualizerSnapshot<TRow> = {
 };
 
 /**
- * The full options the framework bindings accept: the core options plus the
- * scroll wiring ({@linkcode VirtualizerScrollOptions}, which also makes the
- * observers optional — the bindings default them per entry-point variant)
- * and the query functions ({@linkcode VirtualizerQueryOptions}, whose query
- * types are opaque to the core — the bindings instantiate them with their
- * data layer's query type).
+ * The full options the framework bindings accept: the core options plus
+ * `getScrollElement` and the query functions
+ * ({@linkcode VirtualizerQueryOptions}, whose query types are opaque to the
+ * core — the bindings instantiate them with their data layer's query type).
  */
 export type VirtualizerBindingOptions<
   TListContextParams,
@@ -289,12 +273,14 @@ export type VirtualizerBindingOptions<
   TPageOptions,
   TSingleQuery,
   TSingleOptions,
-> = Omit<
-  VirtualizerOptions<TListContextParams, TRow, TStartRow>,
-  'observeElementRect' | 'observeElementOffset'
-> &
-  VirtualizerScrollOptions &
-  VirtualizerQueryOptions<
+> = VirtualizerOptions<TListContextParams, TRow, TStartRow> & {
+  /**
+   * Returns the element the rows are rendered into. For element scrolling it
+   * is also the scroll container; for the window variants the window is the
+   * scroll container.
+   */
+  getScrollElement: () => HTMLElement | null;
+} & VirtualizerQueryOptions<
     TStartRow,
     TPageQuery,
     TPageOptions,
@@ -303,12 +289,11 @@ export type VirtualizerBindingOptions<
   >;
 
 /**
- * What the framework bindings return: the snapshot plus, TanStack-style, the
- * resolved scroll wiring (`options`) and the current scrolling element
- * (`scrollElement` — `null` until the container is mounted).
+ * What the framework bindings return: the snapshot plus the current
+ * scrolling element (`scrollElement` — `null` until the container is
+ * mounted).
  */
 export type VirtualizerResult<TRow> = VirtualizerSnapshot<TRow> & {
-  readonly options: ResolvedScrollOptions;
   readonly scrollElement: HTMLElement | null;
   /**
    * Scroll the row with the given id into view, loading it first if needed.
@@ -333,24 +318,23 @@ export type VirtualizerResultMethods<TRow> = {
 };
 
 /**
- * Builds the binding result from a snapshot and the resolved scroll wiring.
- * `scrollElement` is a live getter — it resolves at read time, so it is
- * already correct in the effect that mounts the container — and it stays
- * current for any holder of the result object.
+ * Builds the binding result from a snapshot. `scrollElement` is a live
+ * getter — it resolves at read time, so it is already correct in the effect
+ * that mounts the container — and it stays current for any holder of the
+ * result object.
  */
 export function virtualizerResult<TRow>(
   snapshot: VirtualizerSnapshot<TRow>,
-  options: ResolvedScrollOptions,
-  resolveScrollElement: ResolveScrollElement,
+  getScrollElement: () => HTMLElement | null,
+  scroller: Scroller,
   methods: VirtualizerResultMethods<TRow>,
 ): VirtualizerResult<TRow> {
   return {
     ...snapshot,
-    options,
     ...methods,
     get scrollElement() {
-      const el = options.getScrollElement();
-      return el && resolveScrollElement(el);
+      const el = getScrollElement();
+      return el && scroller.resolve(el);
     },
   };
 }
@@ -466,7 +450,7 @@ const EMPTY_ROWS: RowsSnapshot<unknown> = {
  * `./solid` entry points are the stable surfaces.
  */
 export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
-  readonly #resolveScrollElement: ResolveScrollElement;
+  readonly #scroller: Scroller;
   #options: VirtualizerOptions<TListContextParams, TRow, TStartRow>;
   #rows: RowsSnapshot<TRow> = EMPTY_ROWS as RowsSnapshot<TRow>;
 
@@ -587,9 +571,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   constructor(
     options: VirtualizerOptions<TListContextParams, TRow, TStartRow>,
-    resolveScrollElement: ResolveScrollElement = el => el,
+    scroller: Scroller = elementScroller,
   ) {
-    this.#resolveScrollElement = resolveScrollElement;
+    this.#scroller = scroller;
     this.#options = options;
     this.#pageSize = this.#minPageSize();
     // Initialize paging directly from the restorable state so the first
@@ -693,19 +677,20 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     this.detach();
     if (!el) return;
 
+    const scrollElement = this.#scroller.resolve(el);
     const attachment = createAttachment<TRow>(
       el,
-      this.#resolveScrollElement(el),
+      scrollElement,
       this.#manual(),
     );
     // Observers may report synchronously during setup.
     this.#attachment = attachment;
     attachment.cleanups.push(
-      this.#options.observeElementRect(attachment, rect => {
+      this.#scroller.observeRect(scrollElement, rect => {
         attachment.rect = rect;
         this.#withNotify(() => this.#evaluate());
       }),
-      this.#options.observeElementOffset(attachment, this.#onScrollOffset),
+      this.#scroller.observeOffset(scrollElement, this.#onScrollOffset),
     );
     attachment.listen('scrollend', this.#onScrollEnd);
     // Touch events bubble from the rows to the scroll element.

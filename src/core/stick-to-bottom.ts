@@ -1,5 +1,4 @@
 import {contentWrapper} from './dom.ts';
-import type {ResolvedScrollOptions} from './scroll.ts';
 
 /**
  * Slack (px) around the bottom edge so sub-pixel rounding or a stray
@@ -129,16 +128,13 @@ export function createStickToBottom(
 
 export type StickToBottomCache = {
   /**
-   * Call per framework tick while enabled. Recreates the controller when the
-   * resolved scroll wiring or `slack` changes (they're baked into the core
-   * controller), then lets it lazily (re)attach via
-   * {@linkcode StickToBottomController.ensure}.
+   * Call per framework tick while enabled, with the virtualizer's latest
+   * result. Recreates the controller only when `slack` changes (it's baked
+   * in): the controller re-attaches itself when the scroll element or the
+   * content wrapper is replaced, and keeps whether it's stuck across that.
    */
   ensure(
-    virtualizer: {
-      readonly options: ResolvedScrollOptions;
-      readonly scrollElement: HTMLElement | null;
-    },
+    virtualizer: {readonly scrollElement: HTMLElement | null},
     slack: number,
   ): void;
   /** Remove listeners and forget the controller. Safe to call repeatedly. */
@@ -147,38 +143,36 @@ export type StickToBottomCache = {
 
 /**
  * The shared per-binding state machine of the framework stick-to-bottom
- * helpers: a cached {@linkcode createStickToBottom} controller keyed on the
- * virtualizer's resolved scroll wiring (identity-stable while its members
- * are) and the slack.
+ * helpers: one {@linkcode createStickToBottom} controller per slack, reading
+ * the scroll element from the latest virtualizer result.
  */
 export function createStickToBottomCache(): StickToBottomCache {
   let controller: StickToBottomController | null = null;
-  let key: readonly [ResolvedScrollOptions, number] | null = null;
+  let controllerSlack = DEFAULT_STICK_SLACK;
+  let current: {readonly scrollElement: HTMLElement | null} | null = null;
+  const scrollElement = () => current?.scrollElement ?? null;
   return {
     ensure(virtualizer, slack) {
-      const {options} = virtualizer;
-      if (controller && key && (key[0] !== options || key[1] !== slack)) {
+      current = virtualizer;
+      if (controller && controllerSlack !== slack) {
         controller.detach();
         controller = null;
       }
-      // `scrollElement` is a live getter delegating to the resolved wiring,
-      // so reading it through this virtualizer result stays current for the
-      // controller's whole lifetime.
+      controllerSlack = slack;
       controller ??= createStickToBottom(
-        () => virtualizer.scrollElement,
+        scrollElement,
         () => {
-          const scroller = virtualizer.scrollElement;
+          const scroller = scrollElement();
           return scroller && contentWrapper(scroller);
         },
         slack,
       );
-      key = [options, slack];
       controller.ensure();
     },
     detach() {
       controller?.detach();
       controller = null;
-      key = null;
+      current = null;
     },
   };
 }

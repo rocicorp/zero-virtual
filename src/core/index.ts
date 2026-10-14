@@ -42,19 +42,10 @@ export {
   type VirtualizerSnapshot,
 } from './virtualizer.ts';
 export {
-  observeElementOffset,
-  observeElementRect,
-  observeWindowOffset,
-  observeWindowRect,
-  resolveElementScrollElement,
-  resolveWindowScrollElement,
-  type ObserveElementOffset,
-  type ObserveElementRect,
-  type ResolvedScrollOptions,
-  type ResolveScrollElement,
-  type ScrollObserverInstance,
+  elementScroller,
+  windowScroller,
+  type Scroller,
   type ScrollRect,
-  type VirtualizerScrollOptions,
 } from './scroll.ts';
 export type {
   Anchor,

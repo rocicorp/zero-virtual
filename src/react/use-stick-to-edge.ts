@@ -31,9 +31,9 @@ export type {StickOptions} from '../core/stick-to-bottom.ts';
  * is already revealed.
  *
  * @param virtualizer The result of `useZeroVirtualizer` /
- *   `useZeroWindowVirtualizer`. It supplies the scroll wiring (via
- *   `virtualizer.options` / `virtualizer.scrollElement`); the rows' content
- *   wrapper is found in the DOM.
+ *   `useZeroWindowVirtualizer`. It supplies the scroll element
+ *   (`virtualizer.scrollElement`); the rows' content wrapper is found in the
+ *   DOM.
  */
 export function useStickToBottom<TRow>(
   virtualizer: ZeroVirtualizerResult<TRow>,

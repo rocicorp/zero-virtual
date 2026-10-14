@@ -8,14 +8,9 @@ import {
 import {createEffect} from 'solid-js';
 import {createStore, reconcile} from 'solid-js/store';
 import {
-  observeElementOffset,
-  observeElementRect,
-  observeWindowOffset,
-  observeWindowRect,
-  resolveElementScrollElement,
-  resolveWindowScrollElement,
-  type ResolvedScrollOptions,
-  type ResolveScrollElement,
+  elementScroller,
+  windowScroller,
+  type Scroller,
 } from '../core/scroll.ts';
 import type {VirtualRow} from '../core/types.ts';
 import {
@@ -29,18 +24,17 @@ import {createRows} from './create-rows.ts';
 /**
  * Options for {@linkcode createZeroVirtualizer}: the core options (see
  * {@linkcode VirtualizerBindingOptions}) plus the Solid-side wiring — the
- * scroll element getter, the query functions (bound via
- * `@rocicorp/zero/solid`), and optional overrides of the scroll observers
- * (TanStack Virtual style).
+ * scroll element getter and the query functions (bound via
+ * `@rocicorp/zero/solid`).
  */
 export type CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> =
   VirtualizerBindingOptions<TListContextParams, TRow, TStartRow>;
 
 /**
- * Result of {@linkcode createZeroVirtualizer}: the snapshot plus the resolved
- * scroll wiring (`options`), the current scrolling element (`scrollElement`, a
- * live getter — not a reactive source), and `scrollToItem` for jumping to a
- * row by id. See {@linkcode VirtualizerResult} for field semantics.
+ * Result of {@linkcode createZeroVirtualizer}: the snapshot plus the current
+ * scrolling element (`scrollElement`, a live getter — not a reactive
+ * source), and `scrollToItem` for jumping to a row by id. See
+ * {@linkcode VirtualizerResult} for field semantics.
  */
 export type CreateZeroVirtualizerResult<TRow> = VirtualizerResult<TRow>;
 
@@ -58,19 +52,16 @@ export type CreateZeroVirtualizerResult<TRow> = VirtualizerResult<TRow>;
  * Call during component setup (uses `onCleanup`).
  */
 function createZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
-  // The binding options with the observers already defaulted (the entry
-  // points below spread them in, TanStack style).
   options: Accessor<
-    CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> &
-      ResolvedScrollOptions
+    CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>
   >,
-  resolveScrollElement: ResolveScrollElement,
+  scroller: Scroller,
 ): Accessor<CreateZeroVirtualizerResult<TRow>> {
   // The constructor is pure (no DOM / listeners / timers), so eager
   // construction during setup is safe.
   const core = new ZeroVirtualizer<TListContextParams, TRow, TStartRow>(
     options(),
-    resolveScrollElement,
+    scroller,
   );
 
   // Bridge core-driven changes (scroll, timers, transitions) into Solid's
@@ -128,28 +119,13 @@ function createZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
     setItems(reconcile(snapshot().items as VirtualRow<TRow>[], {key: 'key'})),
   );
 
-  // Memoizing each member first (memos only propagate on `!==`) keeps the
-  // options bag's identity stable while the members' identities are.
   const getScrollElement = createMemo(() => options().getScrollElement);
-  const observeRect = createMemo(() => options().observeElementRect);
-  const observeOffset = createMemo(() => options().observeElementOffset);
-  const resultOptions = createMemo(() => ({
-    getScrollElement: getScrollElement(),
-    observeElementRect: observeRect(),
-    observeElementOffset: observeOffset(),
-  }));
-
   return createMemo(() =>
-    virtualizerResult(
-      {...snapshot(), items},
-      resultOptions(),
-      resolveScrollElement,
-      {
-        scrollToItem: core.scrollToItem,
-        firstVisibleItem: core.firstVisibleItem,
-        lastVisibleItem: core.lastVisibleItem,
-      },
-    ),
+    virtualizerResult({...snapshot(), items}, getScrollElement(), scroller, {
+      scrollToItem: core.scrollToItem,
+      firstVisibleItem: core.firstVisibleItem,
+      lastVisibleItem: core.lastVisibleItem,
+    }),
   );
 }
 
@@ -163,14 +139,7 @@ export function createZeroVirtualizer<TListContextParams, TRow, TStartRow>(
     CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>
   >,
 ): Accessor<CreateZeroVirtualizerResult<TRow>> {
-  return createZeroVirtualizerImpl(() => {
-    const o = options();
-    return {
-      ...o,
-      observeElementRect: o.observeElementRect ?? observeElementRect,
-      observeElementOffset: o.observeElementOffset ?? observeElementOffset,
-    };
-  }, resolveElementScrollElement);
+  return createZeroVirtualizerImpl(options, elementScroller);
 }
 
 /**
@@ -187,12 +156,5 @@ export function createZeroWindowVirtualizer<
     CreateZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>
   >,
 ): Accessor<CreateZeroVirtualizerResult<TRow>> {
-  return createZeroVirtualizerImpl(() => {
-    const o = options();
-    return {
-      ...o,
-      observeElementRect: o.observeElementRect ?? observeWindowRect,
-      observeElementOffset: o.observeElementOffset ?? observeWindowOffset,
-    };
-  }, resolveWindowScrollElement);
+  return createZeroVirtualizerImpl(options, windowScroller);
 }

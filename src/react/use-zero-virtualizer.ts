@@ -1,13 +1,8 @@
 import {useLayoutEffect, useMemo, useReducer, useState} from 'react';
 import {
-  observeElementOffset,
-  observeElementRect,
-  observeWindowOffset,
-  observeWindowRect,
-  resolveElementScrollElement,
-  resolveWindowScrollElement,
-  type ResolvedScrollOptions,
-  type ResolveScrollElement,
+  elementScroller,
+  windowScroller,
+  type Scroller,
 } from '../core/scroll.ts';
 import {
   virtualizerResult,
@@ -20,9 +15,8 @@ import {useRows} from './use-rows.ts';
 /**
  * Options for configuring the Zero virtualizer. The core options (see
  * {@linkcode VirtualizerBindingOptions}) plus the React-side wiring: the
- * scroll element getter, the query functions (bound via
- * `@rocicorp/zero/react`), and optional overrides of the scroll observers
- * (TanStack Virtual style).
+ * scroll element getter and the query functions (bound via
+ * `@rocicorp/zero/react`).
  *
  * @typeParam TListContextParams - The type of parameters that define the list's query context
  * @typeParam TRow - The type of row data returned from queries
@@ -35,10 +29,9 @@ export type UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> =
  * Result object returned by the useZeroVirtualizer hook: the loaded rows to
  * render inside a content wrapper, with `spaceBefore` / `spaceAfter` standing
  * in for the unloaded rows above and below — rendered as spacer elements (see
- * {@linkcode VirtualizerResult}),
- * plus load/paging status, the resolved scroll
- * wiring (`options`), the current scrolling element (`scrollElement`), and
- * `scrollToItem` for jumping to a row by id.
+ * {@linkcode VirtualizerResult}), plus load/paging status, the current
+ * scrolling element (`scrollElement`), and `scrollToItem` for jumping to a
+ * row by id.
  * See {@linkcode VirtualizerResult} for field semantics. The object identity
  * is stable between renders whose content didn't change.
  *
@@ -56,11 +49,8 @@ export type ZeroVirtualizerResult<TRow> = VirtualizerResult<TRow>;
  * driven by the core's change notifications.
  */
 function useZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
-  // The binding options with the observers already defaulted (the hooks
-  // below spread them in, TanStack style).
-  options: UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow> &
-    ResolvedScrollOptions,
-  resolveScrollElement: ResolveScrollElement,
+  options: UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>,
+  scroller: Scroller,
 ): ZeroVirtualizerResult<TRow> {
   const [, rerender] = useReducer(() => ({}), {});
   // One core instance per hook lifetime. The constructor is pure (no DOM /
@@ -71,7 +61,7 @@ function useZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
     () =>
       new ZeroVirtualizer<TListContextParams, TRow, TStartRow>(
         options,
-        resolveScrollElement,
+        scroller,
       ),
   );
 
@@ -109,24 +99,20 @@ function useZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
     core.afterDOMUpdate();
   });
 
-  const {getScrollElement, observeElementRect, observeElementOffset} = options;
-  const resultOptions = useMemo(
-    () => ({getScrollElement, observeElementRect, observeElementOffset}),
-    [getScrollElement, observeElementRect, observeElementOffset],
-  );
+  const {getScrollElement} = options;
   const snapshot = core.getSnapshot();
   const {scrollToItem, firstVisibleItem, lastVisibleItem} = core;
   return useMemo(
     () =>
-      virtualizerResult(snapshot, resultOptions, resolveScrollElement, {
+      virtualizerResult(snapshot, getScrollElement, scroller, {
         scrollToItem,
         firstVisibleItem,
         lastVisibleItem,
       }),
     [
       snapshot,
-      resultOptions,
-      resolveScrollElement,
+      getScrollElement,
+      scroller,
       scrollToItem,
       firstVisibleItem,
       lastVisibleItem,
@@ -146,15 +132,7 @@ function useZeroVirtualizerImpl<TListContextParams, TRow, TStartRow>(
 export function useZeroVirtualizer<TListContextParams, TRow, TStartRow>(
   options: UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>,
 ): ZeroVirtualizerResult<TRow> {
-  return useZeroVirtualizerImpl(
-    {
-      ...options,
-      observeElementRect: options.observeElementRect ?? observeElementRect,
-      observeElementOffset:
-        options.observeElementOffset ?? observeElementOffset,
-    },
-    resolveElementScrollElement,
-  );
+  return useZeroVirtualizerImpl(options, elementScroller);
 }
 
 /**
@@ -170,12 +148,5 @@ export function useZeroVirtualizer<TListContextParams, TRow, TStartRow>(
 export function useZeroWindowVirtualizer<TListContextParams, TRow, TStartRow>(
   options: UseZeroVirtualizerOptions<TListContextParams, TRow, TStartRow>,
 ): ZeroVirtualizerResult<TRow> {
-  return useZeroVirtualizerImpl(
-    {
-      ...options,
-      observeElementRect: options.observeElementRect ?? observeWindowRect,
-      observeElementOffset: options.observeElementOffset ?? observeWindowOffset,
-    },
-    resolveWindowScrollElement,
-  );
+  return useZeroVirtualizerImpl(options, windowScroller);
 }

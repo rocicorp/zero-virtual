@@ -1,6 +1,6 @@
 import {afterEach} from 'vitest';
 import type {RowsQueryInputs, RowsSnapshot} from './rows.ts';
-import type {ObserveElementOffset, ObserveElementRect} from './scroll.ts';
+import type {Scroller} from './scroll.ts';
 import type {Anchor} from './types.ts';
 
 // What the DOM test harnesses share: a scroll container whose geometry the
@@ -130,17 +130,22 @@ export function createScroller(
     get: () => viewportHeight,
   });
 
-  // The rect reports at once, like a ResizeObserver's first measurement; the
-  // offset waits for deliverScroll.
+  // What the core is constructed with: this scroller, whose rect reports at
+  // once, like a ResizeObserver's first measurement, and whose offset waits
+  // for deliverScroll. A test can swap `observeRect` before the first tick.
   let offsetCb: ((offset: number) => void) | null = null;
-  const observeElementRect: ObserveElementRect = (_instance, cb) => {
-    cb({width: 300, height: viewportHeight});
-  };
-  const observeElementOffset: ObserveElementOffset = (_instance, cb) => {
-    offsetCb = cb;
-    return () => {
-      offsetCb = null;
-    };
+  const wiring: Scroller = {
+    resolve: () => scroller,
+    observeRect(_el, cb) {
+      cb({width: 300, height: viewportHeight});
+      return () => {};
+    },
+    observeOffset(_el, cb) {
+      offsetCb = cb;
+      return () => {
+        offsetCb = null;
+      };
+    },
   };
   const deliverScroll = () => {
     if (scrollPending) {
@@ -153,8 +158,7 @@ export function createScroller(
     scroller,
     wrapper,
     scrollTop: read,
-    observeElementRect,
-    observeElementOffset,
+    wiring,
     deliverScroll,
     userScroll: (top: number) => {
       scroller.scrollTop = top;

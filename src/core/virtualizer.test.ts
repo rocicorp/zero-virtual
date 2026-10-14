@@ -1,7 +1,6 @@
 import {describe, expect, test, vi} from 'vitest';
 import type {RowsSnapshot} from './rows.ts';
 import {masonryLayout} from './masonry.ts';
-import {observeElementOffset, observeElementRect} from './scroll.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
 import {makeRows} from './scroll-harness.ts';
 
@@ -15,8 +14,6 @@ function makeOptions(
     getRowKey: row => (row as {id: string}).id,
     toStartRow: row => row,
     listContextParams: {},
-    observeElementRect,
-    observeElementOffset,
     ...overrides,
   };
 }
@@ -217,13 +214,11 @@ describe('ZeroVirtualizer wrapper contract', () => {
   test('attachment cleanup runs once per container and restores its style', () => {
     const rectCleanup = vi.fn();
     const offsetCleanup = vi.fn();
-    const v = new ZeroVirtualizer(
-      makeOptions({
-        anchoring: 'manual',
-        observeElementRect: () => rectCleanup,
-        observeElementOffset: () => offsetCleanup,
-      }),
-    );
+    const v = new ZeroVirtualizer(makeOptions({anchoring: 'manual'}), {
+      resolve: el => el,
+      observeRect: () => rectCleanup,
+      observeOffset: () => offsetCleanup,
+    });
     const first = document.createElement('div');
     const second = document.createElement('div');
     first.style.overflowAnchor = 'auto';
@@ -290,14 +285,14 @@ describe('ZeroVirtualizer wrapper contract', () => {
     vi.useFakeTimers();
     try {
       let offsetCb: ((offset: number) => void) | undefined;
-      const v = new ZeroVirtualizer(
-        makeOptions({
-          observeElementRect: () => {},
-          observeElementOffset: (_instance, cb) => {
-            offsetCb = cb;
-          },
-        }),
-      );
+      const v = new ZeroVirtualizer(makeOptions(), {
+        resolve: el => el,
+        observeRect: () => () => {},
+        observeOffset: (_el, cb) => {
+          offsetCb = cb;
+          return () => {};
+        },
+      });
       v.attach(document.createElement('div'));
 
       // Idle for settleTime → settled.
