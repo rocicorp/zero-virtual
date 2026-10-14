@@ -1,5 +1,5 @@
 import {afterEach} from 'vitest';
-import type {RowsQueryInputs} from './rows.ts';
+import type {RowsQueryInputs, RowsSnapshot} from './rows.ts';
 import type {ObserveElementOffset, ObserveElementRect} from './scroll.ts';
 import type {Anchor} from './types.ts';
 
@@ -21,6 +21,26 @@ export function rect(top: number, height: number): DOMRect {
     y: top,
     toJSON: () => ({}),
   } as DOMRect;
+}
+
+/** A rows snapshot with nothing loaded yet, plus `overrides`. */
+export function makeRows<TRow = unknown>(
+  overrides: Partial<RowsSnapshot<TRow>> = {},
+): RowsSnapshot<TRow> {
+  return {
+    anchor: {index: 0, kind: 'forward', startRow: undefined},
+    pageSize: 50,
+    rowAt: () => undefined,
+    rowsLength: 0,
+    complete: false,
+    rowsEmpty: true,
+    atStart: false,
+    atEnd: false,
+    firstRowIndex: 0,
+    permalinkNotFound: false,
+    lookup: null,
+    ...overrides,
+  };
 }
 
 /** An inline style's px length, 0 when unset. */

@@ -6,6 +6,7 @@ import {
   createZeroVirtualizer,
   type CreateZeroVirtualizerOptions,
 } from './create-zero-virtualizer.ts';
+import {makeRows} from '../core/scroll-harness.ts';
 
 // Mock the query-staging layer (the solid twin of the React test mocking
 // use-rows.ts): the wrapper's reactive wiring runs for real against a
@@ -21,25 +22,6 @@ vi.mock('./create-rows.ts', () => ({
     return () => rowsMock.accessor!();
   },
 }));
-
-function makeRows(
-  overrides: Partial<RowsSnapshot<unknown>>,
-): RowsSnapshot<unknown> {
-  return {
-    anchor: {index: 0, kind: 'forward', startRow: undefined},
-    pageSize: 50,
-    rowAt: () => undefined,
-    rowsLength: 0,
-    complete: false,
-    rowsEmpty: true,
-    atStart: false,
-    atEnd: false,
-    firstRowIndex: 0,
-    permalinkNotFound: false,
-    lookup: null,
-    ...overrides,
-  };
-}
 
 const EST = 48;
 

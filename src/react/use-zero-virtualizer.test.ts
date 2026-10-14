@@ -11,31 +11,13 @@ import {
   useZeroVirtualizer,
   useZeroWindowVirtualizer,
 } from './use-zero-virtualizer.ts';
+import {makeRows} from '../core/scroll-harness.ts';
 
 vi.mock('./use-rows.ts', () => ({
   useRows: vi.fn(),
 }));
 
 const mockUseRows = vi.mocked(useRows);
-
-function makeUseRowsResult(
-  overrides: Partial<ReturnType<typeof useRows>>,
-): ReturnType<typeof useRows> {
-  return {
-    anchor: {index: 0, kind: 'forward', startRow: undefined},
-    pageSize: 50,
-    rowAt: () => undefined,
-    rowsLength: 0,
-    complete: false,
-    rowsEmpty: true,
-    atStart: false,
-    atEnd: false,
-    firstRowIndex: 0,
-    permalinkNotFound: false,
-    lookup: null,
-    ...overrides,
-  };
-}
 
 const EST = 48;
 
@@ -67,7 +49,7 @@ describe('useZeroVirtualizer - snapshot', () => {
   test('items carry the correct index and row', () => {
     const rowsData = [{id: 'a'}, {id: 'b'}, {id: 'c'}];
     mockUseRows.mockReturnValue(
-      makeUseRowsResult({
+      makeRows({
         rowsLength: 3,
         complete: true,
         rowsEmpty: false,
@@ -92,7 +74,7 @@ describe('useZeroVirtualizer - snapshot', () => {
 // element getter and observers separately.
 describe('useZeroVirtualizer - result options', () => {
   test('exposes the scroll element getter and resolved observers', () => {
-    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+    mockUseRows.mockReturnValue(makeRows({}));
 
     const options = makeOptions();
     const {result} = renderHook(() => useZeroVirtualizer(options));
@@ -109,7 +91,7 @@ describe('useZeroVirtualizer - result options', () => {
   });
 
   test('window virtualizer resolves the window scroll observers', () => {
-    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+    mockUseRows.mockReturnValue(makeRows({}));
 
     const options = makeOptions();
     const {result} = renderHook(() => useZeroWindowVirtualizer(options));
@@ -121,7 +103,7 @@ describe('useZeroVirtualizer - result options', () => {
   });
 
   test('individual observers can be overridden, TanStack style', () => {
-    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+    mockUseRows.mockReturnValue(makeRows({}));
 
     const customObserveOffset = () => () => {};
     const options = {
@@ -137,7 +119,7 @@ describe('useZeroVirtualizer - result options', () => {
   });
 
   test('result identity is stable across renders without content changes', () => {
-    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+    mockUseRows.mockReturnValue(makeRows({}));
 
     const options = makeOptions();
     const {result, rerender} = renderHook(() => useZeroVirtualizer(options));
@@ -149,7 +131,7 @@ describe('useZeroVirtualizer - result options', () => {
   });
 
   test('scrollToItem identity survives a content change, so it is dep-array safe', () => {
-    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+    mockUseRows.mockReturnValue(makeRows({}));
 
     const options = makeOptions();
     const {result, rerender} = renderHook(() => useZeroVirtualizer(options));
@@ -160,7 +142,7 @@ describe('useZeroVirtualizer - result options', () => {
 
     // A new rows result rebuilds the result object; the callback must not
     // change with it, or every consumer's effect re-runs on every page.
-    mockUseRows.mockReturnValue(makeUseRowsResult({rowsLength: 3}));
+    mockUseRows.mockReturnValue(makeRows({rowsLength: 3}));
     rerender();
 
     expect(result.current).not.toBe(firstResult);
@@ -170,7 +152,7 @@ describe('useZeroVirtualizer - result options', () => {
 
 describe('useStickToBottom over the virtualizer result', () => {
   test('re-pins to the bottom on content growth only while stuck', () => {
-    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+    mockUseRows.mockReturnValue(makeRows({}));
 
     // The re-pinning is driven by ResizeObservers on the content wrapper and
     // the scroll container; capture their callbacks to fire growth manually

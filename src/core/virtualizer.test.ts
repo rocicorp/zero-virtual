@@ -3,27 +3,9 @@ import type {RowsSnapshot} from './rows.ts';
 import {masonryLayout} from './masonry.ts';
 import {observeElementOffset, observeElementRect} from './scroll.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
+import {makeRows} from './scroll-harness.ts';
 
 const EST = 48;
-
-function makeRows(
-  overrides: Partial<RowsSnapshot<unknown>>,
-): RowsSnapshot<unknown> {
-  return {
-    anchor: {index: 0, kind: 'forward', startRow: undefined},
-    pageSize: 50,
-    rowAt: () => undefined,
-    rowsLength: 0,
-    complete: false,
-    rowsEmpty: true,
-    atStart: false,
-    atEnd: false,
-    firstRowIndex: 0,
-    permalinkNotFound: false,
-    lookup: null,
-    ...overrides,
-  };
-}
 
 function makeOptions(
   overrides: Partial<VirtualizerOptions<unknown, unknown, unknown>> = {},

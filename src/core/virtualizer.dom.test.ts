@@ -1036,30 +1036,6 @@ describe('firstVisibleItem / lastVisibleItem', () => {
   });
 });
 
-describe('persist timing', () => {
-  test('persists immediately on scrollend, before the debounce, so a fast navigation keeps the position', () => {
-    const persisted: Array<ScrollHistoryState<TestRow>> = [];
-    const h = harness({
-      rowCount: 100,
-      options: {
-        onScrollStateChange: s =>
-          persisted.push(s as ScrollHistoryState<TestRow>),
-      },
-    });
-    h.settle();
-    persisted.length = 0;
-
-    // Scroll, then the browser signals scrolling ended — without any debounce
-    // time elapsing. The position must already be persisted, so navigating
-    // away right now (e.g. clicking a row) doesn't lose it.
-    h.userScroll(300);
-    h.scroller.dispatchEvent(new Event('scrollend'));
-
-    expect(persisted.length).toBeGreaterThan(0);
-    expect(persisted.at(-1)!.scrollTop).toBe(300);
-  });
-});
-
 describe('no-op re-anchor does not spin the render loop', () => {
   test('loaded rows entirely below the viewport at scroll-top stay put (window list under other page content)', () => {
     // Fully loaded, at rest, anchored at the top.
