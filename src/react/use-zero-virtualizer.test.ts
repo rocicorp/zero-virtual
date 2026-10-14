@@ -60,125 +60,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// Rows are rendered in flow inside a content wrapper padded by `spaceBefore`
-// (top) and `spaceAfter` (bottom); there is no virtual "count". These cases
-// pin down the derived outputs: how many rows to render, the space estimates,
-// and `total`.
-describe('useZeroVirtualizer - items, space and total', () => {
-  test.for([
-    {
-      name: 'empty, loading (no rows yet)',
-      rows: {
-        rowsLength: 0,
-        complete: false,
-        atStart: false,
-        atEnd: false,
-        firstRowIndex: 0,
-      },
-      expectedItems: 0,
-      expectedSpaceBefore: 0,
-      expectedTotal: undefined,
-    },
-    {
-      name: 'empty, complete',
-      rows: {
-        rowsLength: 0,
-        complete: true,
-        rowsEmpty: true,
-        atStart: true,
-        atEnd: true,
-        firstRowIndex: 0,
-      },
-      expectedItems: 0,
-      expectedSpaceBefore: 0,
-      expectedSpaceAfter: 0,
-      expectedTotal: 0,
-    },
-    {
-      name: 'loading from top, some rows',
-      rows: {
-        rowsLength: 20,
-        complete: false,
-        rowsEmpty: false,
-        atStart: true,
-        atEnd: false,
-        firstRowIndex: 0,
-      },
-      expectedItems: 20,
-      expectedSpaceBefore: 0, // atStart
-      expectedTotal: undefined,
-    },
-    {
-      name: 'all rows loaded',
-      rows: {
-        rowsLength: 20,
-        complete: true,
-        rowsEmpty: false,
-        atStart: true,
-        atEnd: true,
-        firstRowIndex: 0,
-      },
-      expectedItems: 20,
-      expectedSpaceBefore: 0,
-      expectedSpaceAfter: 0,
-      expectedTotal: 20,
-    },
-    {
-      name: 'loading at end, rows above (firstRowIndex>0)',
-      rows: {
-        rowsLength: 20,
-        complete: false,
-        rowsEmpty: false,
-        atStart: false,
-        atEnd: true,
-        firstRowIndex: 5,
-      },
-      expectedItems: 20,
-      expectedSpaceBefore: 5 * EST, // 5 estimated rows above
-      expectedSpaceAfter: 0, // atEnd
-      expectedTotal: undefined,
-    },
-    {
-      name: 'complete in middle (firstRowIndex>0)',
-      rows: {
-        rowsLength: 50,
-        complete: true,
-        rowsEmpty: false,
-        atStart: false,
-        atEnd: false,
-        firstRowIndex: 10,
-      },
-      expectedItems: 50,
-      expectedSpaceBefore: 10 * EST,
-      expectedTotal: undefined,
-    },
-  ])(
-    '$name',
-    ({
-      rows,
-      expectedItems,
-      expectedSpaceBefore,
-      expectedSpaceAfter,
-      expectedTotal,
-    }) => {
-      mockUseRows.mockReturnValue(makeUseRowsResult(rows));
-
-      // `options` must be stable across renders (a fresh `listContextParams`
-      // each render would make the hook think the context keeps changing).
-      const options = makeOptions();
-      const {result} = renderHook(() => useZeroVirtualizer(options));
-
-      expect(result.current.items).toHaveLength(expectedItems);
-      expect(result.current.total).toBe(expectedTotal);
-      if (expectedSpaceBefore !== undefined) {
-        expect(result.current.spaceBefore).toBe(expectedSpaceBefore);
-      }
-      if (expectedSpaceAfter !== undefined) {
-        expect(result.current.spaceAfter).toBe(expectedSpaceAfter);
-      }
-    },
-  );
-
+// The snapshot's derivations (items, space, total, count) are tested against
+// the core in virtualizer.test.ts. This only checks the hook hands the core's
+// snapshot through.
+describe('useZeroVirtualizer - snapshot', () => {
   test('items carry the correct index and row', () => {
     const rowsData = [{id: 'a'}, {id: 'b'}, {id: 'c'}];
     mockUseRows.mockReturnValue(
@@ -199,46 +84,6 @@ describe('useZeroVirtualizer - items, space and total', () => {
     expect(result.current.items.map(it => it.index)).toEqual([7, 8, 9]);
     expect(result.current.items.map(it => it.key)).toEqual(['a', 'b', 'c']);
     expect(result.current.items[0].row).toEqual({id: 'a'});
-  });
-
-  test('explicit count overrides estimated total', () => {
-    mockUseRows.mockReturnValue(
-      makeUseRowsResult({
-        rowsLength: 20,
-        complete: false,
-        rowsEmpty: false,
-        atStart: true,
-        atEnd: false,
-        firstRowIndex: 0,
-      }),
-    );
-
-    const options = {...makeOptions(), count: 42};
-    const {result} = renderHook(() => useZeroVirtualizer(options));
-
-    expect(result.current.estimatedTotal).toBe(42);
-    expect(result.current.total).toBe(42);
-    expect(result.current.rowsEmpty).toBe(false);
-  });
-
-  test('explicit zero count reports empty list', () => {
-    mockUseRows.mockReturnValue(
-      makeUseRowsResult({
-        rowsLength: 20,
-        complete: false,
-        rowsEmpty: false,
-        atStart: true,
-        atEnd: false,
-        firstRowIndex: 0,
-      }),
-    );
-
-    const options = {...makeOptions(), count: 0};
-    const {result} = renderHook(() => useZeroVirtualizer(options));
-
-    expect(result.current.estimatedTotal).toBe(0);
-    expect(result.current.total).toBe(0);
-    expect(result.current.rowsEmpty).toBe(true);
   });
 });
 
