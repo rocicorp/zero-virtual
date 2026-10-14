@@ -360,7 +360,13 @@ names. Render no spacers — the layout sizes each lane's `padding-top` and
 `padding-bottom` itself:
 
 ```tsx
-import {masonryLayout, useZeroVirtualizer} from '@rocicorp/zero-virtual/react';
+import {
+  laneAttributes,
+  masonryLayout,
+  rowAttributes,
+  useZeroVirtualizer,
+} from '@rocicorp/zero-virtual/react';
+import {useCallback} from 'react';
 
 const {items} = useZeroVirtualizer({
   // ...

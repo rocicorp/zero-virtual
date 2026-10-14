@@ -263,13 +263,19 @@ class Masonry implements Layout {
       }
       return pin.top - before;
     };
-    // Written before anything reads layout, with the heights known so far,
-    // so the content never measures short and gets the viewport clamped to
-    // it. Then exactly, from the measured heights.
+    // Size the lanes: where each starts, and room for what's unloaded
+    // below. Written before anything reads layout, with the heights known
+    // so far, so the content never measures short and gets the viewport
+    // clamped to it. Then exactly, from the measured heights.
+    const end = rows.firstRowIndex + rows.rowsLength;
+    const below = rows.atEnd
+      ? 0
+      : Math.ceil(Math.max(0, host.estimatedTotal - end) / lanes) * estimate;
     const write = () =>
       laneEls.forEach((el, l) => {
         if (el !== undefined && l < lanes) {
           setPx(el, 'paddingTop', now[l].length > 0 ? start[l] : 0);
+          setPx(el, 'paddingBottom', below);
         }
       });
     for (let l = 0; l < lanes; l++) start[l] = startFor(l);
@@ -322,15 +328,7 @@ class Masonry implements Layout {
           : Math.max(0, -min);
     for (let l = 0; l < lanes; l++) start[l] += shift;
 
-    // Size the lanes: where each starts, and room for what's unloaded below.
-    const end = rows.firstRowIndex + rows.rowsLength;
-    const below = rows.atEnd
-      ? 0
-      : Math.ceil(Math.max(0, host.estimatedTotal - end) / lanes) * estimate;
     write();
-    laneEls.forEach((el, l) => {
-      if (el !== undefined && l < lanes) setPx(el, 'paddingBottom', below);
-    });
     // Where the lanes are now — read before any scroll write, so the write
     // is clamped against the content as just sized, not as it was.
     this.#laneOriginTop =
