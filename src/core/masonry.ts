@@ -346,9 +346,7 @@ class Masonry implements Layout {
     const rendered = now.map(lane => lane.map(card => card.key));
     if (
       rendered.length !== this.#laneRendered.length ||
-      rendered.some(
-        (lane, l) => lane.join() !== this.#laneRendered[l].join(),
-      ) ||
+      rendered.some((lane, l) => !sameKeys(lane, this.#laneRendered[l])) ||
       start.some((top, l) => top !== startBefore[l])
     ) {
       this.version++;
@@ -429,6 +427,11 @@ function isMasonryState(state: unknown): state is MasonryState {
           typeof (lane as {offset?: unknown}).offset === 'number'),
     )
   );
+}
+
+// Key by key: keys are the app's strings, which may hold any separator.
+function sameKeys(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((key, i) => key === b[i]);
 }
 
 function pixels(value: string): number {
