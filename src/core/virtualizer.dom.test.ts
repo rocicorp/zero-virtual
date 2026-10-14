@@ -157,6 +157,7 @@ function createHarness({
   const coreOptions: VirtualizerOptions<unknown, TestRow, TestRow> = {
     estimateSize: () => rowHeight,
     getRowKey: row => row.id,
+    toStartRow: row => row,
     listContextParams: 'ctx',
     anchoring: 'native',
     // Pinned so the paging expectations below (page lengths, anchor indices,
@@ -1087,6 +1088,25 @@ describe('compareStartRows', () => {
     });
 
     expect(() => h.tick()).toThrow(/BigInt/);
+  });
+
+  test('or narrow the start row in toStartRow: the anchor carries what it returns', () => {
+    const {h, persisted} = scrolledPastAPage({
+      toStartRow: row => ({id: row.id}),
+    });
+
+    const {anchor} = h.core.getQueryInputs();
+    if (anchor.kind === 'permalink') throw new Error('expected a page anchor');
+    expect(anchor.startRow).toEqual({id: expect.stringMatching(/^r\d+$/)});
+    const saved = persisted.at(-1)!;
+    expect(saved.anchor).toEqual(anchor);
+
+    // So the default structural compare gets past it.
+    h.core.setOptions({
+      ...h.coreOptions,
+      scrollState: asRestoredByAHost(saved),
+    });
+    expect(() => h.tick()).not.toThrow();
   });
 });
 

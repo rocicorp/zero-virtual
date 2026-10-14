@@ -17,6 +17,7 @@
     "dist/",
     "src/**/*.ts",
     "!src/**/*.test.ts",
+    "!src/**/*-harness.ts",
     "!*.tsbuildinfo"
   ],
   "type": "module",
@@ -37,7 +38,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter demo-react dev:ui",
-    "check-types": "tsgo -p src/tsconfig.json && tsgo -p demo/react/tsconfig.app.json && tsgo -p demo/react/tsconfig.node.json && tsgo -p demo/react/e2e/tsconfig.json && tsgo -p demo/solid/tsconfig.app.json && tsgo -p demo/solid/tsconfig.node.json && tsgo -p demo/chat/tsconfig.app.json && tsgo -p demo/chat/tsconfig.node.json",
+    "check-types": "tsgo -p src/tsconfig.json && tsgo -p src/tsconfig.test.json && tsgo -p demo/react/tsconfig.app.json && tsgo -p demo/react/tsconfig.node.json && tsgo -p demo/react/e2e/tsconfig.json && tsgo -p demo/solid/tsconfig.app.json && tsgo -p demo/solid/tsconfig.node.json && tsgo -p demo/chat/tsconfig.app.json && tsgo -p demo/chat/tsconfig.node.json",
     "lint": "oxlint --type-aware",
     "check": "oxlint --type-aware --type-check",
     "fmt": "oxfmt",

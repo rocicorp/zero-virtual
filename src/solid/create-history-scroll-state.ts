@@ -69,10 +69,11 @@ export function createHistoryScrollState<TStartRow>(
     writeHistoryState(
       key,
       // Zero's Solid useQuery hands out store proxies, and the anchor's start
-      // row is taken straight from a query row — so the state can contain a
-      // proxy, which the Navigation API's structured clone rejects. Round-trip
-      // through JSON to get plain data — now, while it still describes this
-      // position, rather than when the debounced write goes out.
+      // row is what `toStartRow` made of a query row — often the row itself,
+      // or a field of it — so the state can contain a proxy, which the
+      // Navigation API's structured clone rejects. Round-trip through JSON to
+      // get plain data — now, while it still describes this position, rather
+      // than when the debounced write goes out.
       newState && JSON.parse(JSON.stringify(newState)),
     );
 

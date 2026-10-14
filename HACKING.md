@@ -6,11 +6,11 @@ There are a number of subtle features that need to be tested manually on each re
 
 `zero-virtual` supports the concept of _settling_. The scroller "settles" when there's been no scrolling OR change in the `listContext` (what list is being displayed) for `settleTime` ms.
 
-- load the demo app and wait 2s, you should see 'settled' in the console
-- load the demo app and immediately scroll slowly for 5s, then stop. you should see 'settled' 2s after you stop.
+- load the demo app and wait 2s, you should see 'onSettled' in the console
+- load the demo app and immediately scroll slowly for 5s, then stop. you should see 'onSettled' 2s after you stop.
 - load the demo app and immediately list queries with `await __zero.inspector.client.queries()`. you should see one query with `ttl:none`.
 - load the demo app and wait 2s. then list queries. you should see one query with `ttl:5m`.
-- load the demo app and wait 2s. slowly scroll down for 5s then stop. wait for 'settled' in console. list queries. you should see only two queries, both `ttl:5m`.
+- load the demo app and wait 2s. slowly scroll down for 5s then stop. wait for 'onSettled' in console. list queries. you should see only two queries, both `ttl:5m`.
 
 ## Scroll State
 
@@ -25,8 +25,6 @@ If you type a new URL into the tab while looking at the demo to navigate away, t
 ## Permalinks
 
 `zero-virtual` supports permalinks.
-
-**Note:** This part is currently a little broken, see https://github.com/rocicorp/zero-virtual/issues/21.
 
 - Click on any of the items in the demo.
 - Reload.

@@ -132,8 +132,8 @@ function setLayout(value: string): void {
 /**
  * The URL-driven demo controls shared by both scroller demos (the DevPanel
  * inputs): row-height mode, layout (`lanes` columns, 1 being a plain list, as
- * a grid or with `masonry`), transform-while-scrolling, anchoring mode, the optional exact `count` (for
- * an accurate, stable scrollbar — e.g. ?count=5000; without it the estimate
+ * a grid or masonry), anchoring mode, the optional exact `count` (for an
+ * accurate, stable scrollbar — e.g. ?count=5000; without it the estimate
  * grows as rows are discovered and the handle jumps), and follow-bottom
  * (stick-to-bottom for chat).
  */

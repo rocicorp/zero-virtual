@@ -149,6 +149,20 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
   layout?: LayoutFactory | undefined;
   anchoring?: AnchoringMode | undefined;
   getRowKey: (row: TRow) => RowKey;
+  /**
+   * Function to extract the start row data from a full row (for pagination
+   * anchoring): what `getPageQuery` receives as `start`.
+   *
+   * The result rides in the paging anchor, which is persisted through
+   * `onScrollStateChange` and compared against what comes back. That
+   * comparison is `JSON.stringify` unless you supply
+   * {@linkcode compareStartRows}, so by default the result must be
+   * **JSON-serializable** — a `bigint` from an int64 column is the one to
+   * watch for. Either narrow it here (`Number(row.id)`, `String(row.id)`) and
+   * widen it again in `getPageQuery`, or hand over the comparator you already
+   * sort by.
+   */
+  toStartRow: (row: TRow) => TStartRow;
   listContextParams: TListContextParams;
   count?: number | undefined;
   permalinkID?: string | null | undefined;
@@ -181,8 +195,7 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    * ones that don't.
    *
    * Must be JSON-serializable, like the anchor it carries — unless you supply
-   * {@linkcode compareStartRows}. See
-   * {@linkcode VirtualizerQueryOptions.toStartRow}.
+   * {@linkcode compareStartRows}. See {@linkcode toStartRow}.
    */
   scrollState?: ScrollHistoryState<TStartRow> | null | undefined;
   /**
@@ -270,7 +283,6 @@ export type VirtualizerBindingOptions<
 > &
   VirtualizerScrollOptions &
   VirtualizerQueryOptions<
-    TRow,
     TStartRow,
     TPageQuery,
     TPageOptions,
@@ -1974,12 +1986,12 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
         rows.firstRowIndex,
         rows.rowsLength,
       );
-      const startRow = rows.rowAt(index);
-      assert(startRow !== undefined || type === 'forward');
+      const row = rows.rowAt(index);
+      assert(row !== undefined || type === 'forward');
       this.#setAnchor({
         index: index + indexOffset,
         kind: type,
-        startRow,
+        startRow: row && this.#options.toStartRow(row),
       } as Anchor<TStartRow>);
     };
 
