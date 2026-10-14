@@ -200,8 +200,11 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    * completed the round trip the viewport has often moved on (a
    * `scrollToItem` landing, a permalink resolving), and re-applying it undoes
    * that. Change this only when the user navigated — a load, a reload, a
-   * back/forward. The bundled helpers do exactly that; a custom layer must
-   * too.
+   * back/forward. The bundled helpers do exactly that; a custom layer should
+   * too. The one echo the core tolerates is its latest write handed straight
+   * back, as a store that re-reads what it was just given does (a router's
+   * history state, say): that is ignored. An older write arriving later is
+   * taken as a restore.
    *
    * Must be JSON-serializable, like the anchor it carries — unless you supply
    * {@linkcode compareStartRows}. See {@linkcode toStartRow}.
@@ -574,6 +577,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #appliedPermalinkID: string | null | undefined;
   // Persist-scheduling change detection.
   #lastPersisted: PersistState<TStartRow> | null = null;
+  // The last scroll state reported. A host can hand it straight back as
+  // `scrollState` (see #restoreOrReset).
+  #lastWritten: ScrollHistoryState<TStartRow> | null = null;
   // Settle-timer reset on list-context change (the old effect's dep).
   #lastSettleContext: TListContextParams;
   // One-shot guard for the identity-churn warning below.
@@ -1630,6 +1636,21 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       return;
     }
 
+    // The state we last reported, handed straight back (zbugs stores it
+    // with `history.replaceState`, which its router re-reads at once): where
+    // the list already is, or was before a jump that's landing — not
+    // somewhere to put it. Taken as a restore it would land, persist, and
+    // come back again, forever.
+    if (
+      scrollStateChanged &&
+      eff !== null &&
+      this.#lastWritten !== null &&
+      this.#sameScrollState(eff, this.#lastWritten)
+    ) {
+      this.#appliedScrollState = eff;
+      if (!permalinkChanged) return;
+    }
+
     // An imperative jump outranks a restore; record it so it cannot replay later.
     const target = this.#target;
     if (
@@ -2021,14 +2042,30 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     const layout = this.#layout();
     this.#lastPersisted = next;
     this.#persistedLayoutVersion = layout?.version ?? 0;
-    onScrollStateChange({
+    this.#lastWritten = {
       ...next,
       // The logical committed offset: if a gesture is mid-flight with an owed
       // jump held in the wrapper margin, fold it in so restore lands right.
       scrollTop: attachment.scrollTop + this.#anchorState.pendingJump,
       listContextParams,
       ...(layout && {layout: layout.save()}),
-    });
+    };
+    onScrollStateChange(this.#lastWritten);
+  }
+
+  // Whether two scroll states put the viewport in the same place. Only start
+  // rows go through `compareStartRows`; the rest is JSON.
+  #sameScrollState(
+    a: ScrollHistoryState<TStartRow>,
+    b: ScrollHistoryState<TStartRow>,
+  ): boolean {
+    return (
+      a.scrollTop === b.scrollTop &&
+      this.#samePersistState(a, b) &&
+      JSON.stringify(a.listContextParams) ===
+        JSON.stringify(b.listContextParams) &&
+      JSON.stringify(a.layout) === JSON.stringify(b.layout)
+    );
   }
 }
 

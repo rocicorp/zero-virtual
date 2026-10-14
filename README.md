@@ -657,7 +657,10 @@ would arrive as an instruction to return to a position the list has often
 already left (a `scrollToItem` landing, a permalink resolving). If you write
 your own persistence layer instead, hold it to the same rule: feed
 `scrollState` a new value when the user navigated, not when
-`onScrollStateChange` fired.
+`onScrollStateChange` fired. (A store that hands the latest write straight
+back — a router re-reading the `history.state` it was just given — is fine:
+the virtualizer ignores its own latest state. An older one arriving later it
+takes as a restore.)
 
 `onScrollStateChange` fires on every scroll event. The helpers store on a
 short debounce, and store what is still pending as soon as a navigation

@@ -313,6 +313,7 @@ function createHarness({
 }
 
 const harness = registered(createHarness);
+type Harness = ReturnType<typeof createHarness>;
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -785,6 +786,74 @@ describe('scroll-state restore of a position we wrote', () => {
     h.tick();
 
     expect(h.scroller.scrollTop).toBe(400);
+  });
+
+  describe('from a host that hands every write straight back', () => {
+    // zbugs stores the state with wouter: `history.replaceState` on every
+    // write, which wouter announces, and `useHistoryState` re-reads — so
+    // each write comes back at once as `scrollState`, a new object. That is
+    // where the list already is, not somewhere to put it; taken as a
+    // restore, it lands, which persists, which comes back again. Such a
+    // host must see the list behave as one that keeps the state to itself.
+    const run = (echo: boolean, steps: (h: Harness) => void) => {
+      let written: ScrollHistoryState<TestRow> | null = null;
+      const h = harness({
+        rowCount: 1000,
+        options: {
+          onScrollStateChange: s => {
+            if (echo)
+              written = structuredClone(s) as ScrollHistoryState<TestRow>;
+          },
+        },
+      });
+      // The host re-renders with what it stored.
+      const rerender = () => {
+        for (let i = 0; i < 10 && written; i++) {
+          const scrollState = written;
+          written = null;
+          h.core.setOptions({...h.coreOptions, scrollState});
+          h.tick();
+        }
+        expect(written, 'each write echoes another').toBeNull();
+      };
+      const trace: unknown[] = [];
+      const settle = () => {
+        h.settle();
+        rerender();
+        h.settle();
+        trace.push(h.scroller.scrollTop, h.visibleIndexes());
+      };
+      settle();
+      steps(
+        Object.assign(Object.create(h) as Harness, {
+          userScroll: (top: number) => {
+            h.userScroll(top);
+            rerender();
+            settle();
+          },
+          settle,
+        }),
+      );
+      return trace;
+    };
+
+    test('scrolling: down several pages and back up', () => {
+      const steps = (h: Harness) => {
+        for (const step of [600, 600, 600, 600, 600, -900, -900]) {
+          h.userScroll(h.scroller.scrollTop + step);
+        }
+      };
+      expect(run(true, steps)).toEqual(run(false, steps));
+    });
+
+    test('a jump', () => {
+      const steps = (h: Harness) => {
+        h.userScroll(1500);
+        h.core.scrollToItem('r900', {align: 'start'});
+        h.settle();
+      };
+      expect(run(true, steps)).toEqual(run(false, steps));
+    });
   });
 });
 
