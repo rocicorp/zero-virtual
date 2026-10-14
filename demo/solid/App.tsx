@@ -2,6 +2,8 @@ import {
   createHistoryScrollState,
   createStickToBottom,
   createZeroVirtualizer,
+  laneAttributes,
+  masonryLayout,
 } from '../../src/solid/index.ts';
 import {For, Show, createMemo} from 'solid-js';
 import styles from '../shared/App.module.css';
@@ -19,6 +21,7 @@ import {
   getSingleQuery,
   toStartRow,
 } from './list-shared.ts';
+import {layoutValue} from '../shared/layout.ts';
 import type {ItemStart} from '../shared/queries.ts';
 import {createHash} from './hash.ts';
 
@@ -38,7 +41,8 @@ export function App() {
     heightMode,
     setHeightMode,
     lanes,
-    setLanes,
+    masonry,
+    setLayout,
     anchoring,
     setAnchoring,
     count,
@@ -60,6 +64,7 @@ export function App() {
     anchoring: anchoring(),
     count: count(),
     lanes: lanes(),
+    layout: masonry() ? masonryLayout : undefined,
     getRowKey,
     estimateSize,
     getPageQuery,
@@ -89,38 +94,68 @@ export function App() {
           onToggleSortDirection={toggleSortDirection}
         />
         <div ref={parentRef} class={styles.viewport}>
-          {/* Content wrapper. `spaceBefore` / `spaceAfter` stand in for the
+          <Show
+            when={!masonry()}
+            fallback={
+              // Masonry: one element per lane, each with its own cards, and
+              // no spacers — the virtualizer pads the lanes itself.
+              <div class={styles.masonry}>
+                <For each={Array.from({length: lanes()}, (_, lane) => lane)}>
+                  {lane => (
+                    <div {...laneAttributes(lane)} class={styles.lane}>
+                      <For
+                        each={virtualizer().items.filter(
+                          item => item.lane === lane,
+                        )}
+                      >
+                        {item => (
+                          <ItemRow
+                            item={item}
+                            heightMode={heightMode()}
+                            sortField={sortField() as 'created' | 'modified'}
+                            permalinkID={permalinkID()}
+                          />
+                        )}
+                      </For>
+                    </div>
+                  )}
+                </For>
+              </div>
+            }
+          >
+            {/* Content wrapper. `spaceBefore` / `spaceAfter` stand in for the
               unloaded rows above and below, rendered as spacer elements
               (spanning every column when `lanes` makes the wrapper a grid)
               so scroll anchoring keeps the viewport stable across paging. */}
-          <div {...contentWrapperProps(lanes())}>
-            <div
-              style={{
-                'height': `${virtualizer().spaceBefore}px`,
-                'grid-column': '1 / -1',
-              }}
-            />
-            {/* Plain <For> is safe here: the binding exposes items as a store
+            <div {...contentWrapperProps(lanes())}>
+              <div
+                style={{
+                  'height': `${virtualizer().spaceBefore}px`,
+                  'grid-column': '1 / -1',
+                }}
+              />
+              {/* Plain <For> is safe here: the binding exposes items as a store
                 reconciled by row key, so a row's VirtualRow instance — and
                 with it the DOM node scroll anchoring measures against —
                 survives paging. */}
-            <For each={virtualizer().items}>
-              {item => (
-                <ItemRow
-                  item={item}
-                  heightMode={heightMode()}
-                  sortField={sortField() as 'created' | 'modified'}
-                  permalinkID={permalinkID()}
-                />
-              )}
-            </For>
-            <div
-              style={{
-                'height': `${virtualizer().spaceAfter}px`,
-                'grid-column': '1 / -1',
-              }}
-            />
-          </div>
+              <For each={virtualizer().items}>
+                {item => (
+                  <ItemRow
+                    item={item}
+                    heightMode={heightMode()}
+                    sortField={sortField() as 'created' | 'modified'}
+                    permalinkID={permalinkID()}
+                  />
+                )}
+              </For>
+              <div
+                style={{
+                  'height': `${virtualizer().spaceAfter}px`,
+                  'grid-column': '1 / -1',
+                }}
+              />
+            </div>
+          </Show>
         </div>
       </div>
 
@@ -132,8 +167,8 @@ export function App() {
         getScrollElement={getScrollElement}
         heightMode={heightMode()}
         onHeightModeChange={setHeightMode}
-        lanes={lanes()}
-        onLanesChange={setLanes}
+        layout={layoutValue({lanes: lanes(), masonry: masonry()})}
+        onLayoutChange={setLayout}
         sortDirection={sortDirection() as 'asc' | 'desc'}
         anchoring={anchoring()}
         onAnchoringChange={setAnchoring}

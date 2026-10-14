@@ -143,9 +143,10 @@ export type VirtualRow<TRow> = {
   /** The row data, or undefined while the row is still loading. */
   row: TRow | undefined;
   /**
-   * The grid column the row belongs in, from `0` to `lanes - 1` — always `0`
-   * in a plain list. Place the row with it (`gridColumn: lane + 1`); see the
-   * `lanes` option.
+   * The lane the row belongs in, from `0` to `lanes - 1` — always `0` in a
+   * plain list. In a grid it's the column (`gridColumn: lane + 1`); with a
+   * layout (masonry), the lane element to render the row in. See the `lanes`
+   * and `layout` options.
    */
   lane: number;
 };
@@ -183,6 +184,11 @@ export type ScrollHistoryState<
   hasReachedEnd: boolean;
   /** The list context params active when this state was saved (used to invalidate stale state) */
   listContextParams: TListContextParams;
+  /**
+   * With a `layout`, what it saved to put the rows back where they were on a
+   * restore (for masonry, see `MasonryState`). Serializable.
+   */
+  layout?: unknown;
 }>;
 
 /**

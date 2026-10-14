@@ -515,6 +515,24 @@ describe('paging against a real (fake-geometry) scroll container', () => {
     expect(snapshot.spaceBefore).toBe(0);
     expect(h.visibleIndexes()).toEqual(range(0, 19));
   });
+
+  test('a page too small for what is on screen grows instead of paging back and forth', () => {
+    // Rows estimated at 200px are 20px: a 10-row page (the floor) fills half
+    // the 400px viewport, so both of its edges are on screen at once and
+    // paging would flip between them forever. The page grows to hold the 20
+    // visible rows with the threshold's margin on both sides.
+    const h = harness({
+      rowCount: 500,
+      options: {estimateSize: () => 200, minPageSize: 10},
+    });
+    h.settle();
+
+    expect(h.core.getQueryInputs().pageSize).toBeGreaterThanOrEqual(30);
+    const visible = h.visibleIndexes();
+    expect(visible).toEqual(range(0, 19));
+    const {items} = h.core.getSnapshot();
+    expect(items.at(-1)!.index).toBeGreaterThan(visible.at(-1)! + 5);
+  });
 });
 
 describe('manual scroll anchoring against a real (fake-geometry) container', () => {

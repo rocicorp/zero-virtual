@@ -11,7 +11,9 @@ import {
   type ListContextParams,
 } from '../shared/queries.ts';
 import type {Item} from '../shared/schema.ts';
-import {createUrlState} from './use-url-state.ts';
+import {layoutFromParams, paramsForLayout} from '../shared/layout.ts';
+import {setUrlParams} from '../shared/url-params.ts';
+import {createUrlParams, createUrlState} from './use-url-state.ts';
 
 export type HeightMode = 'uniform' | 'fixed' | 'dynamic';
 
@@ -99,18 +101,15 @@ export function createEstimateSize(heightMode: () => HeightMode): () => number {
   return () => (heightMode() === 'uniform' ? ITEM_HEIGHT : SIZE_ESTIMATE);
 }
 
-/**
- * The `?lanes=` column count: a whole number of at least 1. Anything else —
- * `Infinity`, a negative, text — falls back to a plain list.
- */
-function parseLanes(value: string): number {
-  const n = Math.floor(Number(value));
-  return Number.isFinite(n) && n >= 1 ? n : 1;
-}
-
 export function createDemoControls() {
   const [heightModeStr, setHeightMode] = createUrlState('height', 'uniform');
-  const [lanesStr, setLanes] = createUrlState('lanes', '1');
+  // Read together: a layout change sets both parameters in one navigation,
+  // and taking them one at a time would render the layout in between.
+  const layout = createUrlParams(
+    params =>
+      layoutFromParams(params.get('lanes') ?? '1', params.get('masonry') ?? ''),
+    (a, b) => a.lanes === b.lanes && a.masonry === b.masonry,
+  );
   const [anchoringStr, setAnchoring] = createUrlState('anchoring', 'manual');
   const [countStr] = createUrlState('count', '');
   const [follow, setFollow] = createUrlState('follow', 'off');
@@ -124,8 +123,10 @@ export function createDemoControls() {
   return {
     heightMode: () => heightModeStr() as HeightMode,
     setHeightMode,
-    lanes: () => parseLanes(lanesStr()),
-    setLanes,
+    lanes: () => layout().lanes,
+    masonry: () => layout().masonry,
+    // Write a layout select value to the URL (see ../shared/layout.ts).
+    setLayout: (value: string) => setUrlParams(paramsForLayout(value)),
     anchoring: () => anchoringStr() as AnchoringMode,
     setAnchoring,
     count,

@@ -2,6 +2,7 @@ import type {ScrollToItemOptions} from '@rocicorp/zero-virtual/react';
 import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {AddControls} from './AddControls.tsx';
 import styles from '../shared/DevPanel.module.css';
+import {layoutChoices} from '../shared/layout.ts';
 import {JumpControls} from './JumpControls.tsx';
 import type {HeightMode} from './list-shared.ts';
 import {useUrlState} from './use-url-state.ts';
@@ -18,8 +19,8 @@ export function DevPanel({
   windowMode = false,
   heightMode,
   onHeightModeChange,
-  lanes,
-  onLanesChange,
+  layout,
+  onLayoutChange,
   sortDirection,
   anchoring,
   onAnchoringChange,
@@ -31,8 +32,9 @@ export function DevPanel({
   windowMode?: boolean;
   heightMode: HeightMode;
   onHeightModeChange: (v: string) => void;
-  lanes: number;
-  onLanesChange: (v: string) => void;
+  /** The layout select's value (see `layoutValue`). */
+  layout: string;
+  onLayoutChange: (v: string) => void;
   sortDirection: 'asc' | 'desc';
   anchoring: string;
   onAnchoringChange: (v: string) => void;
@@ -115,15 +117,14 @@ export function DevPanel({
           <span className={styles.fieldName}>layout</span>
           <select
             className={styles.select}
-            value={lanes}
-            onChange={e => onLanesChange(e.target.value)}
+            value={layout}
+            onChange={e => onLayoutChange(e.target.value)}
           >
-            <option value="1">List</option>
-            <option value="2">Grid · 2 columns</option>
-            <option value="3">Grid · 3 columns</option>
-            <option value="4">Grid · 4 columns</option>
-            {/* A wider grid asked for in the URL (`?lanes=`). */}
-            {lanes > 4 && <option value={lanes}>Grid · {lanes} columns</option>}
+            {layoutChoices(layout).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
           </select>
         </label>
         <AddControls sortDirection={sortDirection} />

@@ -155,3 +155,29 @@
   background: #eff6ff;
   box-shadow: inset 3px 0 0 #3b82f6;
 }
+
+/* Masonry (`masonry` with `lanes` > 1): the content wrapper is a row of lane
+   elements, each stacking its own cards. The virtualizer sets each lane's
+   padding-top and padding-bottom, so they carry none of their own; cards are
+   spaced with the lane's gap, which the virtualizer measures. */
+.masonry {
+  display: flex;
+  gap: 8px;
+  padding: 0 8px;
+}
+
+.lane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.masonry .row {
+  gap: 12px;
+  padding-left: 16px;
+  padding-right: 16px;
+  border: 1px solid #f0f0f3;
+  border-radius: 8px;
+}

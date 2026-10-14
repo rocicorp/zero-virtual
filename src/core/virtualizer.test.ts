@@ -1,5 +1,6 @@
 import {describe, expect, test, vi} from 'vitest';
 import type {RowsSnapshot} from './rows.ts';
+import {masonryLayout} from './masonry.ts';
 import {observeElementOffset, observeElementRect} from './scroll.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
 
@@ -522,6 +523,39 @@ describe('lanes (grid)', () => {
     expect(b).not.toBe(a);
     expect(b.items.map(it => it.lane)).toEqual([0, 1]);
     expect(b.spaceBefore).toBe(3 * EST);
+  });
+});
+
+describe('masonry', () => {
+  const loaded = (overrides: Partial<RowsSnapshot<unknown>>) => ({
+    complete: true,
+    rowsEmpty: false,
+    atStart: false,
+    atEnd: false,
+    rowAt: (i: number) => ({id: `r${i}`}),
+    ...overrides,
+  });
+
+  test('lanes carry the space instead of spacers', () => {
+    const v = makeVirtualizer(loaded({firstRowIndex: 30, rowsLength: 9}), {
+      lanes: 3,
+      layout: masonryLayout,
+    });
+    const {items, spaceBefore, spaceAfter} = v.getSnapshot();
+    expect(spaceBefore).toBe(0);
+    expect(spaceAfter).toBe(0);
+    // Before anything is measured, cards go in at the estimated size: one
+    // to each lane, then round again.
+    expect(items.map(it => it.lane)).toEqual([0, 1, 2, 0, 1, 2, 0, 1, 2]);
+  });
+
+  test('one lane is a lane too', () => {
+    const v = makeVirtualizer(loaded({firstRowIndex: 5, rowsLength: 2}), {
+      layout: masonryLayout,
+    });
+    const {items, spaceBefore} = v.getSnapshot();
+    expect(spaceBefore).toBe(0);
+    expect(items.map(it => it.lane)).toEqual([0, 0]);
   });
 });
 

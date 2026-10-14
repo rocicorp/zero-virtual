@@ -15,7 +15,7 @@ Features:
 - Bidirectional infinite scrolling (load more items at top or bottom)
 - Uniform, non-uniform, or fully dynamic (content-measured) row heights
 - Element scrolling or window scrolling (`useZeroWindowVirtualizer`)
-- Lists or grids of equal columns (`lanes`)
+- Lists, grids of equal columns (`lanes`), or masonry (`masonryLayout`)
 - Native or manual (momentum-safe) scroll anchoring, auto-detected per platform
 - Permalink support (jump to and highlight a specific item by ID)
 - Imperative `scrollToItem(id, {align})`, loading the row's page if needed
@@ -27,8 +27,8 @@ Features:
 
 ## Restrictions
 
-- Vertical scrolling only. Rows render as a list or as a grid of equal
-  columns ([`lanes`](#grids)); masonry layouts aren't supported.
+- Vertical scrolling only. Rows render as a list, a grid of equal columns
+  ([`lanes`](#grids)), or [masonry](#masonry).
 - **Browser support: Chromium 114+, Firefox 109+, Safari 26+.** The floor is
   the native `scrollend` event, which the manual anchoring relies on to
   reconcile momentum-time corrections at the end of a touch gesture (there is
@@ -349,6 +349,80 @@ return (
   rows inserted above the loaded window, numbers its rows relatively until
   paging reaches the true start. When the start loads, the first row has to
   land in the first column, so every loaded row can shift over once.
+
+### Masonry
+
+Pass `layout: masonryLayout` with `lanes` for a masonry feed: each card goes
+to the shortest lane rather than the next column, so cards of different
+heights pack without gaps. Render one element per lane, marked with
+`laneAttributes(lane)`, side by side, and each item inside the lane its `lane`
+names. Render no spacers — the layout sizes each lane's `padding-top` and
+`padding-bottom` itself:
+
+```tsx
+import {
+  laneAttributes,
+  masonryLayout,
+  rowAttributes,
+  useZeroVirtualizer,
+} from '@rocicorp/zero-virtual/react';
+import {useCallback} from 'react';
+
+const {items} = useZeroVirtualizer({
+  // ...
+  lanes: 3,
+  layout: masonryLayout,
+  estimateSize: useCallback(() => 240, []), // the height of one card
+});
+
+return (
+  <div ref={parentRef} style={{overflow: 'auto', height: '100vh'}}>
+    <div style={{display: 'flex', gap: 8}}>
+      {[0, 1, 2].map(lane => (
+        <div
+          key={lane}
+          {...laneAttributes(lane)}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+        >
+          {items
+            .filter(item => item.lane === lane)
+            .map(({index, key, row}) => (
+              <div key={key} {...rowAttributes(index, key)}>
+                {row ? <Card row={row} /> : 'Loading...'}
+              </div>
+            ))}
+        </div>
+      ))}
+    </div>
+  </div>
+);
+```
+
+- Masonry is a separate module: apps that don't import `masonryLayout` don't
+  bundle it.
+- Keep the lanes equally wide, leave their vertical padding to the layout, and
+  space the cards with the lane's `gap` rather than margins.
+- Cards are measured before they're placed, in the same frame, so they're
+  placed by their real heights. A card keeps its lane while it's loaded and
+  gets it back when it pages out and in again.
+- Each lane is kept in place on its own: a card resizing above the viewport (an
+  image loading, say) moves the cards above it in its lane, never the ones on
+  screen. Native scroll anchoring can only make one correction for the whole
+  list, so masonry always anchors manually and `anchoring` is ignored.
+- The scroll state records the cards in view in each lane (its `layout`), so
+  back/forward and reload restores put every card on screen back in its lane,
+  where it was.
+- Opened in the middle of the list (a permalink, a far `scrollToItem`), the
+  cards above are placed upward, so once the list's true start has loaded the
+  lanes can start a little unevenly — by up to about one card.
+- Changing `lanes`, or switching the layout, lays the cards out afresh. The
+  scroll position stays, so the cards under the viewport can shift.
 
 ### Scroll anchoring modes
 

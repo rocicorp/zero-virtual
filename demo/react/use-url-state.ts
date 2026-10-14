@@ -1,4 +1,5 @@
 import {useCallback, useSyncExternalStore} from 'react';
+import {setUrlParams} from '../shared/url-params.ts';
 
 function subscribe(callback: () => void): () => void {
   navigation.addEventListener('currententrychange', callback);
@@ -27,21 +28,7 @@ export function useUrlState(
   );
 
   const setValue = useCallback(
-    (v: string) => {
-      const params = new URLSearchParams(location.search);
-      if (v === defaultValue) {
-        params.delete(key);
-      } else {
-        params.set(key, v);
-      }
-      const search = params.toString();
-      const url =
-        location.pathname + (search ? `?${search}` : '') + location.hash;
-      navigation.navigate(url, {
-        history: 'replace',
-        state: navigation.currentEntry?.getState(),
-      });
-    },
+    (v: string) => setUrlParams({[key]: v === defaultValue ? null : v}),
     [key, defaultValue],
   );
 

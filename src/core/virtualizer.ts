@@ -1,13 +1,16 @@
 import {assert, unreachable} from '../asserts.ts';
 import {memo} from './memo.ts';
 import {
+  contentWrapper,
   findRow,
   firstRow,
+  queryLanes,
   queryRows,
   rectInViewport,
   VROW_INDEX_ATTR,
   VROW_KEY_ATTR,
 } from './dom.ts';
+import type {Layout, LayoutFactory, LayoutHost} from './layout.ts';
 import type {RowsQueryInputs, RowsSnapshot} from './rows.ts';
 import type {
   ObserveElementOffset,
@@ -120,7 +123,8 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
   overscan?: number | undefined;
   /**
    * Lay the rows out as a grid with this many columns (default 1, a plain
-   * list). Rows fill the grid row by row, and each row's
+   * list) — or, with a `layout`, in this many lanes, as the layout places
+   * them. In a grid, rows fill the grid row by row, and each row's
    * {@linkcode VirtualRow.lane} names its column: render the content wrapper
    * as a CSS grid and place each row with `gridColumn: lane + 1`, with the
    * spacers spanning every column (`gridColumn: '1 / -1'`).
@@ -136,6 +140,13 @@ export type VirtualizerOptions<TListContextParams, TRow, TStartRow> = {
    * to land in the first column, so every loaded row can shift over once.
    */
   lanes?: number | undefined;
+  /**
+   * A layout that places the rows itself instead of the list's flow and
+   * spacers — `masonryLayout`, which lays the `lanes` out as masonry. A
+   * layout keeps the rows on screen in place itself, so `anchoring` is
+   * ignored. See {@linkcode LayoutFactory}.
+   */
+  layout?: LayoutFactory | undefined;
   anchoring?: AnchoringMode | undefined;
   getRowKey: (row: TRow) => RowKey;
   listContextParams: TListContextParams;
@@ -369,6 +380,7 @@ function createAttachment<TRow>(
   return {
     el,
     scrollElement,
+    manual,
     cleanups,
     rect: {width: 0, height: 0} as ScrollRect,
     resizeObserver: null as ResizeObserver | null,
@@ -478,17 +490,27 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       first: number,
       length: number,
       getRowKey: (row: TRow) => RowKey,
-      lanes: number,
+      lane: (index: number, key: RowKey) => number,
     ): VirtualRow<TRow>[] =>
       Array.from({length}, (_, offset) => {
         const index = first + offset;
         const row = rowAt(index);
-        return {
-          index,
-          key: row ? getRowKey(row) : index,
-          row,
-          lane: laneOf(index, lanes),
-        };
+        const key = row ? getRowKey(row) : index;
+        return {index, key, row, lane: lane(index, key)};
+      }),
+  );
+  // The grid's lane lookup for the items: one function per grid width, so
+  // the items memo sees a change (a layout's changes with its assignments).
+  readonly #gridLanes = memo(
+    (lanes: number) => (index: number) => laneOf(index, lanes),
+  );
+  // The loaded rows' keys in list order, for the layout.
+  readonly #keysOf = memo(
+    (rows: RowsSnapshot<TRow>, getRowKey: (row: TRow) => RowKey): string[] =>
+      Array.from({length: rows.rowsLength}, (_, offset) => {
+        const index = rows.firstRowIndex + offset;
+        const row = rows.rowAt(index);
+        return String(row ? getRowKey(row) : index);
       }),
   );
   readonly #restorableState = memo(
@@ -558,6 +580,18 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // the jump.
   #ownScrollStates: ScrollHistoryState<TStartRow>[] = [];
 
+  // scrollTop as the last scroll event or scroll write reported it, for the
+  // layout: reading the live one forces layout, which a layout pass must not
+  // do before it has sized the content for what the render removed.
+  #reportedScrollTop = 0;
+  // The layout the `layout` option plugs in (see ./layout.ts): one instance
+  // per factory, created on first use, and what it saw last persisted.
+  readonly #layoutOf = memo((factory: LayoutFactory | undefined) =>
+    factory?.(this.#layoutHost),
+  );
+  readonly #layoutHost: LayoutHost = this.#createLayoutHost();
+  #persistedLayoutVersion = 0;
+
   // Restore/reset change tracking (the old effect's dependency semantics).
   #appliedScrollState: ScrollHistoryState<TStartRow> | null = null;
   #appliedPermalinkID: string | null | undefined;
@@ -606,6 +640,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     options: VirtualizerOptions<TListContextParams, TRow, TStartRow>,
   ): void {
     const prev = this.#options;
+    // Another layout places the rows afresh; the reference row is from
+    // before.
+    if (options.layout !== prev.layout) this.#anchorKey = null;
     this.#options = options;
     // Invalidate only options used by the snapshot. Ingestion stays silent
     // so callers can safely read the updated snapshot during render.
@@ -613,7 +650,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       prev.count !== options.count ||
       prev.estimateSize !== options.estimateSize ||
       prev.getRowKey !== options.getRowKey ||
-      prev.lanes !== options.lanes
+      prev.lanes !== options.lanes ||
+      prev.layout !== options.layout
     ) {
       this.#version++;
     }
@@ -656,7 +694,19 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
    * per element; call every commit alongside {@linkcode afterDOMUpdate}.
    */
   attach(el: HTMLElement | null): void {
-    if (el === (this.#attachment?.el ?? null)) return;
+    // Re-wire for a new anchoring mode too: it sets `overflow-anchor` and the
+    // touch listeners, and plugging in a layout switches it.
+    if (
+      el === (this.#attachment?.el ?? null) &&
+      (el === null || this.#attachment?.manual === this.#manual())
+    ) {
+      return;
+    }
+    // Re-wiring mid-gesture drops the listeners that would end it, leaving a
+    // held correction stranded: end it now.
+    if (el !== null && el === this.#attachment?.el) {
+      this.#withNotify(() => this.#endScrolling());
+    }
     this.detach();
     if (!el) return;
 
@@ -948,11 +998,15 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       a.scrollTop === b.scrollTop &&
       this.#samePersistState(a, b) &&
       JSON.stringify(a.listContextParams) ===
-        JSON.stringify(b.listContextParams)
+        JSON.stringify(b.listContextParams) &&
+      JSON.stringify(a.layout) === JSON.stringify(b.layout)
     );
   }
 
   #manual(): boolean {
+    // A layout keeps the rows in place itself (masonry, lane by lane, which
+    // native anchoring, with its one correction for everything, can't).
+    if (this.#layout()) return true;
     const anchoring = this.#options.anchoring ?? 'auto';
     return (
       anchoring === 'manual' ||
@@ -986,12 +1040,81 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     return Math.max(1, this.#options.estimateSize(0));
   }
 
-  // Grid columns; anything but a finite positive count is a plain list.
   #lanes(): number {
-    const {lanes} = this.#options;
-    return lanes !== undefined && Number.isFinite(lanes) && lanes >= 1
-      ? Math.floor(lanes)
-      : 1;
+    return lanesOf(this.#options);
+  }
+
+  #layout(): Layout | undefined {
+    return this.#layoutOf(this.#options.layout);
+  }
+
+  // What the layout sees of this virtualizer. Getters, so it reads live
+  // state as plain properties; built once, before the layout is.
+  #createLayoutHost(): LayoutHost {
+    // oxlint-disable-next-line no-this-alias
+    const self = this;
+    return {
+      get rows() {
+        return self.#rows;
+      },
+      get keys() {
+        return self.#keysOf(self.#rows, self.#options.getRowKey);
+      },
+      get lanes() {
+        return self.#lanes();
+      },
+      get listContextParams() {
+        return self.#options.listContextParams;
+      },
+      get estimate() {
+        return self.#rowEstimate();
+      },
+      get estimatedTotal() {
+        return self.#effectiveEstimatedTotal();
+      },
+      get settled() {
+        return self.#rowsSettled();
+      },
+      get landing() {
+        return self.#landing();
+      },
+      get el() {
+        return self.#attached().el;
+      },
+      get viewportTop() {
+        return self.#attached().viewport.top;
+      },
+      get viewportHeight() {
+        return self.#attached().height;
+      },
+      get scrollTop() {
+        return self.#attached().scrollTop;
+      },
+      get reportedScrollTop() {
+        return self.#reportedScrollTop;
+      },
+      get pendingJump() {
+        return self.#anchorState.pendingJump;
+      },
+      get restoreScrollTop() {
+        return self.#restoreScrollTop;
+      },
+      set restoreScrollTop(top: number | null) {
+        self.#restoreScrollTop = top;
+      },
+      compensate(delta: number) {
+        self.#compensate(delta);
+      },
+      rerender() {
+        self.#version++;
+      },
+    };
+  }
+
+  // The layout only runs while attached.
+  #attached(): Attachment<TRow> {
+    assert(this.#attachment, 'layout called while detached');
+    return this.#attachment;
   }
 
   #effectiveEstimatedTotal(): number {
@@ -1029,12 +1152,13 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
         );
 
     // Keep item identity stable while row data, range and key extraction match.
+    const layout = this.#layout();
     const items = this.#items(
       rows.rowAt,
       rows.firstRowIndex,
       rows.rowsLength,
       getRowKey,
-      lanes,
+      layout ? layout.lanes() : this.#gridLanes(lanes),
     );
 
     const total =
@@ -1047,8 +1171,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
     return {
       items,
-      spaceBefore: rows.atStart ? 0 : gridRowsBefore * rowEstimate,
-      spaceAfter: gridRowsAfter * rowEstimate,
+      // A layout sizes its own content instead.
+      spaceBefore: layout || rows.atStart ? 0 : gridRowsBefore * rowEstimate,
+      spaceAfter: layout ? 0 : gridRowsAfter * rowEstimate,
       rowAt: rows.rowAt,
       complete: rows.complete,
       rowsEmpty: count === undefined ? rows.rowsEmpty : count === 0,
@@ -1095,21 +1220,44 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   // ---- scroll geometry -------------------------------------------------------
 
+  // Where the loaded rows begin: the first row's top, or with a layout,
+  // whose lanes start at different heights, the highest first row's.
+  #topmostRowTop(attachment: Attachment<TRow>): number | null {
+    if (!this.#layout()) {
+      return firstRow(attachment.el)?.getBoundingClientRect().top ?? null;
+    }
+    let top: number | null = null;
+    for (const lane of queryLanes(attachment.el)) {
+      const first = lane && firstRow(lane);
+      if (first) {
+        const t = first.getBoundingClientRect().top;
+        if (top === null || t < top) top = t;
+      }
+    }
+    return top;
+  }
+
   // Shared visibility definition for paging and public visible-item helpers.
-  // Rows are in DOM order, so stop below the viewport.
+  // Rows are in DOM order, top to bottom, so stop below the viewport — with
+  // a layout, lane by lane.
   #visibleIndexRange(
     attachment: Attachment<TRow>,
   ): {first: number; last: number} | null {
     const {top: elTop, bottom: elBottom} = attachment.viewport;
     let first = Infinity;
     let last = -Infinity;
-    for (const child of queryRows(attachment.el)) {
-      const rect = child.getBoundingClientRect();
-      if (rect.top >= elBottom) break;
-      if (rectInViewport(rect, elTop, elBottom)) {
-        const idx = Number(child.getAttribute(VROW_INDEX_ATTR));
-        if (idx < first) first = idx;
-        if (idx > last) last = idx;
+    const columns = this.#layout()
+      ? queryLanes(attachment.el).filter(lane => lane !== undefined)
+      : [attachment.el];
+    for (const column of columns) {
+      for (const child of queryRows(column)) {
+        const rect = child.getBoundingClientRect();
+        if (rect.top >= elBottom) break;
+        if (rectInViewport(rect, elTop, elBottom)) {
+          const idx = Number(child.getAttribute(VROW_INDEX_ATTR));
+          if (idx < first) first = idx;
+          if (idx > last) last = idx;
+        }
       }
     }
     return first === Infinity ? null : {first, last};
@@ -1133,6 +1281,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     if (attachment && Math.round(attachment.scrollTop) !== Math.round(top)) {
       this.#programmaticScroll = true;
       attachment.scrollElement.scrollTop = top;
+      // As asked for; the scroll event reports what the browser allowed.
+      this.#reportedScrollTop = top;
       return true;
     }
     return false;
@@ -1153,8 +1303,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   #holdTarget(attachment: Attachment<TRow>): HTMLElement | null {
     const first = firstRow(attachment.el);
     if (!first) return null;
-    const parent = first.parentElement;
-    return parent && parent !== attachment.scrollElement ? parent : first;
+    const wrapper = contentWrapper(attachment.el);
+    return wrapper && wrapper !== attachment.scrollElement ? wrapper : first;
   }
 
   // A negative margin pulls content up by the pending correction.
@@ -1190,7 +1340,8 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
   #refreshAnchor(): void {
     const attachment = this.#attachment;
-    if (!attachment) return;
+    // A layout keeps its rows in place itself.
+    if (!attachment || this.#layout()) return;
     const vTop = attachment.viewport.top;
     // Match native anchoring: the first row extending below the viewport top.
     let ref: HTMLElement | null = null;
@@ -1221,6 +1372,19 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   }
 
   #measureAndCompensate(): void {
+    // A layout keeps its rows in place itself, landing or not, and scrolls
+    // with them; a reference row would only re-measure the rows the layout
+    // moves on purpose.
+    const layout = this.#layout();
+    if (layout) {
+      if (this.#attachment) {
+        layout.afterRender();
+        // The position now, with the content sized: the next pass starts
+        // from it.
+        this.#reportedScrollTop = this.#attachment.scrollTop;
+      }
+      return;
+    }
     // A landing or context reset owns the position until its rows arrive.
     if (
       !this.#manual() ||
@@ -1327,9 +1491,10 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
   // touch state: a gesture never ends while a finger is down, and a tap that
   // never scrolled ends at touchend (no scrolling → no scrollend).
 
-  #onScrollOffset = (): void => {
+  #onScrollOffset = (offset: number): void => {
     const programmatic = this.#programmaticScroll;
     this.#programmaticScroll = false;
+    this.#reportedScrollTop = offset;
     // The user has taken the position over from a restore still landing.
     if (!programmatic) this.#restoreScrollTop = null;
     // User/momentum scrolls rebase the anchor; our own scrollTop writes do not.
@@ -1565,6 +1730,7 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     }
 
     this.#restoreScrollTop = eff?.scrollTop ?? null;
+    if (eff) this.#layout()?.restore(eff.layout);
     if (eff) {
       // A same-position persistence echo must not disturb the live anchor.
       if (this.#setScrollTop(eff.scrollTop)) {
@@ -1820,9 +1986,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     if (firstVisible === Infinity) {
       // A scrollbar jump into unloaded space needs cursor-based page cascading
       // toward the viewport; there is no index query to teleport there.
-      const first = firstRow(attachment.el);
-      if (!first) return;
-      if (first.getBoundingClientRect().top >= elBottom) {
+      const top = this.#topmostRowTop(attachment);
+      if (top === null) return;
+      if (top >= elBottom) {
         // A list below the viewport at its start needs no backward page.
         // Otherwise page upward into the unloaded space.
         if (attachment.scrollTop <= 0 || rows.atStart) {
@@ -1843,6 +2009,17 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
 
     if (rows.atStart && rows.firstRowIndex !== 0) {
       this.#setAnchor(TOP_ANCHOR as Anchor<TStartRow>);
+      return;
+    }
+
+    // A page must hold what's visible with room past the threshold on both
+    // sides, or paging would flip between the two edges forever: rows far
+    // shorter than their estimate, or lanes whose cards on screen are far
+    // apart in the list. Grow it, and go by the rows that brings.
+    const span = lastVisible - firstVisible + 1;
+    if (this.#pageSize < span + 4 * threshold) {
+      this.#pageSize = makeEven(span + 4 * threshold);
+      this.#version++;
       return;
     }
 
@@ -1894,21 +2071,29 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
     // screen meanwhile is neither where the user was nor where they're going.
     if (this.#landing()) return;
     const next = this.#persistState();
-    if (onlyIfChanged && this.#samePersistState(this.#lastPersisted, next))
+    if (
+      onlyIfChanged &&
+      this.#samePersistState(this.#lastPersisted, next) &&
+      this.#persistedLayoutVersion === (this.#layout()?.version ?? 0)
+    ) {
       return;
+    }
     const {onScrollStateChange, listContextParams} = this.#options;
     const attachment = this.#attachment;
     // Do not persist or record a detached state: a zero offset would clobber
     // the saved position before a lazy container can restore it.
     if (!attachment || !this.#isListContextCurrent() || !onScrollStateChange)
       return;
+    const layout = this.#layout();
     this.#lastPersisted = next;
+    this.#persistedLayoutVersion = layout?.version ?? 0;
     const state: ScrollHistoryState<TStartRow> = {
       ...next,
       // The logical committed offset: if a gesture is mid-flight with an owed
       // jump held in the wrapper margin, fold it in so restore lands right.
       scrollTop: attachment.scrollTop + this.#anchorState.pendingJump,
       listContextParams,
+      ...(layout && {layout: layout.save()}),
     };
     this.#ownScrollStates.unshift(state);
     this.#ownScrollStates.length = Math.min(
@@ -1951,6 +2136,13 @@ function getNearPageEdgeThreshold(pageSize: number) {
 
 function makeEven(n: number) {
   return n % 2 === 0 ? n : n + 1;
+}
+
+/** Grid columns; anything but a finite positive count is a plain list. */
+function lanesOf({lanes}: {lanes?: number | undefined}): number {
+  return lanes !== undefined && Number.isFinite(lanes) && lanes >= 1
+    ? Math.floor(lanes)
+    : 1;
 }
 
 /** The grid column of row `index`; never negative, even mid-renumbering. */

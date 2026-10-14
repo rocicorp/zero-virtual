@@ -1,14 +1,16 @@
-import {createEffect, createSignal, onCleanup, Show} from 'solid-js';
+import {createEffect, createSignal, For, onCleanup, Show} from 'solid-js';
 import {AddControls} from './AddControls.tsx';
 import styles from '../shared/DevPanel.module.css';
+import {layoutChoices} from '../shared/layout.ts';
 import type {HeightMode} from './list-shared.ts';
 
 export function DevPanel(props: {
   getScrollElement: () => HTMLElement | null;
   heightMode: HeightMode;
   onHeightModeChange: (v: string) => void;
-  lanes: number;
-  onLanesChange: (v: string) => void;
+  /** The layout select's value (see `layoutValue`). */
+  layout: string;
+  onLayoutChange: (v: string) => void;
   sortDirection: 'asc' | 'desc';
   anchoring: string;
   onAnchoringChange: (v: string) => void;
@@ -73,19 +75,12 @@ export function DevPanel(props: {
             <span class={styles.fieldName}>layout</span>
             <select
               class={styles.select}
-              value={props.lanes}
-              onChange={e => props.onLanesChange(e.currentTarget.value)}
+              value={props.layout}
+              onChange={e => props.onLayoutChange(e.currentTarget.value)}
             >
-              <option value="1">List</option>
-              <option value="2">Grid · 2 columns</option>
-              <option value="3">Grid · 3 columns</option>
-              <option value="4">Grid · 4 columns</option>
-              {/* A wider grid asked for in the URL (`?lanes=`). */}
-              <Show when={props.lanes > 4}>
-                <option value={props.lanes}>
-                  Grid · {props.lanes} columns
-                </option>
-              </Show>
+              <For each={layoutChoices(props.layout)}>
+                {([value, label]) => <option value={value}>{label}</option>}
+              </For>
             </select>
           </label>
           <AddControls sortDirection={props.sortDirection} />
