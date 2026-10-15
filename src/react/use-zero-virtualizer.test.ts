@@ -1,10 +1,5 @@
 import {renderHook} from '@testing-library/react';
 import {afterEach, describe, expect, test, vi} from 'vitest';
-import {
-  observeElementOffset,
-  observeElementRect,
-  observeWindowOffset,
-} from '../core/scroll.ts';
 import {useRows} from './use-rows.ts';
 import {useStickToBottom} from './use-stick-to-edge.ts';
 import {
@@ -69,53 +64,23 @@ describe('useZeroVirtualizer - snapshot', () => {
   });
 });
 
-// The result echoes the resolved wiring (TanStack-style `options`) so helpers
-// like useStickToBottom can be handed the virtualizer instead of the scroll
-// element getter and observers separately.
-describe('useZeroVirtualizer - result options', () => {
-  test('exposes the scroll element getter and resolved observers', () => {
+describe('useZeroVirtualizer - result', () => {
+  test('exposes the current scrolling element', () => {
     mockUseRows.mockReturnValue(makeRows({}));
 
     const options = makeOptions();
     const {result} = renderHook(() => useZeroVirtualizer(options));
 
-    expect(result.current.options.getScrollElement).toBe(
-      options.getScrollElement,
-    );
-    expect(result.current.options.observeElementRect).toBe(observeElementRect);
-    expect(result.current.options.observeElementOffset).toBe(
-      observeElementOffset,
-    );
-    // TanStack-style: the resolved current scrolling element.
     expect(result.current.scrollElement).toBe(options.getScrollElement());
   });
 
-  test('window virtualizer resolves the window scroll observers', () => {
+  test('the window virtualizer scrolls the document', () => {
     mockUseRows.mockReturnValue(makeRows({}));
 
     const options = makeOptions();
     const {result} = renderHook(() => useZeroWindowVirtualizer(options));
 
-    expect(result.current.options.observeElementOffset).toBe(
-      observeWindowOffset,
-    );
     expect(result.current.scrollElement).toBe(document.scrollingElement);
-  });
-
-  test('individual observers can be overridden, TanStack style', () => {
-    mockUseRows.mockReturnValue(makeRows({}));
-
-    const customObserveOffset = () => () => {};
-    const options = {
-      ...makeOptions(),
-      observeElementOffset: customObserveOffset,
-    };
-    const {result} = renderHook(() => useZeroVirtualizer(options));
-
-    expect(result.current.options.observeElementOffset).toBe(
-      customObserveOffset,
-    );
-    expect(result.current.options.observeElementRect).toBe(observeElementRect);
   });
 
   test('result identity is stable across renders without content changes', () => {
@@ -127,7 +92,6 @@ describe('useZeroVirtualizer - result options', () => {
     const first = result.current;
     rerender();
     expect(result.current).toBe(first);
-    expect(result.current.options).toBe(first.options);
   });
 
   test('scrollToItem identity survives a content change, so it is dep-array safe', () => {

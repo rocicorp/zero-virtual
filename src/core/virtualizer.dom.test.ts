@@ -128,13 +128,11 @@ function createHarness({
     // minPageSize default.
     minPageSize: 100,
     lanes,
-    observeElementRect: s.observeElementRect,
-    observeElementOffset: s.observeElementOffset,
     ...options,
   };
   const core = new ZeroVirtualizer<unknown, TestRow, TestRow>(
     coreOptions,
-    () => scroller,
+    s.wiring,
   );
 
   const page = pager(data);
@@ -275,6 +273,7 @@ function createHarness({
     coreOptions,
     scroller,
     wrapper,
+    wiring: s.wiring,
     tick,
     tickDetached,
     settle,
@@ -1656,14 +1655,11 @@ describe('attachment geometry', () => {
 
   test('reattachment falls back to the new viewport until its observer reports', () => {
     let report: ((rect: {width: number; height: number}) => void) | undefined;
-    const h = harness({
-      rowCount: 500,
-      options: {
-        observeElementRect: (_instance, cb) => {
-          report = cb;
-        },
-      },
-    });
+    const h = harness({rowCount: 500});
+    h.wiring.observeRect = (_el, cb) => {
+      report = cb;
+      return () => {};
+    };
     h.settle();
     expect(h.core.lastVisibleItem()?.key).toBe('r19');
     report!({width: 300, height: 200});

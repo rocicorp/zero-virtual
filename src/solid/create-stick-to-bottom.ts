@@ -20,9 +20,8 @@ import type {CreateZeroVirtualizerResult} from './create-zero-virtualizer.ts';
  * Call during component setup (uses `onCleanup`).
  *
  * @param snapshot The accessor returned by `createZeroVirtualizer` or
- *   `createZeroWindowVirtualizer`. It supplies the scroll wiring (via
- *   `options` / `scrollElement`); the rows' content wrapper is found in the
- *   DOM.
+ *   `createZeroWindowVirtualizer`. It supplies the scroll element
+ *   (`scrollElement`); the rows' content wrapper is found in the DOM.
  */
 export function createStickToBottom<TRow>(
   snapshot: Accessor<CreateZeroVirtualizerResult<TRow>>,

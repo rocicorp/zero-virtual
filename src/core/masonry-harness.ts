@@ -81,13 +81,11 @@ export function createHarness({
     minPageSize: 60,
     lanes,
     layout: masonryLayout,
-    observeElementRect: s.observeElementRect,
-    observeElementOffset: s.observeElementOffset,
     ...options,
   };
   const core = new ZeroVirtualizer<unknown, TestRow, TestRow>(
     coreOptions,
-    () => scroller,
+    s.wiring,
   );
   // The lane elements rendered follow the `lanes` option, as an app's would.
   let currentLanes = lanes;
