@@ -2,7 +2,7 @@ import {createEffect, createSignal, For, onCleanup, Show} from 'solid-js';
 import {AddControls} from './AddControls.tsx';
 import styles from '../shared/DevPanel.module.css';
 import {layoutChoices} from '../shared/layout.ts';
-import type {HeightMode} from './list-shared.ts';
+import type {HeightMode} from '../shared/items.ts';
 
 export function DevPanel(props: {
   getScrollElement: () => HTMLElement | null;

@@ -11,35 +11,13 @@ import {
   useZeroVirtualizer,
   useZeroWindowVirtualizer,
 } from './use-zero-virtualizer.ts';
+import {makeRows} from '../core/scroll-harness.ts';
 
 vi.mock('./use-rows.ts', () => ({
   useRows: vi.fn(),
 }));
 
 const mockUseRows = vi.mocked(useRows);
-
-function makeUseRowsResult(
-  overrides: Partial<ReturnType<typeof useRows>>,
-): ReturnType<typeof useRows> {
-  return {
-    anchor: {index: 0, kind: 'forward', startRow: undefined},
-    pageSize: 50,
-    rowAt: () => undefined,
-    rowsLength: 0,
-    complete: false,
-    rowsEmpty: true,
-    atStart: false,
-    atEnd: false,
-    firstRowIndex: 0,
-    permalinkNotFound: false,
-    permalinkRow: undefined,
-    permalinkID: null,
-    probeID: null,
-    probeRow: undefined,
-    probeComplete: false,
-    ...overrides,
-  };
-}
 
 const EST = 48;
 
@@ -64,129 +42,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// Rows are rendered in flow inside a content wrapper padded by `spaceBefore`
-// (top) and `spaceAfter` (bottom); there is no virtual "count". These cases
-// pin down the derived outputs: how many rows to render, the space estimates,
-// and `total`.
-describe('useZeroVirtualizer - items, space and total', () => {
-  test.for([
-    {
-      name: 'empty, loading (no rows yet)',
-      rows: {
-        rowsLength: 0,
-        complete: false,
-        atStart: false,
-        atEnd: false,
-        firstRowIndex: 0,
-      },
-      expectedItems: 0,
-      expectedSpaceBefore: 0,
-      expectedTotal: undefined,
-    },
-    {
-      name: 'empty, complete',
-      rows: {
-        rowsLength: 0,
-        complete: true,
-        rowsEmpty: true,
-        atStart: true,
-        atEnd: true,
-        firstRowIndex: 0,
-      },
-      expectedItems: 0,
-      expectedSpaceBefore: 0,
-      expectedSpaceAfter: 0,
-      expectedTotal: 0,
-    },
-    {
-      name: 'loading from top, some rows',
-      rows: {
-        rowsLength: 20,
-        complete: false,
-        rowsEmpty: false,
-        atStart: true,
-        atEnd: false,
-        firstRowIndex: 0,
-      },
-      expectedItems: 20,
-      expectedSpaceBefore: 0, // atStart
-      expectedTotal: undefined,
-    },
-    {
-      name: 'all rows loaded',
-      rows: {
-        rowsLength: 20,
-        complete: true,
-        rowsEmpty: false,
-        atStart: true,
-        atEnd: true,
-        firstRowIndex: 0,
-      },
-      expectedItems: 20,
-      expectedSpaceBefore: 0,
-      expectedSpaceAfter: 0,
-      expectedTotal: 20,
-    },
-    {
-      name: 'loading at end, rows above (firstRowIndex>0)',
-      rows: {
-        rowsLength: 20,
-        complete: false,
-        rowsEmpty: false,
-        atStart: false,
-        atEnd: true,
-        firstRowIndex: 5,
-      },
-      expectedItems: 20,
-      expectedSpaceBefore: 5 * EST, // 5 estimated rows above
-      expectedSpaceAfter: 0, // atEnd
-      expectedTotal: undefined,
-    },
-    {
-      name: 'complete in middle (firstRowIndex>0)',
-      rows: {
-        rowsLength: 50,
-        complete: true,
-        rowsEmpty: false,
-        atStart: false,
-        atEnd: false,
-        firstRowIndex: 10,
-      },
-      expectedItems: 50,
-      expectedSpaceBefore: 10 * EST,
-      expectedTotal: undefined,
-    },
-  ])(
-    '$name',
-    ({
-      rows,
-      expectedItems,
-      expectedSpaceBefore,
-      expectedSpaceAfter,
-      expectedTotal,
-    }) => {
-      mockUseRows.mockReturnValue(makeUseRowsResult(rows));
-
-      // `options` must be stable across renders (a fresh `listContextParams`
-      // each render would make the hook think the context keeps changing).
-      const options = makeOptions();
-      const {result} = renderHook(() => useZeroVirtualizer(options));
-
-      expect(result.current.items).toHaveLength(expectedItems);
-      expect(result.current.total).toBe(expectedTotal);
-      if (expectedSpaceBefore !== undefined) {
-        expect(result.current.spaceBefore).toBe(expectedSpaceBefore);
-      }
-      if (expectedSpaceAfter !== undefined) {
-        expect(result.current.spaceAfter).toBe(expectedSpaceAfter);
-      }
-    },
-  );
-
+// The snapshot's derivations (items, space, total, count) are tested against
+// the core in virtualizer.test.ts. This only checks the hook hands the core's
+// snapshot through.
+describe('useZeroVirtualizer - snapshot', () => {
   test('items carry the correct index and row', () => {
     const rowsData = [{id: 'a'}, {id: 'b'}, {id: 'c'}];
     mockUseRows.mockReturnValue(
-      makeUseRowsResult({
+      makeRows({
         rowsLength: 3,
         complete: true,
         rowsEmpty: false,
@@ -204,46 +67,6 @@ describe('useZeroVirtualizer - items, space and total', () => {
     expect(result.current.items.map(it => it.key)).toEqual(['a', 'b', 'c']);
     expect(result.current.items[0].row).toEqual({id: 'a'});
   });
-
-  test('explicit count overrides estimated total', () => {
-    mockUseRows.mockReturnValue(
-      makeUseRowsResult({
-        rowsLength: 20,
-        complete: false,
-        rowsEmpty: false,
-        atStart: true,
-        atEnd: false,
-        firstRowIndex: 0,
-      }),
-    );
-
-    const options = {...makeOptions(), count: 42};
-    const {result} = renderHook(() => useZeroVirtualizer(options));
-
-    expect(result.current.estimatedTotal).toBe(42);
-    expect(result.current.total).toBe(42);
-    expect(result.current.rowsEmpty).toBe(false);
-  });
-
-  test('explicit zero count reports empty list', () => {
-    mockUseRows.mockReturnValue(
-      makeUseRowsResult({
-        rowsLength: 20,
-        complete: false,
-        rowsEmpty: false,
-        atStart: true,
-        atEnd: false,
-        firstRowIndex: 0,
-      }),
-    );
-
-    const options = {...makeOptions(), count: 0};
-    const {result} = renderHook(() => useZeroVirtualizer(options));
-
-    expect(result.current.estimatedTotal).toBe(0);
-    expect(result.current.total).toBe(0);
-    expect(result.current.rowsEmpty).toBe(true);
-  });
 });
 
 // The result echoes the resolved wiring (TanStack-style `options`) so helpers
@@ -251,7 +74,7 @@ describe('useZeroVirtualizer - items, space and total', () => {
 // element getter and observers separately.
 describe('useZeroVirtualizer - result options', () => {
   test('exposes the scroll element getter and resolved observers', () => {
-    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+    mockUseRows.mockReturnValue(makeRows({}));
 
     const options = makeOptions();
     const {result} = renderHook(() => useZeroVirtualizer(options));
@@ -268,7 +91,7 @@ describe('useZeroVirtualizer - result options', () => {
   });
 
   test('window virtualizer resolves the window scroll observers', () => {
-    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+    mockUseRows.mockReturnValue(makeRows({}));
 
     const options = makeOptions();
     const {result} = renderHook(() => useZeroWindowVirtualizer(options));
@@ -280,7 +103,7 @@ describe('useZeroVirtualizer - result options', () => {
   });
 
   test('individual observers can be overridden, TanStack style', () => {
-    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+    mockUseRows.mockReturnValue(makeRows({}));
 
     const customObserveOffset = () => () => {};
     const options = {
@@ -296,7 +119,7 @@ describe('useZeroVirtualizer - result options', () => {
   });
 
   test('result identity is stable across renders without content changes', () => {
-    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+    mockUseRows.mockReturnValue(makeRows({}));
 
     const options = makeOptions();
     const {result, rerender} = renderHook(() => useZeroVirtualizer(options));
@@ -308,7 +131,7 @@ describe('useZeroVirtualizer - result options', () => {
   });
 
   test('scrollToItem identity survives a content change, so it is dep-array safe', () => {
-    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+    mockUseRows.mockReturnValue(makeRows({}));
 
     const options = makeOptions();
     const {result, rerender} = renderHook(() => useZeroVirtualizer(options));
@@ -319,7 +142,7 @@ describe('useZeroVirtualizer - result options', () => {
 
     // A new rows result rebuilds the result object; the callback must not
     // change with it, or every consumer's effect re-runs on every page.
-    mockUseRows.mockReturnValue(makeUseRowsResult({rowsLength: 3}));
+    mockUseRows.mockReturnValue(makeRows({rowsLength: 3}));
     rerender();
 
     expect(result.current).not.toBe(firstResult);
@@ -329,7 +152,7 @@ describe('useZeroVirtualizer - result options', () => {
 
 describe('useStickToBottom over the virtualizer result', () => {
   test('re-pins to the bottom on content growth only while stuck', () => {
-    mockUseRows.mockReturnValue(makeUseRowsResult({}));
+    mockUseRows.mockReturnValue(makeRows({}));
 
     // The re-pinning is driven by ResizeObservers on the content wrapper and
     // the scroll container; capture their callbacks to fire growth manually

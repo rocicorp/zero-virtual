@@ -62,6 +62,7 @@ describe('createRows (solid staging over the core builders)', () => {
       pageSize: 4,
       anchor: {index: 0, kind: 'forward', startRow: undefined},
       settled: false,
+      probeID: null,
     });
     const {rows, getPageQuery, dispose} = setup(inputs);
 
@@ -100,6 +101,7 @@ describe('createRows (solid staging over the core builders)', () => {
       pageSize: 4,
       anchor: {index: 1, kind: 'permalink', id: 'x'},
       settled: false,
+      probeID: null,
     });
     const {rows, getSingleQuery, getPageQuery, dispose} = setup(inputs);
 

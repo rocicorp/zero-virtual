@@ -1,10 +1,18 @@
 import {afterEach, describe, expect, test, vi} from 'vitest';
 import {assembleRows, type RowsQueryInputs} from './rows.ts';
 import {VROW_INDEX_ATTR, VROW_KEY_ATTR} from './dom.ts';
+import {
+  createScroller,
+  pageKey,
+  pager,
+  px,
+  queryKey,
+  rect,
+  registered,
+  type TestRow,
+} from './scroll-harness.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
 import type {Anchor, ScrollHistoryState, VirtualRow} from './types.ts';
-
-type TestRow = {id: string; rowid?: bigint};
 
 // Where the harness records each rendered row's grid column (`item.lane`).
 const LANE_ATTR = 'data-test-lane';
@@ -19,9 +27,8 @@ const LANE_ATTR = 'data-test-lane';
  *   layout model (wrapper padding + margin + cumulative row heights −
  *   scrollTop), so visible-row detection, anchoring measurement, and paging
  *   evaluation all see consistent positions.
- * - `scrollTop` is an accessor with browser-style clamping; writes queue a
- *   scroll event that `deliverScroll` hands to the injected offset observer,
- *   mirroring the browser's async scroll event after a programmatic write.
+ * - `scrollTop` clamps like a browser's, and writes queue a scroll event
+ *   (see `createScroller`).
  * - Queries are answered synchronously from an in-memory dataset through the
  *   real `assembleRows`, so the windowing math (including the backward
  *   branch) is exercised, not mocked.
@@ -59,12 +66,8 @@ function createHarness({
   const heights = new Map<string, number>();
   const heightOf = (key: string) => heights.get(key) ?? rowHeight;
 
-  const scroller = document.createElement('div');
-  const wrapper = document.createElement('div');
-  scroller.appendChild(wrapper);
-  document.body.appendChild(scroller);
-
-  const paddingPx = (v: string) => (v ? Number.parseFloat(v) : 0);
+  const s = createScroller(viewportHeight, () => contentHeight());
+  const {scroller, wrapper, deliverScroll, userScroll} = s;
 
   // Lay the rows out the way CSS grid places cells with explicit columns
   // (`gridColumn: lane + 1`): a row whose column isn't right of the previous
@@ -90,70 +93,30 @@ function createHarness({
   };
 
   const contentHeight = () =>
-    paddingPx(wrapper.style.paddingTop) +
-    paddingPx(wrapper.style.marginTop) +
+    px(wrapper.style.paddingTop) +
+    px(wrapper.style.marginTop) +
     layout().height +
-    paddingPx(wrapper.style.paddingBottom);
-
-  // scrollTop with browser-style clamping; writes queue a scroll event.
-  let scrollTop = 0;
-  let scrollPending = false;
-  Object.defineProperty(scroller, 'scrollTop', {
-    get: () => scrollTop,
-    set(v: number) {
-      const next = Math.max(0, Math.min(v, contentHeight() - viewportHeight));
-      if (next !== scrollTop) {
-        scrollTop = next;
-        scrollPending = true;
-      }
-    },
-  });
-
-  // The geometry a real scroll container reports, kept consistent with the
-  // clamping above: the core reads these to tell a clamped write of its own
-  // from the user scrolling somewhere else.
-  Object.defineProperty(scroller, 'scrollHeight', {
-    get: () => contentHeight(),
-  });
-  Object.defineProperty(scroller, 'clientHeight', {
-    get: () => viewportHeight,
-  });
-
-  const rect = (top: number, height: number): DOMRect =>
-    ({
-      top,
-      bottom: top + height,
-      height,
-      left: 0,
-      right: 300,
-      width: 300,
-      x: 0,
-      y: top,
-      toJSON: () => ({}),
-    }) as DOMRect;
+    px(wrapper.style.paddingBottom);
 
   if (windowScroll) {
     vi.spyOn(document, 'scrollingElement', 'get').mockReturnValue(scroller);
   }
   scroller.getBoundingClientRect = () =>
-    rect(windowScroll ? -scrollTop : viewportTop, viewportHeight);
+    rect(windowScroll ? -s.scrollTop() : viewportTop, viewportHeight);
 
   const rowRect = (el: Element): DOMRect => {
     const cell = layout().cells.get(el);
     if (!cell) throw new Error('row not in wrapper');
     return rect(
       viewportTop -
-        scrollTop +
-        paddingPx(wrapper.style.paddingTop) +
-        paddingPx(wrapper.style.marginTop) +
+        s.scrollTop() +
+        px(wrapper.style.paddingTop) +
+        px(wrapper.style.marginTop) +
         cell.top,
       cell.height,
     );
   };
 
-  // The injected observers: rect reports immediately (like a ResizeObserver's
-  // initial measurement); the offset callback is delivered by deliverScroll.
-  let offsetCb: ((offset: number) => void) | null = null;
   const coreOptions: VirtualizerOptions<unknown, TestRow, TestRow> = {
     estimateSize: () => rowHeight,
     getRowKey: row => row.id,
@@ -165,15 +128,8 @@ function createHarness({
     // minPageSize default.
     minPageSize: 100,
     lanes,
-    observeElementRect: (_instance, cb) => {
-      cb({width: 300, height: viewportHeight});
-    },
-    observeElementOffset: (_instance, cb) => {
-      offsetCb = cb;
-      return () => {
-        offsetCb = null;
-      };
-    },
+    observeElementRect: s.observeElementRect,
+    observeElementOffset: s.observeElementOffset,
     ...options,
   };
   const core = new ZeroVirtualizer<unknown, TestRow, TestRow>(
@@ -181,40 +137,13 @@ function createHarness({
     () => scroller,
   );
 
-  const deliverScroll = () => {
-    if (scrollPending) {
-      scrollPending = false;
-      offsetCb?.(scrollTop);
-    }
-  };
-
-  // Answer the staged queries from the dataset, Zero-demo style: exclusive
-  // .start cursor, backward pages returned closest-row-first.
-  const page = (
-    start: TestRow | null,
-    dir: 'forward' | 'backward',
-    limit: number,
-  ) => {
-    const startIdx = start
-      ? data.findIndex(r => r.id === start.id)
-      : dir === 'forward'
-        ? -1
-        : data.length;
-    if (dir === 'forward') {
-      return data.slice(startIdx + 1, startIdx + 1 + limit);
-    }
-    return data.slice(Math.max(0, startIdx - limit), startIdx).reverse();
-  };
+  const page = pager(data);
 
   // Zero answers a page query it hasn't synced from what the client already
   // holds: for an ordered page that need not be a prefix — rows that other
   // queries no longer kept are missing — and the result stays incomplete
   // until the server fills them in. `partialNext` plays that once, for the
   // next page query that differs from the current one.
-  const pageKey = (anchor: Anchor<TestRow>) =>
-    anchor.kind === 'permalink'
-      ? `permalink:${anchor.id}`
-      : `${anchor.kind}:${anchor.startRow?.id ?? ''}`;
   let partial: {skip: number; from: string; key?: string} | null = null;
   // The permalink twin of `partial`: the next permalink answer holds the
   // target and the rows after it, with the page before it still incomplete.
@@ -319,31 +248,17 @@ function createHarness({
     core.afterDOMUpdate();
   };
 
-  // Settled = the queries stopped changing: the anchor and page size hold
-  // still and no id lookup (`probeID`) is in flight. Spelled out field by
-  // field rather than stringified, so the harness imposes no serializability
-  // requirement of its own on the rows under test (see `bigintRows`).
-  const queryKey = () => {
-    const {anchor, pageSize, probeID} = core.getQueryInputs();
-    const cursor =
-      anchor.kind === 'permalink' ? anchor.id : (anchor.startRow?.id ?? '');
-    return `${anchor.kind}:${anchor.index}:${cursor}:${pageSize}:${probeID ?? ''}`;
-  };
-
-  // Settled also means the answers are in: a query still completing (see
-  // `partialNext`) has more rows on the way.
+  // Settled: the queries stopped changing — the anchor and page size hold
+  // still and no id lookup (`probeID`) is in flight — and their answers are
+  // in: a query still completing (see `partialNext`) has more rows on the way.
   const settle = (maxTicks = 20) => {
     for (let i = 0; i < maxTicks; i++) {
-      const before = queryKey();
+      const before = queryKey(core.getQueryInputs());
       tick();
-      if (queryKey() === before && core.getSnapshot().complete) return;
+      const after = queryKey(core.getQueryInputs());
+      if (after === before && core.getSnapshot().complete) return;
     }
     throw new Error('paging did not settle');
-  };
-
-  const userScroll = (px: number) => {
-    scroller.scrollTop = px;
-    deliverScroll();
   };
 
   const visibleIndexes = () =>
@@ -397,14 +312,9 @@ function createHarness({
   };
 }
 
-const harnesses: Array<{destroy: () => void}> = [];
-function harness(...args: Parameters<typeof createHarness>) {
-  const h = createHarness(...args);
-  harnesses.push(h);
-  return h;
-}
+const harness = registered(createHarness);
+type Harness = ReturnType<typeof createHarness>;
 afterEach(() => {
-  while (harnesses.length) harnesses.pop()!.destroy();
   vi.restoreAllMocks();
 });
 
@@ -848,51 +758,9 @@ describe('permalink scroll', () => {
   });
 });
 
-describe('scroll-state restore of a position we wrote ourselves', () => {
-  test('a jump that took a long time to load still outranks the echo', () => {
-    // The echo window is refreshed while a jump is in flight — but the commit
-    // it lands on retires the request first, so that one has to count too.
-    // Otherwise a jump whose pages took longer than the window to arrive (a
-    // cold cache) lands with the window already expired, and the pre-jump
-    // position the host is still holding comes back as a restore and undoes
-    // it.
-    const persisted: Array<ScrollHistoryState<TestRow>> = [];
-    const h = harness({
-      rowCount: 500,
-      options: {
-        anchoring: 'manual',
-        onScrollStateChange: s =>
-          persisted.push(s as ScrollHistoryState<TestRow>),
-      },
-    });
-    h.settle();
-    h.userScroll(400);
-    h.scroller.dispatchEvent(new Event('scrollend'));
-    const preJump = persisted.at(-1)!;
-
-    h.core.scrollToItem('r400', {align: 'start'});
-    h.tick(); // the lookup answers and paging re-anchors
-
-    // …and then the pages take their time.
-    const realNow = Date.now;
-    Date.now = () => realNow() + 60_000;
-    try {
-      h.tick(); // they arrive: the jump lands, and the request is retired here
-
-      // The host hands back the position from before the jump.
-      h.core.setOptions({...h.coreOptions, scrollState: {...preJump}});
-      h.tick();
-    } finally {
-      Date.now = realNow;
-    }
-
-    expect(h.rowTop('r400')).toBe(0);
-  });
-
-  test('a later navigation back to it still restores', () => {
-    // The core ignores its own position coming straight back to it (the host
-    // echoes what was just persisted). That must not extend to a real
-    // back/forward navigation to a position it persisted a while ago — with no
+describe('scroll-state restore of a position we wrote', () => {
+  test('a later navigation back to it restores it', () => {
+    // A back/forward navigation to a position persisted a while ago — with no
     // permalink in play, nothing else would bring the viewport back.
     const persisted: Array<ScrollHistoryState<TestRow>> = [];
     const h = harness({
@@ -918,6 +786,74 @@ describe('scroll-state restore of a position we wrote ourselves', () => {
     h.tick();
 
     expect(h.scroller.scrollTop).toBe(400);
+  });
+
+  describe('from a host that hands every write straight back', () => {
+    // zbugs stores the state with wouter: `history.replaceState` on every
+    // write, which wouter announces, and `useHistoryState` re-reads — so
+    // each write comes back at once as `scrollState`, a new object. That is
+    // where the list already is, not somewhere to put it; taken as a
+    // restore, it lands, which persists, which comes back again. Such a
+    // host must see the list behave as one that keeps the state to itself.
+    const run = (echo: boolean, steps: (h: Harness) => void) => {
+      let written: ScrollHistoryState<TestRow> | null = null;
+      const h = harness({
+        rowCount: 1000,
+        options: {
+          onScrollStateChange: s => {
+            if (echo)
+              written = structuredClone(s) as ScrollHistoryState<TestRow>;
+          },
+        },
+      });
+      // The host re-renders with what it stored.
+      const rerender = () => {
+        for (let i = 0; i < 10 && written; i++) {
+          const scrollState = written;
+          written = null;
+          h.core.setOptions({...h.coreOptions, scrollState});
+          h.tick();
+        }
+        expect(written, 'each write echoes another').toBeNull();
+      };
+      const trace: unknown[] = [];
+      const settle = () => {
+        h.settle();
+        rerender();
+        h.settle();
+        trace.push(h.scroller.scrollTop, h.visibleIndexes());
+      };
+      settle();
+      steps(
+        Object.assign(Object.create(h) as Harness, {
+          userScroll: (top: number) => {
+            h.userScroll(top);
+            rerender();
+            settle();
+          },
+          settle,
+        }),
+      );
+      return trace;
+    };
+
+    test('scrolling: down several pages and back up', () => {
+      const steps = (h: Harness) => {
+        for (const step of [600, 600, 600, 600, 600, -900, -900]) {
+          h.userScroll(h.scroller.scrollTop + step);
+        }
+      };
+      expect(run(true, steps)).toEqual(run(false, steps));
+    });
+
+    test('a jump', () => {
+      const steps = (h: Harness) => {
+        h.userScroll(1500);
+        h.core.scrollToItem('r900', {align: 'start'});
+        h.settle();
+      };
+      expect(run(true, steps)).toEqual(run(false, steps));
+    });
   });
 });
 
@@ -1063,8 +999,8 @@ describe('compareStartRows', () => {
     if (anchor.kind === 'permalink') throw new Error('expected a page anchor');
     expect(typeof anchor.startRow?.rowid).toBe('bigint');
 
-    // The state comes back: the echo check compares it against the ones we
-    // wrote, anchor included.
+    // The state comes back: the restore compares its anchor against the
+    // one persisted last.
     h.core.setOptions({
       ...h.coreOptions,
       compareStartRows,
@@ -1166,30 +1102,6 @@ describe('firstVisibleItem / lastVisibleItem', () => {
 
     expect(h.core.firstVisibleItem()).toBeUndefined();
     expect(h.core.lastVisibleItem()).toBeUndefined();
-  });
-});
-
-describe('persist timing', () => {
-  test('persists immediately on scrollend, before the debounce, so a fast navigation keeps the position', () => {
-    const persisted: Array<ScrollHistoryState<TestRow>> = [];
-    const h = harness({
-      rowCount: 100,
-      options: {
-        onScrollStateChange: s =>
-          persisted.push(s as ScrollHistoryState<TestRow>),
-      },
-    });
-    h.settle();
-    persisted.length = 0;
-
-    // Scroll, then the browser signals scrolling ended — without any debounce
-    // time elapsing. The position must already be persisted, so navigating
-    // away right now (e.g. clicking a row) doesn't lose it.
-    h.userScroll(300);
-    h.scroller.dispatchEvent(new Event('scrollend'));
-
-    expect(persisted.length).toBeGreaterThan(0);
-    expect(persisted.at(-1)!.scrollTop).toBe(300);
   });
 });
 

@@ -1,38 +1,14 @@
 import {
   type AnchoringMode,
   type GetPageQueryOptions,
-  type GetSingleQueryOptions,
 } from '@rocicorp/zero-virtual/react';
 import {useCallback, useMemo, useState, type CSSProperties} from 'react';
 import styles from '../shared/App.module.css';
-import {
-  queries,
-  type ItemStart,
-  type ListContextParams,
-} from '../shared/queries.ts';
-import type {Item} from '../shared/schema.ts';
+import {estimateFor, getPageQuery, type HeightMode} from '../shared/items.ts';
+import type {ItemStart, ListContextParams} from '../shared/queries.ts';
 import {layoutFromParams, paramsForLayout} from '../shared/layout.ts';
 import {setUrlParams} from '../shared/url-params.ts';
 import {useUrlState} from './use-url-state.ts';
-
-/**
- * How row heights are determined:
- * - `uniform`: every row is the same fixed height (`ITEM_HEIGHT`).
- * - `fixed`:   each row has a different but precomputed height, derived purely
- *              from its (stable) id — no DOM measurement needed.
- * - `dynamic`: heights are unknown ahead of time — each row renders at its
- *              natural content height and the browser lays it out.
- */
-export type HeightMode = 'uniform' | 'fixed' | 'dynamic';
-
-/** Row height (px) in `uniform` mode. */
-export const ITEM_HEIGHT = 48;
-
-/**
- * Estimate used for not-yet-loaded rows in `fixed` mode and as the initial
- * estimate for every row in `dynamic` mode (real heights come from the DOM).
- */
-export const SIZE_ESTIMATE = 80;
 
 /**
  * Props for the rows' content wrapper. As a grid (`lanes` > 1) each row places
@@ -48,29 +24,6 @@ export function contentWrapperProps(lanes: number): {
         style: {gridTemplateColumns: `repeat(${lanes}, minmax(0, 1fr))`},
       }
     : {};
-}
-
-export function getRowKey(item: Item): string {
-  return item.id;
-}
-
-export function toStartRow(item: Item): ItemStart {
-  return {
-    id: item.id,
-    created: item.created,
-    modified: item.modified,
-  };
-}
-
-function getQueryOptions(settled: boolean) {
-  return {ttl: settled ? '5m' : 'none'} as const;
-}
-
-export function getSingleQuery({id, settled}: GetSingleQueryOptions) {
-  return {
-    query: queries.item.getSingleQuery({id}),
-    options: getQueryOptions(settled),
-  } as const;
 }
 
 /** Sort field/direction state and the derived `listContextParams`. */
@@ -102,26 +55,15 @@ export function useSortState() {
 
 export function useGetPageQuery(listContextParams: ListContextParams) {
   return useCallback(
-    ({limit, start, dir, settled}: GetPageQueryOptions<ItemStart>) => ({
-      query: queries.item.getPageQuery({limit, start, dir, listContextParams}),
-      options: getQueryOptions(settled),
-    }),
+    (options: GetPageQueryOptions<ItemStart>) =>
+      getPageQuery(listContextParams, options),
     [listContextParams],
   );
 }
 
-/**
- * A single representative row-height estimate per mode, used only to size the
- * content-wrapper padding that stands in for not-yet-loaded rows (the
- * scrollbar is approximate, as with any virtualized list). Real heights come
- * from the DOM. In a grid it estimates a grid row (as tall as its tallest
- * cell); the same per-mode figure is close enough for the demo.
- */
+/** The row estimate for a height mode (see `estimateFor`). */
 export function useEstimateSize(heightMode: HeightMode): () => number {
-  return useCallback(
-    () => (heightMode === 'uniform' ? ITEM_HEIGHT : SIZE_ESTIMATE),
-    [heightMode],
-  );
+  return useCallback(() => estimateFor(heightMode), [heightMode]);
 }
 
 // Write a layout select value to the URL (see ../shared/layout.ts).

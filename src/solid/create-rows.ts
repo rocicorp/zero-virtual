@@ -7,10 +7,8 @@ import {
 } from 'solid-js';
 import {
   assembleRows,
-  buildAfterQuery,
-  buildMainQuery,
+  buildPageQueries,
   buildSingleQuery,
-  permalinkMissing,
   type RowsQueryInputs,
   type RowsSnapshot,
 } from '../core/rows.ts';
@@ -40,39 +38,24 @@ export function createRows<TRow, TStartRow>(args: {
   );
   const typedSingleRow = () => singleRow() as TRow | undefined;
   const singleComplete = () => singleDetails().type === 'complete';
-  const notFound = () =>
-    permalinkMissing(args.inputs(), typedSingleRow(), singleComplete());
-  const singleStart = () => {
-    const row = typedSingleRow();
-    return row ? args.toStartRow()(row) : null;
-  };
 
-  // Stage 2: page-before rows (permalink) OR the main page rows.
-  const q2 = createMemo(() =>
-    buildMainQuery(
+  // Stage 2: page-before rows (permalink) OR the main page rows. Stage 3:
+  // page-after rows (permalink only).
+  const pages = createMemo(() =>
+    buildPageQueries(
       args.inputs(),
       args.getPageQuery(),
-      singleStart(),
-      notFound(),
+      args.toStartRow(),
+      typedSingleRow(),
     ),
   );
   const [mainRows, mainDetails] = useQuery(
-    () => q2()?.query ?? null,
-    () => q2()?.options ?? {},
-  );
-
-  // Stage 3: page-after rows (permalink only).
-  const q3 = createMemo(() =>
-    buildAfterQuery(
-      args.inputs(),
-      args.getPageQuery(),
-      singleStart(),
-      notFound(),
-    ),
+    () => pages().main?.query ?? null,
+    () => pages().main?.options ?? {},
   );
   const [afterRows, afterDetails] = useQuery(
-    () => q3()?.query ?? null,
-    () => q3()?.options ?? {},
+    () => pages().after?.query ?? null,
+    () => pages().after?.options ?? {},
   );
 
   // Assemble in a render effect, not a memo. When the inputs change, a memo

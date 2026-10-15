@@ -1,16 +1,23 @@
-import {afterEach} from 'vitest';
 import {assembleRows, type RowsQueryInputs} from './rows.ts';
 import {VLANE_ATTR, VROW_INDEX_ATTR, VROW_KEY_ATTR} from './dom.ts';
 import {masonryLayout} from './masonry.ts';
+import {
+  createScroller,
+  pageKey,
+  pager,
+  px,
+  queryKey,
+  rect,
+  registered,
+  type TestRow,
+} from './scroll-harness.ts';
 import {ZeroVirtualizer, type VirtualizerOptions} from './virtualizer.ts';
 import type {Anchor} from './types.ts';
-
-type TestRow = {id: string};
 
 /**
  * A DOM harness for masonry, after the list harness in
  * virtualizer.dom.test.ts: a happy-dom scroll container whose geometry the
- * test controls. The content wrapper holds one element per lane, side by
+ * test controls (see `createScroller`). The content wrapper holds one element per lane, side by
  * side; each lane stacks its cards from the padding-top the core sets on it,
  * `gap` px apart. Cards have varied heights — `r${i}` is 40 to 119px — and
  * the core estimates 80.
@@ -36,13 +43,10 @@ export function createHarness({
   const heightOf = (key: string) =>
     heights.get(key) ?? 40 + ((Number(key.slice(1)) * 37) % 80);
 
-  const scroller = document.createElement('div');
-  const wrapper = document.createElement('div');
-  scroller.appendChild(wrapper);
-  document.body.appendChild(scroller);
+  const s = createScroller(viewportHeight, () => contentHeight());
+  const {scroller, wrapper, deliverScroll} = s;
   let laneEls: HTMLElement[] = [];
 
-  const px = (v: string) => (v ? Number.parseFloat(v) : 0);
   const cardsOf = (lane: Element) => [...lane.children];
   const laneHeight = (lane: HTMLElement) =>
     px(lane.style.paddingTop) +
@@ -55,48 +59,9 @@ export function createHarness({
   const contentHeight = () =>
     px(wrapper.style.marginTop) + Math.max(0, ...laneEls.map(laneHeight));
 
-  let scrollTop = 0;
-  let scrollPending = false;
-  // Like a browser, clamp scrollTop when the content shrinks under it, not
-  // just on writes: whenever the position is read.
-  const currentScrollTop = () => {
-    const max = Math.max(0, contentHeight() - viewportHeight);
-    if (scrollTop > max) {
-      scrollTop = max;
-      scrollPending = true;
-    }
-    return scrollTop;
-  };
-  Object.defineProperty(scroller, 'scrollTop', {
-    get: currentScrollTop,
-    set(v: number) {
-      const next = Math.max(0, Math.min(v, contentHeight() - viewportHeight));
-      if (next !== scrollTop) {
-        scrollTop = next;
-        scrollPending = true;
-      }
-    },
-  });
-  Object.defineProperty(scroller, 'scrollHeight', {get: contentHeight});
-  Object.defineProperty(scroller, 'clientHeight', {
-    get: () => viewportHeight,
-  });
-
-  const rect = (top: number, height: number): DOMRect =>
-    ({
-      top,
-      bottom: top + height,
-      height,
-      left: 0,
-      right: 300,
-      width: 300,
-      x: 0,
-      y: top,
-      toJSON: () => ({}),
-    }) as DOMRect;
   scroller.getBoundingClientRect = () => rect(0, viewportHeight);
   // Where the lanes start, in the viewport: the wrapper's top.
-  const lanesTop = () => -currentScrollTop() + px(wrapper.style.marginTop);
+  const lanesTop = () => -s.scrollTop() + px(wrapper.style.marginTop);
   const cardRect = (el: Element): DOMRect => {
     const lane = el.parentElement as HTMLElement;
     let top = lanesTop() + px(lane.style.paddingTop);
@@ -108,7 +73,6 @@ export function createHarness({
     throw new Error('card not in its lane');
   };
 
-  let offsetCb: ((offset: number) => void) | null = null;
   const coreOptions: VirtualizerOptions<unknown, TestRow, TestRow> = {
     estimateSize: () => 80,
     getRowKey: row => row.id,
@@ -117,15 +81,8 @@ export function createHarness({
     minPageSize: 60,
     lanes,
     layout: masonryLayout,
-    observeElementRect: (_instance, cb) => {
-      cb({width: 300, height: viewportHeight});
-    },
-    observeElementOffset: (_instance, cb) => {
-      offsetCb = cb;
-      return () => {
-        offsetCb = null;
-      };
-    },
+    observeElementRect: s.observeElementRect,
+    observeElementOffset: s.observeElementOffset,
     ...options,
   };
   const core = new ZeroVirtualizer<unknown, TestRow, TestRow>(
@@ -141,27 +98,7 @@ export function createHarness({
     core.setOptions(next);
   };
 
-  const deliverScroll = () => {
-    if (scrollPending) {
-      scrollPending = false;
-      offsetCb?.(scrollTop);
-    }
-  };
-
-  const page = (
-    start: TestRow | null,
-    dir: 'forward' | 'backward',
-    limit: number,
-  ) => {
-    const startIdx = start
-      ? data.findIndex(r => r.id === start.id)
-      : dir === 'forward'
-        ? -1
-        : data.length;
-    return dir === 'forward'
-      ? data.slice(startIdx + 1, startIdx + 1 + limit)
-      : data.slice(Math.max(0, startIdx - limit), startIdx).reverse();
-  };
+  const page = pager(data);
   let partial: {rows: number; from: string} | null = null;
   // Answer the next page queries with nothing, still loading, this many
   // times.
@@ -193,7 +130,7 @@ export function createHarness({
     );
     // Zero answers a page it hasn't synced yet from what the client holds:
     // part of it, incomplete. `partialNext` plays that for one new query.
-    const key = `${anchor.kind}:${anchor.startRow?.id ?? ''}`;
+    const key = pageKey(anchor);
     const partly = partial !== null && key !== partial.from;
     if (partly) {
       mainRows = mainRows.slice(0, partial!.rows);
@@ -265,12 +202,6 @@ export function createHarness({
     return lagged;
   };
 
-  const queryKey = () => {
-    const {anchor, pageSize, probeID} = core.getQueryInputs();
-    const cursor =
-      anchor.kind === 'permalink' ? anchor.id : (anchor.startRow?.id ?? '');
-    return `${anchor.kind}:${anchor.index}:${cursor}:${pageSize}:${probeID ?? ''}`;
-  };
   // Every item rendered in the lane it names: no placement left to render.
   const placed = () =>
     core
@@ -285,11 +216,10 @@ export function createHarness({
   // card is where its lane says.
   const settle = (maxTicks = 30) => {
     for (let i = 0; i < maxTicks; i++) {
-      const before = queryKey();
+      const before = queryKey(core.getQueryInputs());
       tick();
-      if (queryKey() === before && core.getSnapshot().complete && placed()) {
-        return;
-      }
+      const after = queryKey(core.getQueryInputs());
+      if (after === before && core.getSnapshot().complete && placed()) return;
     }
     throw new Error('masonry did not settle');
   };
@@ -317,15 +247,9 @@ export function createHarness({
     },
     /** Answer the next new page query with only its first `rows` rows. */
     partialNext: (rows: number) => {
-      const {anchor} = core.getQueryInputs();
-      const from =
-        anchor.kind === 'permalink' ? '' : (anchor.startRow?.id ?? '');
-      partial = {rows, from: `${anchor.kind}:${from}`};
+      partial = {rows, from: pageKey(core.getQueryInputs().anchor)};
     },
-    userScroll: (top: number) => {
-      scroller.scrollTop = top;
-      deliverScroll();
-    },
+    userScroll: s.userScroll,
     lanes: () => laneEls,
     /** The rendered cards per lane, by key. */
     laneKeys: () => laneEls.map(lane => cardsOf(lane).map(keyOf)),
@@ -349,12 +273,4 @@ export function createHarness({
   };
 }
 
-const harnesses: Array<{destroy: () => void}> = [];
-export function harness(...args: Parameters<typeof createHarness>) {
-  const h = createHarness(...args);
-  harnesses.push(h);
-  return h;
-}
-afterEach(() => {
-  while (harnesses.length) harnesses.pop()!.destroy();
-});
+export const harness = registered(createHarness);
