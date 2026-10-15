@@ -1037,7 +1037,9 @@ export class ZeroVirtualizer<TListContextParams, TRow, TStartRow> {
       },
       set restoreScrollTop(top: number | null) {
         const target = self.#target;
-        if (target?.kind === 'offset' && top !== null) target.top = top;
+        if (target?.kind !== 'offset') return;
+        if (top === null) self.#target = null;
+        else target.top = top;
       },
       compensate(delta: number) {
         self.#compensate(delta);
